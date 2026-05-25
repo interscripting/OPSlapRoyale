@@ -1,18 +1,26 @@
-local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
-local UserInputService = game:GetService("UserInputService")
-local MarketplaceService = game:GetService("MarketplaceService")
-local ContextActionService = game:GetService("ContextActionService")
+local Services = {
+	Players = game:GetService("Players"),
+	RunService = game:GetService("RunService"),
+	TweenService = game:GetService("TweenService"),
+	UserInputService = game:GetService("UserInputService"),
+	MarketplaceService = game:GetService("MarketplaceService"),
+	ContextActionService = game:GetService("ContextActionService"),
+	ReplicatedStorage = game:GetService("ReplicatedStorage"),
+	CollectionService = game:GetService("CollectionService")
+}
+
+local Players = Services.Players
+local RunService = Services.RunService
+local TweenService = Services.TweenService
+local UserInputService = Services.UserInputService
+local MarketplaceService = Services.MarketplaceService
+local ContextActionService = Services.ContextActionService
+local ReplicatedStorage = Services.ReplicatedStorage
 local player = Players.LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local gui = Instance.new("ScreenGui")
-gui.Name = "OPSlapRoyaleUI"
-gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+local Config = {}
 
-local themes = {
+Config.Themes = {
 	["Midnight Arcade"] = {
 		Main = Color3.fromRGB(9, 11, 20),
 		Panel = Color3.fromRGB(18, 22, 36),
@@ -60,29 +68,77 @@ local themes = {
 	}
 }
 
+local themes = Config.Themes
 local currentTheme = themes["Midnight Arcade"]
-local themedObjects = {}
-local tabButtons = {}
-local pages = {}
-local selectedTabName = "Main"
-local topLevelToggleOrder = 0
 
-local function themeObject(object, property, key)
-	table.insert(themedObjects, {
+local UI = {
+	ThemedObjects = {},
+	TabButtons = {},
+	Pages = {},
+	SelectedTab = "Main",
+	TopLevelToggleOrder = 0
+}
+
+local Notify = {
+	Order = 0,
+	Active = {},
+	Width = 374,
+	Height = 96,
+	Gap = 10,
+	BottomOffset = 104,
+	RightOffset = 22,
+	LifeTime = 4.2,
+	MaxVisible = 5
+}
+
+Notify.Presets = {
+	Info = {
+		Icon = "i",
+		Color = Color3.fromRGB(95, 205, 255)
+	},
+	Success = {
+		Icon = "+",
+		Color = Color3.fromRGB(95, 255, 165)
+	},
+	Warning = {
+		Icon = "!",
+		Color = Color3.fromRGB(255, 205, 85)
+	},
+	Error = {
+		Icon = "x",
+		Color = Color3.fromRGB(255, 90, 105)
+	}
+}
+
+local themedObjects = UI.ThemedObjects
+local tabButtons = UI.TabButtons
+local pages = UI.Pages
+local selectedTabName = UI.SelectedTab
+local topLevelToggleOrder = UI.TopLevelToggleOrder
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "OPSlapRoyaleUI"
+gui.ResetOnSpawn = false
+gui.Parent = player:WaitForChild("PlayerGui")
+
+function UI.ThemeObject(object, property, key)
+	table.insert(UI.ThemedObjects, {
 		Object = object,
 		Property = property,
 		Key = key
 	})
+
 	object[property] = currentTheme[key]
 end
 
-local function addCorner(object, radius)
+function UI.AddCorner(object, radius)
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, radius or 8)
 	corner.Parent = object
+	return corner
 end
 
-local function addStroke(object, color, thickness)
+function UI.AddStroke(object, color, thickness)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = color or Color3.fromRGB(0, 0, 0)
 	stroke.Thickness = thickness or 2
@@ -90,26 +146,25 @@ local function addStroke(object, color, thickness)
 	return stroke
 end
 
-local function styleButton(button)
+function UI.StyleButton(button)
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.ClipsDescendants = true
-	addCorner(button, 8)
+	UI.AddCorner(button, 8)
 
 	local scale = Instance.new("UIScale")
 	scale.Scale = 1
 	scale.Parent = button
 
-	local stroke = addStroke(button, Color3.fromRGB(0, 0, 0), 1)
+	local stroke = UI.AddStroke(button, Color3.fromRGB(0, 0, 0), 1)
 	stroke.Transparency = 0.18
 
 	local glow = Instance.new("UIStroke")
 	glow.Thickness = 2
 	glow.Transparency = 0.82
 	glow.Parent = button
-	themeObject(glow, "Color", "Stroke")
-
-	themeObject(button, "TextColor3", "Text")
+	UI.ThemeObject(glow, "Color", "Stroke")
+	UI.ThemeObject(button, "TextColor3", "Text")
 
 	local hovering = false
 
@@ -157,6 +212,11 @@ local function styleButton(button)
 		tweenButton(hovering and 0.04 or 0, hovering and 0.42 or 0.82, 0.18)
 	end)
 end
+
+local themeObject = UI.ThemeObject
+local addCorner = UI.AddCorner
+local addStroke = UI.AddStroke
+local styleButton = UI.StyleButton
 
 local mainFrame = Instance.new("Frame")
 mainFrame.Size = UDim2.fromOffset(660, 430)
@@ -312,60 +372,70 @@ addCorner(contentFrame, 10)
 local contentStroke = addStroke(contentFrame, currentTheme.Stroke, 1)
 themeObject(contentStroke, "Color", "Stroke")
 
-local function createPage(name)
+function UI.CreatePage(name)
 	local page = Instance.new("Frame")
 	page.Name = name .. "Page"
 	page.Size = UDim2.fromScale(1, 1)
 	page.BackgroundTransparency = 1
 	page.Visible = false
 	page.Parent = contentFrame
-	pages[name] = page
+	UI.Pages[name] = page
 	return page
 end
+
+local createPage = UI.CreatePage
 
 local mainPage = createPage("Main")
 local combatPage = createPage("Combat")
 local miscPage = createPage("Misc")
 local themePage = createPage("Theme")
 
-local function applyTheme(themeName)
+function UI.ApplyTheme(themeName)
+	if not themes[themeName] then
+		return
+	end
+
 	currentTheme = themes[themeName]
 
-	for _, item in ipairs(themedObjects) do
+	for _, item in ipairs(UI.ThemedObjects) do
 		if item.Object and item.Object.Parent then
 			item.Object[item.Property] = currentTheme[item.Key]
 		end
 	end
 
-	for name, button in pairs(tabButtons) do
-		button.BackgroundColor3 = name == selectedTabName and currentTheme.Button or currentTheme.ButtonDark
+	for name, button in pairs(UI.TabButtons) do
+		button.BackgroundColor3 = name == UI.SelectedTab and currentTheme.Button or currentTheme.ButtonDark
 	end
 end
 
-local function selectTab(tabName)
+function UI.SelectTab(tabName)
+	UI.SelectedTab = tabName
 	selectedTabName = tabName
 
-	for name, page in pairs(pages) do
+	for name, page in pairs(UI.Pages) do
 		page.Visible = name == tabName
 	end
 
-	for name, button in pairs(tabButtons) do
+	for name, button in pairs(UI.TabButtons) do
 		button.BackgroundColor3 = name == tabName and currentTheme.Button or currentTheme.ButtonDark
 	end
 end
 
+local applyTheme = UI.ApplyTheme
+local selectTab = UI.SelectTab
+
 local tabIcons = {
-	Main = "◆",
-	Combat = "⚔",
-	Misc = "◇",
-	Theme = "✦"
+	Main = "*",
+	Combat = ">",
+	Misc = "+",
+	Theme = "#"
 }
 
-local function createTab(name)
+function UI.CreateTab(name)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
 	button.Size = UDim2.new(1, -4, 0, 46)
-	button.Text = (tabIcons[name] or "•") .. "  " .. name
+	button.Text = (tabIcons[name] or "-") .. "  " .. name
 	button.Font = Enum.Font.GothamBlack
 	button.TextSize = 14
 	button.TextXAlignment = Enum.TextXAlignment.Left
@@ -377,19 +447,19 @@ local function createTab(name)
 	padding.PaddingLeft = UDim.new(0, 16)
 	padding.Parent = button
 
-	tabButtons[name] = button
+	UI.TabButtons[name] = button
 
 	button.MouseButton1Click:Connect(function()
 		selectTab(name)
 	end)
 end
 
-createTab("Main")
-createTab("Combat")
-createTab("Misc")
-createTab("Theme")
+UI.CreateTab("Main")
+UI.CreateTab("Combat")
+UI.CreateTab("Misc")
+UI.CreateTab("Theme")
 
-local function createPageTitle(parent, text)
+function UI.CreatePageTitle(parent, text)
 	local box = Instance.new("Frame")
 	box.Size = UDim2.new(1, -28, 0, 48)
 	box.Position = UDim2.fromOffset(14, 12)
@@ -419,12 +489,12 @@ local function createPageTitle(parent, text)
 	themeObject(label, "TextColor3", "Text")
 end
 
-createPageTitle(mainPage, "Main")
-createPageTitle(combatPage, "Combat")
-createPageTitle(miscPage, "Misc")
-createPageTitle(themePage, "Theme")
+UI.CreatePageTitle(mainPage, "Main")
+UI.CreatePageTitle(combatPage, "Combat")
+UI.CreatePageTitle(miscPage, "Misc")
+UI.CreatePageTitle(themePage, "Theme")
 
-local function createPageList(parent)
+function UI.CreatePageList(parent)
 	local list = Instance.new("ScrollingFrame")
 	list.Size = UDim2.new(1, -36, 1, -124)
 	list.Position = UDim2.fromOffset(18, 68)
@@ -447,11 +517,11 @@ local function createPageList(parent)
 	return list, updateCanvas
 end
 
-local mainList, updateMainCanvas = createPageList(mainPage)
-local combatList, updateCombatCanvas = createPageList(combatPage)
-local miscList, updateMiscCanvas = createPageList(miscPage)
+local mainList, updateMainCanvas = UI.CreatePageList(mainPage)
+local combatList, updateCombatCanvas = UI.CreatePageList(combatPage)
+local miscList, updateMiscCanvas = UI.CreatePageList(miscPage)
 
-local function createSmallButton(parent, text, callback)
+function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
 	button.Size = UDim2.new(1, -12, 0, 36)
 	button.Text = text
@@ -464,7 +534,7 @@ local function createSmallButton(parent, text, callback)
 	return button
 end
 
-local function createWarningLabel(parent, text)
+function UI.CreateWarningLabel(parent, text)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -12, 0, 28)
 	label.BackgroundTransparency = 1
@@ -477,7 +547,7 @@ local function createWarningLabel(parent, text)
 	return label
 end
 
-local function createToggleButton(parent, text, defaultState, callback)
+function UI.CreateToggleButton(parent, text, defaultState, callback)
 	local state = defaultState == true
 
 	local button = Instance.new("TextButton")
@@ -488,8 +558,9 @@ local function createToggleButton(parent, text, defaultState, callback)
 	button.Parent = parent
 
 	if not parent:GetAttribute("IsDropdownBody") then
-		topLevelToggleOrder += 1
-		button.LayoutOrder = -1000 + topLevelToggleOrder
+		UI.TopLevelToggleOrder += 1
+		topLevelToggleOrder = UI.TopLevelToggleOrder
+		button.LayoutOrder = -1000 + UI.TopLevelToggleOrder
 	end
 
 	themeObject(button, "BackgroundColor3", "ButtonDark")
@@ -527,7 +598,6 @@ local function createToggleButton(parent, text, defaultState, callback)
 
 		button.BackgroundColor3 = state and currentTheme.Button or currentTheme.ButtonDark
 		switch.BackgroundColor3 = state and currentTheme.Button or Color3.fromRGB(35, 35, 35)
-		knob.Position = state and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3)
 
 		TweenService:Create(
 			knob,
@@ -556,20 +626,18 @@ local function createToggleButton(parent, text, defaultState, callback)
 	}
 end
 
-local function createDropdown(list, titleText, updateCanvas)
-	local DROPDOWN_TOP_PADDING = 3
+function UI.CreateDropdown(list, titleText, updateCanvas)
+	local wrapper = Instance.new("Frame")
+	wrapper.Size = UDim2.new(1, -6, 0, 47)
+	wrapper.BackgroundTransparency = 1
+	wrapper.BorderSizePixel = 0
+	wrapper.ClipsDescendants = false
+	wrapper.Parent = list
 
-    local wrapper = Instance.new("Frame")
-    wrapper.Size = UDim2.new(1, -6, 0, 44 + DROPDOWN_TOP_PADDING)
-    wrapper.BackgroundTransparency = 1
-    wrapper.BorderSizePixel = 0
-    wrapper.ClipsDescendants = false
-    wrapper.Parent = list
-
-    local holder = Instance.new("Frame")
-    holder.Size = UDim2.new(1, -24, 0, 44)
-    holder.Position = UDim2.new(0.5, 0, 0, DROPDOWN_TOP_PADDING)
-    holder.AnchorPoint = Vector2.new(0.5, 0)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -24, 0, 44)
+	holder.Position = UDim2.new(0.5, 0, 0, 3)
+	holder.AnchorPoint = Vector2.new(0.5, 0)
 	holder.BorderSizePixel = 0
 	holder.ClipsDescendants = true
 	holder.Parent = wrapper
@@ -587,11 +655,11 @@ local function createDropdown(list, titleText, updateCanvas)
 	header.Parent = holder
 	themeObject(header, "TextColor3", "Text")
 
-		local arrow = Instance.new("TextLabel")
+	local arrow = Instance.new("TextLabel")
 	arrow.Size = UDim2.fromOffset(28, 28)
 	arrow.Position = UDim2.new(1, -40, 0, 8)
 	arrow.BackgroundTransparency = 1
-	arrow.Text = "▼"
+	arrow.Text = "v"
 	arrow.Font = Enum.Font.GothamBold
 	arrow.TextSize = 16
 	arrow.Parent = holder
@@ -600,30 +668,6 @@ local function createDropdown(list, titleText, updateCanvas)
 	local dropdownScale = Instance.new("UIScale")
 	dropdownScale.Scale = 1
 	dropdownScale.Parent = holder
-
-	local function tweenDropdownScale(targetScale, duration)
-		TweenService:Create(
-			dropdownScale,
-			TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Scale = targetScale }
-		):Play()
-	end
-
-	header.MouseEnter:Connect(function()
-		tweenDropdownScale(1.01, 0.16)
-	end)
-
-	header.MouseLeave:Connect(function()
-		tweenDropdownScale(1, 0.18)
-	end)
-
-	header.MouseButton1Down:Connect(function()
-		tweenDropdownScale(0.985, 0.08)
-	end)
-
-	header.MouseButton1Up:Connect(function()
-		tweenDropdownScale(1.01, 0.18)
-	end)
 
 	local body = Instance.new("Frame")
 	body.Size = UDim2.new(1, 0, 0, 0)
@@ -650,7 +694,7 @@ local function createDropdown(list, titleText, updateCanvas)
 		local targetHeight = open and (52 + bodyHeight) or 44
 
 		body.Size = UDim2.new(1, 0, 0, bodyHeight)
-		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + DROPDOWN_TOP_PADDING)
+		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 3)
 
 		if animated then
 			TweenService:Create(
@@ -669,18 +713,28 @@ local function createDropdown(list, titleText, updateCanvas)
 	local function toggle()
 		open = not open
 		body.Visible = open
+		arrow.Text = open and "^" or "v"
 
 		TweenService:Create(
-			arrow,
-			TweenInfo.new(0.25, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-			{ Rotation = open and 180 or 0 }
+			dropdownScale,
+			TweenInfo.new(0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Scale = 0.985 }
 		):Play()
+
+		task.delay(0.08, function()
+			if dropdownScale.Parent then
+				TweenService:Create(
+					dropdownScale,
+					TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+					{ Scale = 1 }
+				):Play()
+			end
+		end)
 
 		refreshSize(true)
 	end
 
 	header.MouseButton1Click:Connect(toggle)
-
 	arrow.InputBegan:Connect(function(inputObject)
 		if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
 			toggle()
@@ -695,53 +749,13 @@ local function createDropdown(list, titleText, updateCanvas)
 	return body
 end
 
-local NOTIFICATION_WIDTH = 374
-local NOTIFICATION_HEIGHT = 96
-local NOTIFICATION_GAP = 10
-local NOTIFICATION_BOTTOM_OFFSET = 104
-local NOTIFICATION_RIGHT_OFFSET = 22
-local NOTIFICATION_LIFETIME = 4.2
-local NOTIFICATION_MAX_VISIBLE = 5
+local createSmallButton = UI.CreateSmallButton
+local createWarningLabel = UI.CreateWarningLabel
+local createToggleButton = UI.CreateToggleButton
+local createDropdown = UI.CreateDropdown
 
-local notificationPresets = {
-	Info = {
-		Icon = "i",
-		Color = Color3.fromRGB(95, 205, 255)
-	},
-	Success = {
-		Icon = "+",
-		Color = Color3.fromRGB(95, 255, 165)
-	},
-	Warning = {
-		Icon = "!",
-		Color = Color3.fromRGB(255, 205, 85)
-	},
-	Error = {
-		Icon = "x",
-		Color = Color3.fromRGB(255, 90, 105)
-	}
-}
-
-local notificationStack = Instance.new("Frame")
-notificationStack.Name = "NotificationStack"
-notificationStack.Size = UDim2.new(0, NOTIFICATION_WIDTH, 1, -NOTIFICATION_BOTTOM_OFFSET)
-notificationStack.Position = UDim2.new(1, -(NOTIFICATION_WIDTH + NOTIFICATION_RIGHT_OFFSET), 0, 0)
-notificationStack.BackgroundTransparency = 1
-notificationStack.Parent = gui
-
-local notificationLayout = Instance.new("UIListLayout")
-notificationLayout.FillDirection = Enum.FillDirection.Vertical
-notificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-notificationLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
-notificationLayout.Padding = UDim.new(0, NOTIFICATION_GAP)
-notificationLayout.Parent = notificationStack
-
-local notificationOrder = 0
-local activeNotifications = {}
-
-local function getNotificationKind(titleText, kind)
-	if kind and notificationPresets[kind] then
+function Notify.GetKind(titleText, kind)
+	if kind and Notify.Presets[kind] then
 		return kind
 	end
 
@@ -751,7 +765,7 @@ local function getNotificationKind(titleText, kind)
 		return "Error"
 	end
 
-	if string.find(title, "warning") or string.find(title, "anti") or string.find(title, "wait") then
+	if string.find(title, "warning") or string.find(title, "anti") or string.find(title, "wait") or string.find(title, "cooldown") then
 		return "Warning"
 	end
 
@@ -762,35 +776,48 @@ local function getNotificationKind(titleText, kind)
 	return "Info"
 end
 
-local function removeOldestNotification()
-	while #activeNotifications > NOTIFICATION_MAX_VISIBLE do
-		local oldest = table.remove(activeNotifications, 1)
+local notificationStack = Instance.new("Frame")
+notificationStack.Name = "NotificationStack"
+notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
+notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
+notificationStack.BackgroundTransparency = 1
+notificationStack.Parent = gui
 
+local notificationLayout = Instance.new("UIListLayout")
+notificationLayout.FillDirection = Enum.FillDirection.Vertical
+notificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+notificationLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notificationLayout.Padding = UDim.new(0, Notify.Gap)
+notificationLayout.Parent = notificationStack
+
+function Notify.Trim()
+	while #Notify.Active > Notify.MaxVisible do
+		local oldest = table.remove(Notify.Active, 1)
 		if oldest and oldest.Parent then
 			oldest:Destroy()
 		end
 	end
 end
 
-local function createNotification(titleText, messageText, kind)
-	notificationOrder += 1
+function Notify.Show(titleText, messageText, kind)
+	Notify.Order += 1
 
-	local notificationKind = getNotificationKind(titleText, kind)
-	local preset = notificationPresets[notificationKind]
+	local preset = Notify.Presets[Notify.GetKind(titleText, kind)]
 
 	local slot = Instance.new("Frame")
-	slot.Size = UDim2.fromOffset(NOTIFICATION_WIDTH, 0)
+	slot.Size = UDim2.fromOffset(Notify.Width, 0)
 	slot.BackgroundTransparency = 1
-	slot.LayoutOrder = notificationOrder
+	slot.LayoutOrder = Notify.Order
 	slot.ClipsDescendants = true
 	slot.Parent = notificationStack
 
-	table.insert(activeNotifications, slot)
-	removeOldestNotification()
+	table.insert(Notify.Active, slot)
+	Notify.Trim()
 
 	local popup = Instance.new("TextButton")
-	popup.Size = UDim2.fromOffset(NOTIFICATION_WIDTH, NOTIFICATION_HEIGHT)
-	popup.Position = UDim2.fromOffset(NOTIFICATION_WIDTH + 42, 0)
+	popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
+	popup.Position = UDim2.fromOffset(Notify.Width + 42, 0)
 	popup.BackgroundTransparency = 0.04
 	popup.BorderSizePixel = 0
 	popup.Text = ""
@@ -830,17 +857,17 @@ local function createNotification(titleText, messageText, kind)
 	icon.TextColor3 = Color3.fromRGB(10, 12, 18)
 	icon.Parent = iconBubble
 
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -72, 0, 25)
-	title.Position = UDim2.fromOffset(58, 12)
-	title.BackgroundTransparency = 1
-	title.Text = tostring(titleText)
-	title.Font = Enum.Font.GothamBlack
-	title.TextSize = 15
-	title.TextXAlignment = Enum.TextXAlignment.Left
-	title.TextTruncate = Enum.TextTruncate.AtEnd
-	title.Parent = popup
-	themeObject(title, "TextColor3", "Text")
+	local noteTitle = Instance.new("TextLabel")
+	noteTitle.Size = UDim2.new(1, -72, 0, 25)
+	noteTitle.Position = UDim2.fromOffset(58, 12)
+	noteTitle.BackgroundTransparency = 1
+	noteTitle.Text = tostring(titleText)
+	noteTitle.Font = Enum.Font.GothamBlack
+	noteTitle.TextSize = 15
+	noteTitle.TextXAlignment = Enum.TextXAlignment.Left
+	noteTitle.TextTruncate = Enum.TextTruncate.AtEnd
+	noteTitle.Parent = popup
+	themeObject(noteTitle, "TextColor3", "Text")
 
 	local message = Instance.new("TextLabel")
 	message.Size = UDim2.new(1, -72, 0, 38)
@@ -880,34 +907,32 @@ local function createNotification(titleText, messageText, kind)
 
 		dismissed = true
 
-		local outPosition = UDim2.fromOffset(NOTIFICATION_WIDTH + 46, 0)
-
 		TweenService:Create(
 			scale,
 			TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
 			{ Scale = 0.94 }
 		):Play()
 
+		TweenService:Create(
+			slot,
+			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+			{ Size = UDim2.fromOffset(Notify.Width, 0) }
+		):Play()
+
 		local outTween = TweenService:Create(
 			popup,
 			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
 			{
-				Position = outPosition,
+				Position = UDim2.fromOffset(Notify.Width + 46, 0),
 				BackgroundTransparency = 0.25
 			}
 		)
 
-		TweenService:Create(
-			slot,
-			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-			{ Size = UDim2.fromOffset(NOTIFICATION_WIDTH, 0) }
-		):Play()
-
 		outTween:Play()
 		outTween.Completed:Connect(function()
-			for index, item in ipairs(activeNotifications) do
+			for index, item in ipairs(Notify.Active) do
 				if item == slot then
-					table.remove(activeNotifications, index)
+					table.remove(Notify.Active, index)
 					break
 				end
 			end
@@ -921,7 +946,7 @@ local function createNotification(titleText, messageText, kind)
 	TweenService:Create(
 		slot,
 		TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-		{ Size = UDim2.fromOffset(NOTIFICATION_WIDTH, NOTIFICATION_HEIGHT) }
+		{ Size = UDim2.fromOffset(Notify.Width, Notify.Height) }
 	):Play()
 
 	TweenService:Create(
@@ -941,61 +966,103 @@ local function createNotification(titleText, messageText, kind)
 
 	TweenService:Create(
 		progress,
-		TweenInfo.new(NOTIFICATION_LIFETIME, Enum.EasingStyle.Linear),
+		TweenInfo.new(Notify.LifeTime, Enum.EasingStyle.Linear),
 		{ Size = UDim2.new(0, 0, 1, 0) }
 	):Play()
 
 	popup.MouseEnter:Connect(function()
-		TweenService:Create(
-			scale,
-			TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Scale = 1.018 }
-		):Play()
-
-		TweenService:Create(
-			glow,
-			TweenInfo.new(0.16, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Transparency = 0.48 }
-		):Play()
+		TweenService:Create(scale, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Scale = 1.018 }):Play()
+		TweenService:Create(glow, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Transparency = 0.48 }):Play()
 	end)
 
 	popup.MouseLeave:Connect(function()
-		TweenService:Create(
-			scale,
-			TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Scale = 1 }
-		):Play()
-
-		TweenService:Create(
-			glow,
-			TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Transparency = 0.76 }
-		):Play()
+		TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Scale = 1 }):Play()
+		TweenService:Create(glow, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 0.76 }):Play()
 	end)
 
 	popup.MouseButton1Click:Connect(dismiss)
 
-	task.delay(NOTIFICATION_LIFETIME, function()
+	task.delay(Notify.LifeTime, function()
 		if popup.Parent then
 			dismiss()
 		end
 	end)
 end
 
-local function getPuzzleCode()
-	local keywords = {
-		"math", "equation", "problem", "code", "puzzle",
-		"question", "solve", "answer", "number"
-	}
+local createNotification = Notify.Show
 
+local Utility = {}
+local Main = {}
+local Teleport = {}
+local Items = {}
+
+Main.CodeKeywords = {
+	"math", "equation", "problem", "code", "puzzle",
+	"question", "solve", "answer", "number"
+}
+
+Teleport.MaxStrikes = 5
+Teleport.Cooldown = 8
+Teleport.Debounce = 2.5
+Teleport.PostFLock = 1
+Teleport.Strikes = 0
+Teleport.LockedUntil = 0
+Teleport.LastClickAt = 0
+Teleport.BlockFUntil = 0
+
+Items.SearchRootName = "Items"
+
+Teleport.Locations = {
+	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
+	{ Name = "Barn", Position = Vector3.new(477, 87, 318) },
+	{ Name = "Beach", Position = Vector3.new(-463, 13, -702) },
+	{ Name = "Bob Cave", Position = Vector3.new(315, 49, -576) },
+	{ Name = "Bone Pit", Position = Vector3.new(-344, -150, -414) },
+	{ Name = "Crystal", Position = Vector3.new(488, -50, -272) },
+	{ Name = "Forest", Position = Vector3.new(7, 18, 4) },
+	{ Name = "Lighthouse", Position = Vector3.new(113, 14, -625) },
+	{ Name = "Saloon", Position = Vector3.new(-576, 17, -188) },
+	{ Name = "School", Position = Vector3.new(494, 47, -322) },
+	{ Name = "Shop", Position = Vector3.new(-575, 13, -481) },
+	{ Name = "Towers", Position = Vector3.new(-31, 93, 428) },
+	{ Name = "Tunnels", Position = Vector3.new(-561, -35, -234) },
+	{ Name = "Volcano", Position = Vector3.new(-304, -26, 379) },
+	{ Name = "Watch Tower", Position = Vector3.new(78, 124, 101) }
+}
+
+function Utility.NormalizeName(text)
+	return string.lower(tostring(text):gsub("’", "'"))
+end
+
+function Utility.GetObjectCFrame(object)
+	if object:IsA("BasePart") then
+		return object.CFrame
+	end
+
+	if object:IsA("Model") then
+		return object:GetPivot()
+	end
+
+	if object:IsA("Tool") then
+		local handle = object:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			return handle.CFrame
+		end
+	end
+
+	local part = object:FindFirstChildWhichIsA("BasePart", true)
+	return part and part.CFrame or nil
+end
+
+function Main.GetPuzzleCode()
 	local found = {}
 	local ids = {}
 
-	local function isRelevant(obj)
-		local full = string.lower(obj:GetFullName())
-		local name = string.lower(obj.Name)
+	local function isRelevant(object)
+		local full = string.lower(object:GetFullName())
+		local name = string.lower(object.Name)
 
-		for _, word in ipairs(keywords) do
+		for _, word in ipairs(Main.CodeKeywords) do
 			if string.find(full, word) or string.find(name, word) then
 				return true
 			end
@@ -1004,21 +1071,17 @@ local function getPuzzleCode()
 		return false
 	end
 
-	local function extractId(text)
-		return tonumber(string.match(text, "%d+"))
-	end
-
-	for _, obj in ipairs(game:GetDescendants()) do
+	for _, object in ipairs(game:GetDescendants()) do
 		local image = nil
 
-		if obj:IsA("ImageLabel") or obj:IsA("ImageButton") then
-			image = obj.Image
-		elseif obj:IsA("Decal") or obj:IsA("Texture") then
-			image = obj.Texture
+		if object:IsA("ImageLabel") or object:IsA("ImageButton") then
+			image = object.Image
+		elseif object:IsA("Decal") or object:IsA("Texture") then
+			image = object.Texture
 		end
 
-		if image and image ~= "" and isRelevant(obj) then
-			local id = extractId(image)
+		if image and image ~= "" and isRelevant(object) then
+			local id = tonumber(string.match(image, "%d+"))
 
 			if id and not found[id] then
 				found[id] = true
@@ -1043,45 +1106,71 @@ local function getPuzzleCode()
 	return code
 end
 
-local function normalizeName(text)
-	return string.lower(tostring(text):gsub("’", "'"))
+function Teleport.GetCooldownLeft()
+	return math.max(0, math.ceil(Teleport.LockedUntil - os.clock()))
 end
 
-local function getObjectCFrame(object)
-	if object:IsA("BasePart") then
-		return object.CFrame
-	end
-
-	if object:IsA("Model") then
-		return object:GetPivot()
-	end
-
-	if object:IsA("Tool") then
-		local handle = object:FindFirstChild("Handle")
-		if handle and handle:IsA("BasePart") then
-			return handle.CFrame
-		end
-	end
-
-	local part = object:FindFirstChildWhichIsA("BasePart", true)
-	if part then
-		return part.CFrame
-	end
-
-	return nil
+function Teleport.IsLocked()
+	return os.clock() < Teleport.LockedUntil
 end
 
-local MAX_TELEPORT_STRIKES = 5
-local TELEPORT_COOLDOWN = 8
-local TELEPORT_DEBOUNCE = 2.5
-local POST_TELEPORT_F_LOCK = 1
+function Teleport.ResetStrikesIfReady()
+	if not Teleport.IsLocked() and Teleport.LockedUntil > 0 then
+		Teleport.Strikes = 0
+		Teleport.LockedUntil = 0
+	end
+end
 
-local teleportStrikes = 0
-local teleportLockedUntil = 0
-local lastTeleportClickAt = 0
-local blockFUntil = 0
+function Teleport.ShowWarning(secondsText)
+	createNotification(
+		"Cooldown",
+		"Wait " .. secondsText .. " before teleporting again.",
+		"Warning"
+	)
+end
 
-local function teleportRootSafely(root, targetCFrame)
+function Teleport.CanTeleport()
+	Teleport.ResetStrikesIfReady()
+
+	if Teleport.IsLocked() then
+		Teleport.ShowWarning(Teleport.GetCooldownLeft() .. " seconds")
+		return false
+	end
+
+	local debounceLeft = Teleport.Debounce - (os.clock() - Teleport.LastClickAt)
+
+	if debounceLeft > 0 then
+		Teleport.ShowWarning(string.format("%.1f seconds", debounceLeft))
+		return false
+	end
+
+	return true
+end
+
+function Teleport.AddStrike()
+	Teleport.LastClickAt = os.clock()
+	Teleport.Strikes += 1
+
+	if Teleport.Strikes >= Teleport.MaxStrikes then
+		Teleport.LockedUntil = os.clock() + Teleport.Cooldown
+	end
+end
+
+function Teleport.StartFBlock()
+	Teleport.BlockFUntil = os.clock() + Teleport.PostFLock
+end
+
+function Teleport.ShowFBlockedWarning()
+	local secondsLeft = math.max(1, math.ceil(Teleport.BlockFUntil - os.clock()))
+
+	createNotification(
+		"Cooldown",
+		"Wait " .. secondsLeft .. " seconds before pressing F again.",
+		"Warning"
+	)
+end
+
+function Teleport.MoveRoot(root, targetCFrame)
 	root.AssemblyLinearVelocity = Vector3.zero
 	root.AssemblyAngularVelocity = Vector3.zero
 
@@ -1094,157 +1183,88 @@ local function teleportRootSafely(root, targetCFrame)
 	root.AssemblyAngularVelocity = Vector3.zero
 end
 
-local function showTeleportWarning(secondsText)
-	createNotification(
-		"Cooldown",
-		"Wait " .. secondsText .. " before teleporting again.",
-		"Warning"
-	)
+function Teleport.CreateMarker(position)
+	local markerPart = Instance.new("Part")
+	markerPart.Name = "Part"
+	markerPart.Size = Vector3.new(5, 1, 5)
+	markerPart.Anchored = true
+	markerPart.CanCollide = false
+	markerPart.Transparency = 0.25
+	markerPart.Color = Color3.fromRGB(0, 170, 255)
+	markerPart.Material = Enum.Material.SmoothPlastic
+	markerPart.Position = position
+	markerPart.Parent = workspace
+	return markerPart
 end
 
-local function startFBlockAfterTeleport()
-	blockFUntil = os.clock() + POST_TELEPORT_F_LOCK
-end
-
-local function showFBlockedWarning()
-	local secondsLeft = math.max(1, math.ceil(blockFUntil - os.clock()))
-
-	createNotification(
-		"Cooldown",
-		"Wait " .. secondsLeft .. " seconds before pressing F again.",
-		"Warning"
-	)
-end
-
-ContextActionService:BindActionAtPriority(
-	"BlockFAfterTeleport",
-	function(_, inputState)
-		if inputState == Enum.UserInputState.Begin and os.clock() < blockFUntil then
-			showFBlockedWarning()
-			return Enum.ContextActionResult.Sink
-		end
-
-		return Enum.ContextActionResult.Pass
-	end,
-	false,
-	3000,
-	Enum.KeyCode.F
-)
-
-local function getTeleportCooldownLeft()
-	return math.max(0, math.ceil(teleportLockedUntil - os.clock()))
-end
-
-local function isTeleportLocked()
-	return os.clock() < teleportLockedUntil
-end
-
-local function resetTeleportStrikesIfUnlocked()
-	if not isTeleportLocked() and teleportLockedUntil > 0 then
-		teleportStrikes = 0
-		teleportLockedUntil = 0
-	end
-end
-
-local function canTeleport()
-	resetTeleportStrikesIfUnlocked()
-
-	if isTeleportLocked() then
-		local secondsLeft = getTeleportCooldownLeft()
-		showTeleportWarning(secondsLeft .. " seconds")
-		return false
-	end
-
-	local now = os.clock()
-	local debounceLeft = TELEPORT_DEBOUNCE - (now - lastTeleportClickAt)
-
-	if debounceLeft > 0 then
-		showTeleportWarning(string.format("%.1f seconds", debounceLeft))
-		return false
-	end
-
-	return true
-end
-
-local function recordSuccessfulTeleport()
-	lastTeleportClickAt = os.clock()
-	teleportStrikes += 1
-
-	if teleportStrikes >= MAX_TELEPORT_STRIKES then
-		teleportLockedUntil = os.clock() + TELEPORT_COOLDOWN
-	end
-end
-
-local function addTeleportStrike()
-	lastTeleportClickAt = os.clock()
-	teleportStrikes += 1
-
-	if teleportStrikes >= MAX_TELEPORT_STRIKES then
-		teleportLockedUntil = os.clock() + TELEPORT_COOLDOWN
-	end
-end
-
-local ITEM_SEARCH_ROOT_NAME = "Items"
-
-local function getItemSearchRoot()
-	return workspace:FindFirstChild(ITEM_SEARCH_ROOT_NAME)
-end
-
-local function getItemSearchDescendants()
-	local root = getItemSearchRoot()
-
-	if root then
-		return root:GetDescendants()
-	end
-
-	return {}
-end
-
-local function teleportToItem(itemName)
-	if not canTeleport() then
+function Teleport.ToLocation(locationName, position)
+	if not Teleport.CanTeleport() then
 		return
 	end
 
 	local character = player.Character or player.CharacterAdded:Wait()
-	local hrp = character:FindFirstChild("HumanoidRootPart")
+	local root = character:WaitForChild("HumanoidRootPart", 5)
 
-	if not hrp then
-		createNotification("Items", "Could not find your character.")
+	if not root then
+		createNotification("Teleport", "Could not find your character.", "Error")
 		return
 	end
 
-	local function findValidManualItem()
-		for _, object in ipairs(getItemSearchDescendants()) do
-			if normalizeName(object.Name) == normalizeName(itemName) then
-				local itemCFrame = getObjectCFrame(object)
+	Teleport.CreateMarker(position)
+	Teleport.MoveRoot(root, CFrame.new(position + Vector3.new(0, 5, 0)))
+	Teleport.AddStrike()
+	Teleport.StartFBlock()
+	createNotification("Teleport", "Teleported to " .. locationName)
+end
 
-				if itemCFrame then
-					local part = nil
+function Items.GetSearchRoot()
+	return workspace:FindFirstChild(Items.SearchRootName)
+end
 
-					if object:IsA("BasePart") then
-						part = object
-					else
-						part = object:FindFirstChildWhichIsA("BasePart", true)
-					end
+function Items.GetSearchDescendants()
+	local root = Items.GetSearchRoot()
+	return root and root:GetDescendants() or {}
+end
 
-					if part
-						and part.Parent
-						and part:IsDescendantOf(workspace)
-						and part.Transparency < 0.95
-						and part.Size.X > 0
-						and part.Size.Y > 0
-						and part.Size.Z > 0
-					then
-						return object, part
-					end
+function Items.FindManualItem(itemName)
+	for _, object in ipairs(Items.GetSearchDescendants()) do
+		if Utility.NormalizeName(object.Name) == Utility.NormalizeName(itemName) then
+			local itemCFrame = Utility.GetObjectCFrame(object)
+
+			if itemCFrame then
+				local part = object:IsA("BasePart") and object or object:FindFirstChildWhichIsA("BasePart", true)
+
+				if part
+					and part.Parent
+					and part:IsDescendantOf(workspace)
+					and part.Transparency < 0.95
+					and part.Size.X > 0
+					and part.Size.Y > 0
+					and part.Size.Z > 0
+				then
+					return object, part
 				end
 			end
 		end
-
-		return nil, nil
 	end
 
-	local itemObject, itemPart = findValidManualItem()
+	return nil, nil
+end
+
+function Items.TeleportTo(itemName)
+	if not Teleport.CanTeleport() then
+		return
+	end
+
+	local character = player.Character or player.CharacterAdded:Wait()
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		createNotification("Items", "Could not find your character.", "Error")
+		return
+	end
+
+	local itemObject, itemPart = Items.FindManualItem(itemName)
 
 	if not itemObject or not itemPart then
 		createNotification("Items", itemName .. " is not currently available.")
@@ -1262,54 +1282,45 @@ local function teleportToItem(itemName)
 		return
 	end
 
-	teleportRootSafely(hrp, itemPart.CFrame + Vector3.new(0, 4, 0))
-	addTeleportStrike()
-	startFBlockAfterTeleport()
+	Teleport.MoveRoot(root, itemPart.CFrame + Vector3.new(0, 4, 0))
+	Teleport.AddStrike()
+	Teleport.StartFBlock()
 	createNotification("Items", "Teleported to " .. itemName)
 end
 
-local function createMarkerPart(position)
-	local markerPart = Instance.new("Part")
-	markerPart.Name = "Part"
-	markerPart.Size = Vector3.new(5, 1, 5)
-	markerPart.Anchored = true
-	markerPart.CanCollide = false
-	markerPart.Transparency = 0.25
-	markerPart.Color = Color3.fromRGB(0, 170, 255)
-	markerPart.Material = Enum.Material.SmoothPlastic
-	markerPart.Position = position
-	markerPart.Parent = workspace
-	return markerPart
-end
+ContextActionService:BindActionAtPriority(
+	"BlockFAfterTeleport",
+	function(_, inputState)
+		if inputState == Enum.UserInputState.Begin and os.clock() < Teleport.BlockFUntil then
+			Teleport.ShowFBlockedWarning()
+			return Enum.ContextActionResult.Sink
+		end
 
-local function teleportToLocation(locationName, position)
-	if not canTeleport() then
-		return
-	end
+		return Enum.ContextActionResult.Pass
+	end,
+	false,
+	3000,
+	Enum.KeyCode.F
+)
 
-	local character = player.Character or player.CharacterAdded:Wait()
-	local root = character:WaitForChild("HumanoidRootPart", 5)
+local normalizeName = Utility.NormalizeName
+local getObjectCFrame = Utility.GetObjectCFrame
+local getPuzzleCode = Main.GetPuzzleCode
 
-	if not root then
-		createNotification("Teleport", "Could not find your character.")
-		return
-	end
-
-	createMarkerPart(position)
-	teleportRootSafely(root, CFrame.new(position + Vector3.new(0, 5, 0)))
-	addTeleportStrike()
-	startFBlockAfterTeleport()
-	createNotification("Teleport", "Teleported to " .. locationName)
-end
-
-local getCodeToggle = nil
+local canTeleport = Teleport.CanTeleport
+local addTeleportStrike = Teleport.AddStrike
+local startFBlockAfterTeleport = Teleport.StartFBlock
+local teleportRootSafely = Teleport.MoveRoot
+local teleportToLocation = Teleport.ToLocation
+local teleportToItem = Items.TeleportTo
+local getItemSearchDescendants = Items.GetSearchDescendants
 
 local getCodeButton = createSmallButton(mainList, "Get Code", function()
 	createNotification("Code", "Searching...")
 
 	task.spawn(function()
-		local code = getPuzzleCode()
-		createNotification("Code Found", code ~= "" and code or "No code found.")
+		local code = Main.GetPuzzleCode()
+		createNotification("Code Found", code ~= "" and code or "No code found.", code ~= "" and "Success" or "Info")
 	end)
 end)
 
@@ -1317,11 +1328,22 @@ local itemsDropdown = createDropdown(mainList, "Items", updateMainCanvas)
 local itemsWarning = createWarningLabel(itemsDropdown, "DONT SPAM")
 itemsWarning.LayoutOrder = 0
 
+local teleportDropdown = createDropdown(mainList, "Teleport", updateMainCanvas)
+createWarningLabel(teleportDropdown, "DONT SPAM")
+
+for _, location in ipairs(Teleport.Locations) do
+	createSmallButton(teleportDropdown, location.Name, function()
+		Teleport.ToLocation(location.Name, location.Position)
+	end)
+end
+
+
+
+local CollectionService = Services.CollectionService
+
 local autoCollectEnabled = false
 local autoCollectThread = nil
 local autoCollectToggle = nil
-
-local CollectionService = game:GetService("CollectionService")
 
 local COLLECTIBLE_TAG = "CollectibleItem"
 
@@ -1330,30 +1352,63 @@ local AUTO_COLLECT_F_DELAY = 1
 local AUTO_COLLECT_SAFE_LIMIT = 4
 local AUTO_COLLECT_SAFE_WAIT = 8
 local AUTO_COLLECT_POSITION_RADIUS = 8
+
 local autoCollectCount = 0
 local autoCollectWindowStartedAt = 0
 local visitedCollectPositions = {}
 local movementSave = nil
 
-local autoCollectPriority = {
-    "True Power",
-    "Potion of Strength",
-    "Bull's Essence",
-    "Boba",
-    "Speed Potion",
+local itemNames = {
+	"Apple",
+	"Bandage",
+	"Boba",
+	"Bomb",
+	"Bull's Essence",
+	"Cube of Ice",
+	"First Aid Kit",
+	"Forcefield Crystal",
 	"Frog Potion",
-    "Healing Potion",
-    "Cube of Ice",
-    "Sphere of Fury",
-    "Tomahawk",
-    "Gravitation Shard",
+	"Gravitation Shard",
+	"Healing Potion",
+	"Lightning Potion",
+	"Potion of Strength",
+	"Speed Potion",
+	"Sphere of Fury",
+	"Tomahawk",
+	"True Power"
+}
+
+local autoCollectPriority = {
+	"True Power",
+	"Potion of Strength",
+	"Bull's Essence",
+	"Boba",
+	"Speed Potion",
+	"Frog Potion",
+	"Healing Potion",
+	"Cube of Ice",
+	"Sphere of Fury",
+	"Tomahawk",
+	"Gravitation Shard",
 	"Bomb",
 	"Lightning Potion",
-    "First Aid Kit",
-    "Apple",
+	"First Aid Kit",
+	"Apple",
 	"Bandage",
-	"Forcefield Crystal",
+	"Forcefield Crystal"
 }
+
+local function matchesItem(toolName, itemList)
+	local normalized = normalizeName(toolName)
+
+	for _, itemName in ipairs(itemList) do
+		if normalized == normalizeName(itemName) then
+			return true
+		end
+	end
+
+	return false
+end
 
 local function getItemDisplayName(object)
 	return object:GetAttribute("ItemName")
@@ -1373,44 +1428,21 @@ local function isItemMarkedGone(object)
 end
 
 local function getLiveItemPart(object)
-	if not object or not object.Parent then
+	if not object or not object.Parent or not object:IsDescendantOf(workspace) or isItemMarkedGone(object) then
 		return nil
 	end
 
-	if not object:IsDescendantOf(workspace) then
+	local part = object:IsA("BasePart") and object or object:FindFirstChildWhichIsA("BasePart", true)
+
+	if not part or not part.Parent or not part:IsDescendantOf(workspace) then
 		return nil
 	end
 
-	if isItemMarkedGone(object) then
-		return nil
-	end
-
-	local part = nil
-
-	if object:IsA("BasePart") then
-		part = object
-	else
-		part = object:FindFirstChildWhichIsA("BasePart", true)
-	end
-
-	if not part or not part.Parent then
-		return nil
-	end
-
-	if not part:IsDescendantOf(workspace) then
-		return nil
-	end
-
-	if part.Transparency >= 0.95 then
-		return nil
-	end
-
-	if part.Size.X <= 0 or part.Size.Y <= 0 or part.Size.Z <= 0 then
+	if part.Transparency >= 0.95 or part.Size.X <= 0 or part.Size.Y <= 0 or part.Size.Z <= 0 then
 		return nil
 	end
 
 	local characterModel = part:FindFirstAncestorOfClass("Model")
-
 	if characterModel and Players:GetPlayerFromCharacter(characterModel) then
 		return nil
 	end
@@ -1440,14 +1472,12 @@ local function setMovementPaused(paused)
 		humanoid.JumpPower = 0
 		humanoid.JumpHeight = 0
 		humanoid.AutoRotate = false
-	else
-		if movementSave then
-			humanoid.WalkSpeed = movementSave.WalkSpeed
-			humanoid.JumpPower = movementSave.JumpPower
-			humanoid.JumpHeight = movementSave.JumpHeight
-			humanoid.AutoRotate = movementSave.AutoRotate
-			movementSave = nil
-		end
+	elseif movementSave then
+		humanoid.WalkSpeed = movementSave.WalkSpeed
+		humanoid.JumpPower = movementSave.JumpPower
+		humanoid.JumpHeight = movementSave.JumpHeight
+		humanoid.AutoRotate = movementSave.AutoRotate
+		movementSave = nil
 	end
 end
 
@@ -1480,29 +1510,13 @@ local function findLiveItemByName(wantedName)
 		if itemNameMatches(object, wantedName) then
 			local part = getLiveItemPart(object)
 
-			if part then
-				local position = part.Position
-
-				if not isVisitedCollectPosition(position) then
-					return wantedName, part.CFrame, position, object, part
-				end
+			if part and not isVisitedCollectPosition(part.Position) then
+				return wantedName, part.CFrame, part.Position, object, part
 			end
 		end
 	end
 
 	return nil, nil, nil, nil, nil
-end
-
-local function hasAnyCollectTargetLeft()
-	for _, wantedName in ipairs(autoCollectPriority) do
-		local itemName = findLiveItemByName(wantedName)
-
-		if itemName then
-			return true
-		end
-	end
-
-	return false
 end
 
 local function findNextCollectTarget()
@@ -1518,11 +1532,7 @@ local function findNextCollectTarget()
 end
 
 local function isSameItemStillThere(itemObject, itemPart, wantedName)
-	if not itemObject or not itemPart then
-		return false
-	end
-
-	if not itemObject.Parent or not itemPart.Parent then
+	if not itemObject or not itemPart or not itemObject.Parent or not itemPart.Parent then
 		return false
 	end
 
@@ -1544,11 +1554,7 @@ local function pressF()
 end
 
 local function resetAutoCollectWindowIfReady()
-	if autoCollectWindowStartedAt == 0 then
-		return
-	end
-
-	if os.clock() - autoCollectWindowStartedAt >= AUTO_COLLECT_SAFE_WAIT then
+	if autoCollectWindowStartedAt ~= 0 and os.clock() - autoCollectWindowStartedAt >= AUTO_COLLECT_SAFE_WAIT then
 		autoCollectCount = 0
 		autoCollectWindowStartedAt = 0
 	end
@@ -1564,14 +1570,6 @@ local function waitForAutoCollectSafety()
 		end
 
 		setMovementPaused(true)
-
-		local secondsLeft = math.max(1, math.ceil(AUTO_COLLECT_SAFE_WAIT - (os.clock() - autoCollectWindowStartedAt)))
-
-		createNotification(
-			"Auto Collect",
-			"Paused, starting back up in " .. secondsLeft .. " seconds"
-		)
-
 		task.wait(1)
 	end
 
@@ -1581,11 +1579,9 @@ end
 
 local function waitForTeleportReady()
 	while autoCollectEnabled do
-		local now = os.clock()
-
-		if teleportLockedUntil and now < teleportLockedUntil then
+		if Teleport.LockedUntil and os.clock() < Teleport.LockedUntil then
 			task.wait(0.25)
-		elseif lastTeleportClickAt and now - lastTeleportClickAt < TELEPORT_DEBOUNCE then
+		elseif Teleport.LastClickAt and os.clock() - Teleport.LastClickAt < Teleport.Debounce then
 			task.wait(0.05)
 		else
 			return true
@@ -1620,8 +1616,6 @@ local function runAutoCollect()
 	setMovementPaused(true)
 
 	while autoCollectEnabled do
-		setMovementPaused(true)
-
 		if not waitForAutoCollectSafety() then
 			break
 		end
@@ -1630,27 +1624,15 @@ local function runAutoCollect()
 
 		local itemName, itemCFrame, itemPosition, itemObject, itemPart = findNextCollectTarget()
 
-		if not itemName or not itemCFrame or not itemPosition or not itemObject or not itemPart then
+		if not itemName then
 			stopAutoCollect("Every item has been collected.")
 			break
 		end
 
-		if not isSameItemStillThere(itemObject, itemPart, itemName) then
-			markVisitedCollectPosition(itemPosition)
-			task.wait(0.1)
-			continue
-		end
-
-		if not waitForTeleportReady() then
-			break
-		end
-
-		if not canTeleport() then
+		if not waitForTeleportReady() or not canTeleport() then
 			task.wait(0.25)
 			continue
 		end
-
-		task.wait(0.08)
 
 		if not isSameItemStillThere(itemObject, itemPart, itemName) then
 			markVisitedCollectPosition(itemPosition)
@@ -1662,14 +1644,11 @@ local function runAutoCollect()
 		local root = character:WaitForChild("HumanoidRootPart", 5)
 
 		if root then
-			setMovementPaused(true)
 			markVisitedCollectPosition(itemPosition)
-
 			teleportRootSafely(root, itemPart.CFrame + Vector3.new(0, 4, 0))
 			addTeleportStrike()
 			startFBlockAfterTeleport()
 			recordAutoCollectTeleport()
-
 			createNotification("Auto Collect", "Collected " .. itemName)
 
 			task.delay(AUTO_COLLECT_F_DELAY, function()
@@ -1683,67 +1662,6 @@ local function runAutoCollect()
 	end
 
 	setMovementPaused(false)
-end
-
-local itemNames = {
-	"Apple",
-	"Bandage",
-	"Boba",
-	"Bomb",
-	"Bull's Essence",
-	"Cube of Ice",
-	"First Aid Kit",
-	"Forcefield Crystal",
-	"Frog Potion",
-	"Gravitation Shard",
-	"Healing Potion",
-	"Lightning Potion",
-	"Potion of Strength",
-	"Speed Potion",
-	"Sphere of Fury",
-	"Tomahawk",
-	"True Power"
-}
-
-local teleportDropdown = createDropdown(mainList, "Teleport", updateMainCanvas)
-createWarningLabel(teleportDropdown, "DONT SPAM")
-
-local teleportLocations = {
-	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
-	{ Name = "Barn", Position = Vector3.new(477, 87, 318) },
-	{ Name = "Beach", Position = Vector3.new(-463, 13, -702) },
-	{ Name = "Bob Cave", Position = Vector3.new(315, 49, -576) },
-	{ Name = "Bone Pit", Position = Vector3.new(-344, -150, -414) },
-	{ Name = "Crystal", Position = Vector3.new(488, -50, -272) },
-	{ Name = "Forest", Position = Vector3.new(7, 18, 4) },
-	{ Name = "Lighthouse", Position = Vector3.new(113, 14, -625) },
-	{ Name = "Saloon", Position = Vector3.new(-576, 17, -188) },
-	{ Name = "School", Position = Vector3.new(494, 47, -322) },
-	{ Name = "Shop", Position = Vector3.new(-575, 13, -481) },
-	{ Name = "Towers", Position = Vector3.new(-31, 93, 428) },
-	{ Name = "Tunnels", Position = Vector3.new(-561, -35, -234) },
-	{ Name = "Volcano", Position = Vector3.new(-304, -26, 379) },
-	{ Name = "Watch Tower", Position = Vector3.new(78, 124, 101) }
-}
-
-for _, location in ipairs(teleportLocations) do
-	createSmallButton(teleportDropdown, location.Name, function()
-		teleportToLocation(location.Name, location.Position)
-	end)
-end
-
-
-
-local function matchesItem(toolName, itemList)
-	local normalized = normalizeName(toolName)
-
-	for _, itemName in ipairs(itemList) do
-		if normalized == normalizeName(itemName) then
-			return true
-		end
-	end
-
-	return false
 end
 
 autoCollectToggle = createToggleButton(itemsDropdown, "Auto Collect", false, function(state)
@@ -1964,15 +1882,24 @@ player.CharacterAdded:Connect(function()
 	end
 end)
 
-local hitboxSize = 10
-local hitboxTransparency = 0.7
-local hitboxColor = Color3.fromRGB(0, 170, 255)
-local hitboxExpanded = false
-local hitboxVisible = true
-local savedHitboxes = {}
-local hitboxConnection = nil
+local Combat = {
+	HitboxSize = 10,
+	HitboxMinSize = 10,
+	HitboxMaxSize = 25,
+	HitboxTransparency = 0.7,
+	HitboxColor = Color3.fromRGB(0, 170, 255),
+	HitboxExpanded = false,
+	HitboxVisible = true,
+	SavedHitboxes = {},
+	HitboxConnection = nil
+}
 
-local function getEnemyRoot(otherPlayer)
+local hitboxSize = Combat.HitboxSize
+local hitboxExpanded = Combat.HitboxExpanded
+local hitboxVisible = Combat.HitboxVisible
+local savedHitboxes = Combat.SavedHitboxes
+
+function Combat.GetEnemyRoot(otherPlayer)
 	if otherPlayer == Players.LocalPlayer then
 		return nil
 	end
@@ -1985,92 +1912,95 @@ local function getEnemyRoot(otherPlayer)
 	return character:FindFirstChild("HumanoidRootPart")
 end
 
-local function saveOriginalHitbox(otherPlayer, hrp)
-	if savedHitboxes[otherPlayer] then
+function Combat.SaveOriginalHitbox(otherPlayer, root)
+	if Combat.SavedHitboxes[otherPlayer] then
 		return
 	end
 
-	savedHitboxes[otherPlayer] = {
-		Size = hrp.Size,
-		Transparency = hrp.Transparency,
-		Color = hrp.Color,
-		Material = hrp.Material,
-		CanCollide = hrp.CanCollide
+	Combat.SavedHitboxes[otherPlayer] = {
+		Size = root.Size,
+		Transparency = root.Transparency,
+		Color = root.Color,
+		Material = root.Material,
+		CanCollide = root.CanCollide
 	}
 end
 
-local function applyHitboxToPlayer(otherPlayer)
-	local hrp = getEnemyRoot(otherPlayer)
-	if not hrp then
+function Combat.ApplyHitbox(otherPlayer)
+	local root = Combat.GetEnemyRoot(otherPlayer)
+	if not root then
 		return
 	end
 
-	saveOriginalHitbox(otherPlayer, hrp)
+	Combat.SaveOriginalHitbox(otherPlayer, root)
 
-	hrp.Size = Vector3.new(hitboxSize, hitboxSize, hitboxSize)
-	hrp.Transparency = hitboxVisible and hitboxTransparency or 1
-	hrp.Color = hitboxColor
-	hrp.Material = Enum.Material.Neon
-	hrp.CanCollide = false
+	root.Size = Vector3.new(Combat.HitboxSize, Combat.HitboxSize, Combat.HitboxSize)
+	root.Transparency = Combat.HitboxVisible and Combat.HitboxTransparency or 1
+	root.Color = Combat.HitboxColor
+	root.Material = Enum.Material.Neon
+	root.CanCollide = false
 end
 
-local function resetHitboxForPlayer(otherPlayer)
-	local hrp = getEnemyRoot(otherPlayer)
-	local saved = savedHitboxes[otherPlayer]
+function Combat.ResetHitbox(otherPlayer)
+	local root = Combat.GetEnemyRoot(otherPlayer)
+	local saved = Combat.SavedHitboxes[otherPlayer]
 
-	if hrp and saved then
-		hrp.Size = saved.Size
-		hrp.Transparency = saved.Transparency
-		hrp.Color = saved.Color
-		hrp.Material = saved.Material
-		hrp.CanCollide = saved.CanCollide
+	if root and saved then
+		root.Size = saved.Size
+		root.Transparency = saved.Transparency
+		root.Color = saved.Color
+		root.Material = saved.Material
+		root.CanCollide = saved.CanCollide
 	end
 
-	savedHitboxes[otherPlayer] = nil
+	Combat.SavedHitboxes[otherPlayer] = nil
 end
 
-local function startHitboxLoop()
-	if hitboxConnection then
+function Combat.StartHitboxLoop()
+	if Combat.HitboxConnection then
 		return
 	end
 
-	hitboxConnection = RunService.RenderStepped:Connect(function()
-		if not hitboxExpanded then
+	Combat.HitboxConnection = RunService.RenderStepped:Connect(function()
+		if not Combat.HitboxExpanded then
 			return
 		end
 
 		for _, otherPlayer in ipairs(Players:GetPlayers()) do
-			applyHitboxToPlayer(otherPlayer)
+			Combat.ApplyHitbox(otherPlayer)
 		end
 	end)
 end
 
-local function stopHitboxLoop()
-	if hitboxConnection then
-		hitboxConnection:Disconnect()
-		hitboxConnection = nil
+function Combat.StopHitboxLoop()
+	if Combat.HitboxConnection then
+		Combat.HitboxConnection:Disconnect()
+		Combat.HitboxConnection = nil
 	end
 
 	for _, otherPlayer in ipairs(Players:GetPlayers()) do
-		resetHitboxForPlayer(otherPlayer)
+		Combat.ResetHitbox(otherPlayer)
 	end
 end
 
-local function refreshHitboxes()
-	if hitboxExpanded then
-		startHitboxLoop()
+function Combat.RefreshHitboxes()
+	hitboxSize = Combat.HitboxSize
+	hitboxExpanded = Combat.HitboxExpanded
+	hitboxVisible = Combat.HitboxVisible
+	savedHitboxes = Combat.SavedHitboxes
+
+	if Combat.HitboxExpanded then
+		Combat.StartHitboxLoop()
 
 		for _, otherPlayer in ipairs(Players:GetPlayers()) do
-			applyHitboxToPlayer(otherPlayer)
+			Combat.ApplyHitbox(otherPlayer)
 		end
 	else
-		stopHitboxLoop()
+		Combat.StopHitboxLoop()
 	end
 end
 
-local playersDropdown = createDropdown(combatList, "Players", updateCombatCanvas)
-
-local function getPlayerRoot(targetPlayer)
+function Combat.GetPlayerRoot(targetPlayer)
 	if not targetPlayer or targetPlayer == player then
 		return nil
 	end
@@ -2083,7 +2013,7 @@ local function getPlayerRoot(targetPlayer)
 	return character:FindFirstChild("HumanoidRootPart")
 end
 
-local function getPlayerHumanoid(targetPlayer)
+function Combat.GetPlayerHumanoid(targetPlayer)
 	local character = targetPlayer.Character
 	if not character then
 		return nil
@@ -2092,18 +2022,18 @@ local function getPlayerHumanoid(targetPlayer)
 	return character:FindFirstChildOfClass("Humanoid")
 end
 
-local function teleportToPlayer(targetPlayer)
+function Combat.TeleportToPlayer(targetPlayer)
 	local character = player.Character or player.CharacterAdded:Wait()
 	local root = character:WaitForChild("HumanoidRootPart", 5)
-	local targetRoot = getPlayerRoot(targetPlayer)
+	local targetRoot = Combat.GetPlayerRoot(targetPlayer)
 
 	if not root then
-		createNotification("Players", "Could not find your character.")
+		createNotification("Players", "Could not find your character.", "Error")
 		return
 	end
 
 	if not targetRoot then
-		createNotification("Players", "Could not find target player.")
+		createNotification("Players", "Could not find target player.", "Error")
 		return
 	end
 
@@ -2111,14 +2041,14 @@ local function teleportToPlayer(targetPlayer)
 	createNotification("Players", "Teleported to " .. targetPlayer.Name)
 end
 
-local function teleportToLowestHealthPlayer()
+function Combat.TeleportToLowestHealthPlayer()
 	local lowestPlayer = nil
 	local lowestHealth = math.huge
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		if targetPlayer ~= player then
-			local humanoid = getPlayerHumanoid(targetPlayer)
-			local targetRoot = getPlayerRoot(targetPlayer)
+			local humanoid = Combat.GetPlayerHumanoid(targetPlayer)
+			local targetRoot = Combat.GetPlayerRoot(targetPlayer)
 
 			if humanoid and targetRoot and humanoid.Health > 0 and humanoid.Health < lowestHealth then
 				lowestHealth = humanoid.Health
@@ -2128,18 +2058,18 @@ local function teleportToLowestHealthPlayer()
 	end
 
 	if lowestPlayer then
-		teleportToPlayer(lowestPlayer)
+		Combat.TeleportToPlayer(lowestPlayer)
 	else
 		createNotification("Players", "No valid lowest health player found.")
 	end
 end
 
-local function teleportToNearestPlayer()
+function Combat.TeleportToNearestPlayer()
 	local character = player.Character or player.CharacterAdded:Wait()
 	local root = character:WaitForChild("HumanoidRootPart", 5)
 
 	if not root then
-		createNotification("Players", "Could not find your character.")
+		createNotification("Players", "Could not find your character.", "Error")
 		return
 	end
 
@@ -2148,8 +2078,8 @@ local function teleportToNearestPlayer()
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
 		if targetPlayer ~= player then
-			local humanoid = getPlayerHumanoid(targetPlayer)
-			local targetRoot = getPlayerRoot(targetPlayer)
+			local humanoid = Combat.GetPlayerHumanoid(targetPlayer)
+			local targetRoot = Combat.GetPlayerRoot(targetPlayer)
 
 			if humanoid and targetRoot and humanoid.Health > 0 then
 				local distance = (root.Position - targetRoot.Position).Magnitude
@@ -2163,210 +2093,97 @@ local function teleportToNearestPlayer()
 	end
 
 	if nearestPlayer then
-		teleportToPlayer(nearestPlayer)
+		Combat.TeleportToPlayer(nearestPlayer)
 	else
 		createNotification("Players", "No valid nearest player found.")
 	end
 end
 
+function Combat.SetHitboxSize(newSize)
+	Combat.HitboxSize = math.clamp(newSize, Combat.HitboxMinSize, Combat.HitboxMaxSize)
+	hitboxSize = Combat.HitboxSize
+
+	if Combat.HitboxSizeLabel then
+		Combat.HitboxSizeLabel.Text = "Hitbox Size: " .. tostring(math.floor(Combat.HitboxSize + 0.5))
+	end
+
+	if Combat.HitboxExpanded then
+		Combat.RefreshHitboxes()
+	end
+end
+
+function Combat.SetupPlayerHitboxRefresh(otherPlayer)
+	otherPlayer.CharacterAdded:Connect(function()
+		task.wait(1)
+
+		if Combat.HitboxExpanded then
+			Combat.ApplyHitbox(otherPlayer)
+		end
+	end)
+end
+
+local getEnemyRoot = Combat.GetEnemyRoot
+local applyHitboxToPlayer = Combat.ApplyHitbox
+local resetHitboxForPlayer = Combat.ResetHitbox
+local refreshHitboxes = Combat.RefreshHitboxes
+local setupPlayerHitboxRefresh = Combat.SetupPlayerHitboxRefresh
+
+local playersDropdown = createDropdown(combatList, "Players", updateCombatCanvas)
+
 createSmallButton(playersDropdown, "Teleport To Lowest Health", function()
-	teleportToLowestHealthPlayer()
+	Combat.TeleportToLowestHealthPlayer()
 end)
 
 createSmallButton(playersDropdown, "Teleport To Nearest", function()
-	teleportToNearestPlayer()
+	Combat.TeleportToNearestPlayer()
 end)
 
 local hitboxMenu = createDropdown(combatList, "Hitbox Menu", updateCombatCanvas)
 
-local HITBOX_MIN_SIZE = 10
-local HITBOX_MAX_SIZE = 25
-
-hitboxSize = math.clamp(hitboxSize, HITBOX_MIN_SIZE, HITBOX_MAX_SIZE)
-
-local hitboxSizeLabel = Instance.new("TextLabel")
-hitboxSizeLabel.Size = UDim2.new(1, -12, 0, 30)
-hitboxSizeLabel.BackgroundTransparency = 1
-hitboxSizeLabel.Font = Enum.Font.GothamBold
-hitboxSizeLabel.TextSize = 13
-hitboxSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
-hitboxSizeLabel.Parent = hitboxMenu
-themeObject(hitboxSizeLabel, "TextColor3", "Text")
-
-local function updateHitboxSizeLabel()
-	hitboxSizeLabel.Text = "Hitbox Size: " .. tostring(math.floor(hitboxSize + 0.5))
-
-	if hitboxExpanded then
-		refreshHitboxes()
-	end
-end
+Combat.HitboxSizeLabel = Instance.new("TextLabel")
+Combat.HitboxSizeLabel.Size = UDim2.new(1, -12, 0, 30)
+Combat.HitboxSizeLabel.BackgroundTransparency = 1
+Combat.HitboxSizeLabel.Font = Enum.Font.GothamBold
+Combat.HitboxSizeLabel.TextSize = 13
+Combat.HitboxSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+Combat.HitboxSizeLabel.Parent = hitboxMenu
+themeObject(Combat.HitboxSizeLabel, "TextColor3", "Text")
 
 createSmallButton(hitboxMenu, "+ Bigger Hitbox", function()
-	hitboxSize = math.clamp(hitboxSize + 1, HITBOX_MIN_SIZE, HITBOX_MAX_SIZE)
-	updateHitboxSizeLabel()
+	Combat.SetHitboxSize(Combat.HitboxSize + 1)
 end)
 
 createSmallButton(hitboxMenu, "- Smaller Hitbox", function()
-	hitboxSize = math.clamp(hitboxSize - 1, HITBOX_MIN_SIZE, HITBOX_MAX_SIZE)
-	updateHitboxSizeLabel()
+	Combat.SetHitboxSize(Combat.HitboxSize - 1)
 end)
 
-updateHitboxSizeLabel()
+Combat.SetHitboxSize(Combat.HitboxSize)
 
 createToggleButton(hitboxMenu, "Expand Hitbox", false, function(state)
+	Combat.HitboxExpanded = state
 	hitboxExpanded = state
-	refreshHitboxes()
+	Combat.RefreshHitboxes()
 end)
 
 createToggleButton(hitboxMenu, "Visualise Hitboxes", true, function(state)
+	Combat.HitboxVisible = state
 	hitboxVisible = state
 
-	if hitboxExpanded then
-		refreshHitboxes()
+	if Combat.HitboxExpanded then
+		Combat.RefreshHitboxes()
 	end
 end)
 
-local sortInventoryEnabled = false
-local sortInventoryThread = nil
+local ESP = {
+	Enabled = false,
+	Connections = {}
+}
 
-local function sortInventory()
-	local backpack = player:FindFirstChild("Backpack")
+ESP.Folder = Instance.new("Folder")
+ESP.Folder.Name = "PlayerStatsESP"
+ESP.Folder.Parent = gui
 
-	if not backpack then
-		return
-	end
-
-	local tools = {}
-
-	for _, item in ipairs(backpack:GetChildren()) do
-		if item:IsA("Tool") then
-			table.insert(tools, item)
-		end
-	end
-
-	table.sort(tools, function(a, b)
-		return normalizeName(a.Name) < normalizeName(b.Name)
-	end)
-
-	local tempFolder = Instance.new("Folder")
-	tempFolder.Name = "InventorySortTemp"
-	tempFolder.Parent = player
-
-	for _, tool in ipairs(tools) do
-		tool.Parent = tempFolder
-	end
-
-	for _, tool in ipairs(tools) do
-		tool.Parent = backpack
-	end
-
-	tempFolder:Destroy()
-end
-
-local function runSortInventory()
-	while sortInventoryEnabled do
-		sortInventory()
-		task.wait(1)
-	end
-end
-
-local sortInventoryThread = nil
-
-local function isHealingItemName(toolName)
-	return matchesItem(toolName, healingItems)
-end
-
-local function sortInventory()
-	local backpack = player:FindFirstChild("Backpack")
-	local character = player.Character
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-	if not backpack then
-		return
-	end
-
-	if humanoid then
-		humanoid:UnequipTools()
-		task.wait()
-	end
-
-	local tools = {}
-
-	for _, item in ipairs(backpack:GetChildren()) do
-		if item:IsA("Tool") then
-			table.insert(tools, item)
-		end
-	end
-
-	if character then
-		for _, item in ipairs(character:GetChildren()) do
-			if item:IsA("Tool") then
-				item.Parent = backpack
-				table.insert(tools, item)
-			end
-		end
-	end
-
-	table.sort(tools, function(a, b)
-		local aHealing = isHealingItemName(a.Name)
-		local bHealing = isHealingItemName(b.Name)
-
-		if aHealing ~= bHealing then
-			return aHealing
-		end
-
-		return normalizeName(a.Name) < normalizeName(b.Name)
-	end)
-
-	local tempFolder = Instance.new("Folder")
-	tempFolder.Name = "InventorySortTemp"
-	tempFolder.Parent = player
-
-	for _, tool in ipairs(tools) do
-		tool.Parent = tempFolder
-	end
-
-	for _, tool in ipairs(tools) do
-		tool.Parent = backpack
-	end
-
-	tempFolder:Destroy()
-end
-
-local function runSortInventory()
-	while sortInventoryEnabled do
-		sortInventory()
-		task.wait(1)
-	end
-end
-
-createToggleButton(miscList, "Auto Sort Inventory", false, function(state)
-	sortInventoryEnabled = state
-
-	if sortInventoryEnabled then
-		sortInventory()
-		createNotification("Inventory", "Auto Sort Inventory enabled.")
-
-		if not sortInventoryThread then
-			sortInventoryThread = task.spawn(function()
-				runSortInventory()
-				sortInventoryThread = nil
-			end)
-		end
-	else
-		createNotification("Inventory", "Auto Sort Inventory disabled.")
-	end
-end)
-
-local playerStatsEspEnabled = false
-
-local playerStatsEspFolder = Instance.new("Folder")
-playerStatsEspFolder.Name = "PlayerStatsESP"
-playerStatsEspFolder.Parent = gui
-
-local playerStatsEspConnections = {}
-
-local function getPlayerStatValue(targetPlayer, statNames)
+function ESP.GetStatValue(targetPlayer, statNames)
 	local leaderstats = targetPlayer:FindFirstChild("leaderstats")
 
 	if leaderstats then
@@ -2418,8 +2235,8 @@ local function getPlayerStatValue(targetPlayer, statNames)
 	return "?"
 end
 
-local function getPlayerEspSpeed(targetPlayer)
-	local statSpeed = getPlayerStatValue(targetPlayer, { "Speed", "WalkSpeed" })
+function ESP.GetSpeed(targetPlayer)
+	local statSpeed = ESP.GetStatValue(targetPlayer, { "Speed", "WalkSpeed" })
 
 	if statSpeed ~= "?" then
 		return statSpeed
@@ -2435,30 +2252,27 @@ local function getPlayerEspSpeed(targetPlayer)
 	return "?"
 end
 
-local function removePlayerStatsEsp(targetPlayer)
-	local existingBillboard = playerStatsEspFolder:FindFirstChild(targetPlayer.Name .. "_StatsESP")
+function ESP.Remove(targetPlayer)
+	local existingBillboard = ESP.Folder:FindFirstChild(targetPlayer.Name .. "_StatsESP")
 
 	if existingBillboard then
 		existingBillboard:Destroy()
 	end
 
 	local character = targetPlayer.Character
+	local existingHighlight = character and character:FindFirstChild("OPSlapPlayerStatsHighlight")
 
-	if character then
-		local existingHighlight = character:FindFirstChild("OPSlapPlayerStatsHighlight")
-
-		if existingHighlight then
-			existingHighlight:Destroy()
-		end
+	if existingHighlight then
+		existingHighlight:Destroy()
 	end
 end
 
-local function createPlayerStatsEsp(targetPlayer)
+function ESP.Create(targetPlayer)
 	if targetPlayer == player then
 		return
 	end
 
-	removePlayerStatsEsp(targetPlayer)
+	ESP.Remove(targetPlayer)
 
 	local character = targetPlayer.Character
 	local head = character and character:FindFirstChild("Head")
@@ -2483,7 +2297,7 @@ local function createPlayerStatsEsp(targetPlayer)
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 10000
 	billboard.Adornee = head
-	billboard.Parent = playerStatsEspFolder
+	billboard.Parent = ESP.Folder
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
@@ -2498,113 +2312,118 @@ local function createPlayerStatsEsp(targetPlayer)
 	label.Parent = billboard
 
 	task.spawn(function()
-	while playerStatsEspEnabled and billboard.Parent do
-		local character = targetPlayer.Character
-		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		while ESP.Enabled and billboard.Parent do
+			local liveCharacter = targetPlayer.Character
+			local humanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
 
-		local health = "?"
-		if humanoid then
-			health = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+			local health = "?"
+			if humanoid then
+				health = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
+			end
+
+			local kills = ESP.GetStatValue(targetPlayer, { "Kills", "Kill", "KOs" })
+			local power = ESP.GetStatValue(targetPlayer, { "Power", "Strength", "Slaps" })
+			local speed = ESP.GetSpeed(targetPlayer)
+
+			label.Text =
+				'<font color="rgb(255,255,255)">' .. targetPlayer.Name .. '</font>'
+				.. '\n<font color="rgb(80,255,120)">Health: ' .. tostring(health) .. '</font>'
+				.. '\n<font color="rgb(80,170,255)">Kills: ' .. tostring(kills) .. '</font>'
+				.. '\n<font color="rgb(255,80,80)">Strength: ' .. tostring(power) .. '</font>'
+				.. '\n<font color="rgb(255,235,70)">Speed: ' .. tostring(speed) .. '</font>'
+
+			task.wait(0.25)
 		end
-
-		local kills = getPlayerStatValue(targetPlayer, { "Kills", "Kill", "KOs" })
-		local power = getPlayerStatValue(targetPlayer, { "Power", "Strength", "Slaps" })
-		local speed = getPlayerEspSpeed(targetPlayer)
-
-		label.Text =
-			'<font color="rgb(255,255,255)">' .. targetPlayer.Name .. '</font>'
-			.. '\n<font color="rgb(80,255,120)">Health: ' .. tostring(health) .. '</font>'
-			.. '\n<font color="rgb(80,170,255)">Kills: ' .. tostring(kills) .. '</font>'
-			.. '\n<font color="rgb(255,80,80)">Strength: ' .. tostring(power) .. '</font>'
-			.. '\n<font color="rgb(255,235,70)">Speed: ' .. tostring(speed) .. '</font>'
-
-		task.wait(0.25)
-	    end
-    end)
+	end)
 end
 
-local function refreshPlayerStatsEsp()
+function ESP.Refresh()
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if playerStatsEspEnabled then
-			createPlayerStatsEsp(targetPlayer)
+		if ESP.Enabled then
+			ESP.Create(targetPlayer)
 		else
-			removePlayerStatsEsp(targetPlayer)
+			ESP.Remove(targetPlayer)
 		end
 	end
 end
 
-local function clearPlayerStatsEspConnections()
-	for _, connection in ipairs(playerStatsEspConnections) do
+function ESP.ClearConnections()
+	for _, connection in ipairs(ESP.Connections) do
 		connection:Disconnect()
 	end
 
-	playerStatsEspConnections = {}
+	ESP.Connections = {}
 end
 
-local function enablePlayerStatsEsp()
-	playerStatsEspEnabled = true
-	refreshPlayerStatsEsp()
+function ESP.Enable()
+	ESP.Enabled = true
+	ESP.Refresh()
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		table.insert(playerStatsEspConnections, targetPlayer.CharacterAdded:Connect(function()
+		table.insert(ESP.Connections, targetPlayer.CharacterAdded:Connect(function()
 			task.wait(0.5)
 
-			if playerStatsEspEnabled then
-				createPlayerStatsEsp(targetPlayer)
+			if ESP.Enabled then
+				ESP.Create(targetPlayer)
 			end
 		end))
 	end
 
-	table.insert(playerStatsEspConnections, Players.PlayerAdded:Connect(function(targetPlayer)
-		table.insert(playerStatsEspConnections, targetPlayer.CharacterAdded:Connect(function()
+	table.insert(ESP.Connections, Players.PlayerAdded:Connect(function(targetPlayer)
+		table.insert(ESP.Connections, targetPlayer.CharacterAdded:Connect(function()
 			task.wait(0.5)
 
-			if playerStatsEspEnabled then
-				createPlayerStatsEsp(targetPlayer)
+			if ESP.Enabled then
+				ESP.Create(targetPlayer)
 			end
 		end))
 	end))
 
-	table.insert(playerStatsEspConnections, Players.PlayerRemoving:Connect(function(targetPlayer)
-		removePlayerStatsEsp(targetPlayer)
+	table.insert(ESP.Connections, Players.PlayerRemoving:Connect(function(targetPlayer)
+		ESP.Remove(targetPlayer)
 	end))
 end
 
-local function disablePlayerStatsEsp()
-	playerStatsEspEnabled = false
-	clearPlayerStatsEspConnections()
+function ESP.Disable()
+	ESP.Enabled = false
+	ESP.ClearConnections()
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		removePlayerStatsEsp(targetPlayer)
+		ESP.Remove(targetPlayer)
 	end
 
-	for _, item in ipairs(playerStatsEspFolder:GetChildren()) do
+	for _, item in ipairs(ESP.Folder:GetChildren()) do
 		item:Destroy()
 	end
 end
 
 createToggleButton(miscList, "Player Stats ESP", false, function(state)
 	if state then
-		enablePlayerStatsEsp()
-		createNotification("ESP", "Player Stats ESP enabled.")
+		ESP.Enable()
+		createNotification("ESP", "Player Stats ESP enabled.", "Success")
 	else
-		disablePlayerStatsEsp()
+		ESP.Disable()
 		createNotification("ESP", "Player Stats ESP disabled.")
 	end
 end)
 
-local antiDropdown = createDropdown(miscList, "Anti", updateMiscCanvas)
-local antiFolder = nil
+local Anti = {
+	Folder = nil
+}
 
-local function clearAntiParts()
-	if antiFolder and antiFolder.Parent then
-		antiFolder:Destroy()
+function Anti.ClearParts()
+	if Anti.Folder and Anti.Folder.Parent then
+		Anti.Folder:Destroy()
 	end
 
-	antiFolder = nil
+	Anti.Folder = nil
 end
 
-local function createAntiPart(position, size)
+function Anti.CreatePart(position, size)
+	if not Anti.Folder then
+		return
+	end
+
 	local platform = Instance.new("Part")
 	platform.Name = "Part"
 	platform.Size = size
@@ -2614,37 +2433,42 @@ local function createAntiPart(position, size)
 	platform.Transparency = 1
 	platform.Color = Color3.fromRGB(0, 170, 255)
 	platform.Material = Enum.Material.SmoothPlastic
-	platform.Parent = antiFolder
+	platform.Parent = Anti.Folder
 
 	return platform
 end
 
+function Anti.EnableAcidLava()
+	Anti.ClearParts()
+
+	Anti.Folder = Instance.new("Folder")
+	Anti.Folder.Name = "AntiAcidLavaParts"
+	Anti.Folder.Parent = workspace
+
+	Anti.CreatePart(
+		Vector3.new(-74.52057647705078, 13, -727.3116455078125),
+		Vector3.new(150, 2, 150)
+	)
+
+	Anti.CreatePart(
+		Vector3.new(-255.963623046875, -33.78499221801758, 407.39410400390625),
+		Vector3.new(300, 5, 300)
+	)
+
+	Anti.CreatePart(
+		Vector3.new(-591.77001953125, -47.32532501220703, -205.88002014160156),
+		Vector3.new(300, 5, 300)
+	)
+end
+
+local antiDropdown = createDropdown(miscList, "Anti", updateMiscCanvas)
+
 createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
 	if state then
-		clearAntiParts()
-
-		antiFolder = Instance.new("Folder")
-		antiFolder.Name = "AntiAcidLavaParts"
-		antiFolder.Parent = workspace
-
-		createAntiPart(
-			Vector3.new(-74.52057647705078, 13, -727.3116455078125),
-			Vector3.new(150, 2, 150)
-		)
-
-		createAntiPart(
-			Vector3.new(-255.963623046875, -33.78499221801758, 407.39410400390625),
-			Vector3.new(300, 5, 300)
-		)
-
-		createAntiPart(
-			Vector3.new(-591.77001953125, -47.32532501220703, -205.88002014160156),
-			Vector3.new(300, 5, 300)
-		)
-
-		createNotification("Anti", "Anti Acid & Lava enabled.")
+		Anti.EnableAcidLava()
+		createNotification("Anti", "Anti Acid & Lava enabled.", "Success")
 	else
-		clearAntiParts()
+		Anti.ClearParts()
 		createNotification("Anti", "Anti Acid & Lava disabled.")
 	end
 end)
@@ -2680,126 +2504,129 @@ end
 
 themeList.CanvasSize = UDim2.fromOffset(0, themeLayout.AbsoluteContentSize.Y + 10)
 
-local function setupPlayerHitboxRefresh(otherPlayer)
-	otherPlayer.CharacterAdded:Connect(function()
-		task.wait(1)
-
-		if hitboxExpanded then
-			applyHitboxToPlayer(otherPlayer)
-		end
-	end)
-end
-
-Players.PlayerAdded:Connect(setupPlayerHitboxRefresh)
+Players.PlayerAdded:Connect(Combat.SetupPlayerHitboxRefresh)
 
 for _, otherPlayer in ipairs(Players:GetPlayers()) do
-	setupPlayerHitboxRefresh(otherPlayer)
+	Combat.SetupPlayerHitboxRefresh(otherPlayer)
+	Combat.ResetHitbox(otherPlayer)
 end
 
 Players.PlayerRemoving:Connect(function(otherPlayer)
-	savedHitboxes[otherPlayer] = nil
+	Combat.SavedHitboxes[otherPlayer] = nil
 end)
 
-for _, otherPlayer in ipairs(Players:GetPlayers()) do
-	resetHitboxForPlayer(otherPlayer)
+local Window = {
+	Dragging = false,
+	Resizing = false,
+	Minimized = false,
+	DragStart = nil,
+	ResizeStart = nil,
+	StartPosition = nil,
+	StartSize = nil,
+	ResizeHandle = nil
+}
+
+function Window.StartDrag(inputObject)
+	if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	Window.Dragging = true
+	Window.DragStart = inputObject.Position
+	Window.StartPosition = mainFrame.Position
 end
 
-local dragging = false
-local dragStart
-local startPosition
-
-topBar.InputBegan:Connect(function(inputObject)
+function Window.StopDrag(inputObject)
 	if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = true
-		dragStart = inputObject.Position
-		startPosition = mainFrame.Position
+		Window.Dragging = false
 	end
-end)
+end
 
-topBar.InputEnded:Connect(function(inputObject)
+function Window.StartResize(inputObject)
+	if inputObject.UserInputType ~= Enum.UserInputType.MouseButton1 then
+		return
+	end
+
+	Window.Resizing = true
+	Window.ResizeStart = inputObject.Position
+	Window.StartSize = mainFrame.Size
+end
+
+function Window.StopResize(inputObject)
 	if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
-		dragging = false
+		Window.Resizing = false
 	end
-end)
+end
 
-local resizeHandle = Instance.new("TextButton")
-resizeHandle.Size = UDim2.fromOffset(30, 30)
-resizeHandle.Position = UDim2.new(1, -38, 1, -38)
-resizeHandle.Text = "⛶"
-resizeHandle.Font = Enum.Font.GothamBlack
-resizeHandle.TextSize = 17
-resizeHandle.Parent = mainFrame
-themeObject(resizeHandle, "BackgroundColor3", "Button")
-styleButton(resizeHandle)
-
-local resizing = false
-local resizeStart
-local startSize
-
-resizeHandle.InputBegan:Connect(function(inputObject)
-	if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
-		resizing = true
-		resizeStart = inputObject.Position
-		startSize = mainFrame.Size
-	end
-end)
-
-resizeHandle.InputEnded:Connect(function(inputObject)
-	if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
-		resizing = false
-	end
-end)
-
-UserInputService.InputChanged:Connect(function(inputObject)
+function Window.HandleInputChanged(inputObject)
 	if inputObject.UserInputType ~= Enum.UserInputType.MouseMovement then
 		return
 	end
 
-	if dragging then
-		local delta = inputObject.Position - dragStart
+	if Window.Dragging and Window.DragStart and Window.StartPosition then
+		local delta = inputObject.Position - Window.DragStart
+
 		mainFrame.Position = UDim2.new(
-			startPosition.X.Scale,
-			startPosition.X.Offset + delta.X,
-			startPosition.Y.Scale,
-			startPosition.Y.Offset + delta.Y
+			Window.StartPosition.X.Scale,
+			Window.StartPosition.X.Offset + delta.X,
+			Window.StartPosition.Y.Scale,
+			Window.StartPosition.Y.Offset + delta.Y
 		)
 	end
 
-	if resizing then
-		local delta = inputObject.Position - resizeStart
-		local newWidth = math.clamp(startSize.X.Offset + delta.X, 500, 900)
-		local newHeight = math.clamp(startSize.Y.Offset + delta.Y, 320, 650)
+	if Window.Resizing and Window.ResizeStart and Window.StartSize then
+		local delta = inputObject.Position - Window.ResizeStart
+		local newWidth = math.clamp(Window.StartSize.X.Offset + delta.X, 500, 900)
+		local newHeight = math.clamp(Window.StartSize.Y.Offset + delta.Y, 320, 650)
 
 		mainFrame.Size = UDim2.fromOffset(newWidth, newHeight)
 	end
-end)
+end
 
-local minimized = false
+function Window.ToggleMinimized()
+	Window.Minimized = not Window.Minimized
 
-minimizeButton.MouseButton1Click:Connect(function()
-	minimized = not minimized
-
-	if minimized then
+	if Window.Minimized then
 		normalSize = mainFrame.Size
 		minimizedSize = UDim2.fromOffset(math.max(normalSize.X.Offset, 500), 52)
 
 		tabScroll.Visible = false
 		contentFrame.Visible = false
-		resizeHandle.Visible = false
+		Window.ResizeHandle.Visible = false
 
 		tweenWindow(minimizedSize, mainFrame.Position, 0.3)
 	else
 		tweenWindow(normalSize, mainFrame.Position, 0.35)
 
 		task.delay(0.12, function()
-			if not minimized then
+			if not Window.Minimized then
 				tabScroll.Visible = true
 				contentFrame.Visible = true
-				resizeHandle.Visible = true
+				Window.ResizeHandle.Visible = true
 			end
 		end)
 	end
-end)
+end
+
+Window.ResizeHandle = Instance.new("TextButton")
+Window.ResizeHandle.Size = UDim2.fromOffset(30, 30)
+Window.ResizeHandle.Position = UDim2.new(1, -38, 1, -38)
+Window.ResizeHandle.Text = "+"
+Window.ResizeHandle.Font = Enum.Font.GothamBlack
+Window.ResizeHandle.TextSize = 17
+Window.ResizeHandle.Parent = mainFrame
+themeObject(Window.ResizeHandle, "BackgroundColor3", "Button")
+styleButton(Window.ResizeHandle)
+
+topBar.InputBegan:Connect(Window.StartDrag)
+topBar.InputEnded:Connect(Window.StopDrag)
+
+Window.ResizeHandle.InputBegan:Connect(Window.StartResize)
+Window.ResizeHandle.InputEnded:Connect(Window.StopResize)
+
+UserInputService.InputChanged:Connect(Window.HandleInputChanged)
+
+minimizeButton.MouseButton1Click:Connect(Window.ToggleMinimized)
 
 closeButton.MouseButton1Click:Connect(function()
 	gui:Destroy()
