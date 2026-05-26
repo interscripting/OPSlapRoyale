@@ -789,10 +789,189 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	return body
 end
 
+function UI.CreateSideDropdown(list, titleText, updateCanvas)
+	local wrapper = Instance.new("Frame")
+	wrapper.Size = UDim2.new(1, -6, 0, 47)
+	wrapper.BackgroundTransparency = 1
+	wrapper.BorderSizePixel = 0
+	wrapper.Parent = list
+
+	local header = Instance.new("TextButton")
+	header.Size = UDim2.new(1, -24, 0, 44)
+	header.Position = UDim2.new(0.5, 0, 0, 3)
+	header.AnchorPoint = Vector2.new(0.5, 0)
+	header.BorderSizePixel = 0
+	header.Text = titleText
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 14
+	header.Parent = wrapper
+	themeObject(header, "BackgroundColor3", "ButtonDark")
+	themeObject(header, "TextColor3", "Text")
+	addCorner(header, 8)
+	addStroke(header, Color3.fromRGB(0, 0, 0), 2)
+	styleButton(header)
+
+	local flyout = Instance.new("Frame")
+	flyout.Size = UDim2.fromOffset(260, 0)
+	flyout.BackgroundTransparency = 0.04
+	flyout.BorderSizePixel = 0
+	flyout.Visible = false
+	flyout.ClipsDescendants = true
+	flyout.Parent = gui
+	themeObject(flyout, "BackgroundColor3", "Panel")
+	addCorner(flyout, 10)
+
+	local flyoutStroke = addStroke(flyout, currentTheme.Stroke, 1)
+	themeObject(flyoutStroke, "Color", "Stroke")
+
+	local flyoutTitle = Instance.new("TextLabel")
+	flyoutTitle.Size = UDim2.new(1, -52, 0, 40)
+	flyoutTitle.Position = UDim2.fromOffset(12, 0)
+	flyoutTitle.BackgroundTransparency = 1
+	flyoutTitle.Text = titleText
+	flyoutTitle.Font = Enum.Font.GothamBlack
+	flyoutTitle.TextSize = 14
+	flyoutTitle.TextXAlignment = Enum.TextXAlignment.Left
+	flyoutTitle.Parent = flyout
+	themeObject(flyoutTitle, "TextColor3", "Text")
+
+	local closeFlyout = Instance.new("TextButton")
+	closeFlyout.Size = UDim2.fromOffset(30, 30)
+	closeFlyout.Position = UDim2.new(1, -36, 0, 5)
+	closeFlyout.BorderSizePixel = 0
+	closeFlyout.Text = "X"
+	closeFlyout.Font = Enum.Font.GothamBlack
+	closeFlyout.TextSize = 13
+	closeFlyout.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeFlyout.BackgroundColor3 = Color3.fromRGB(220, 45, 55)
+	closeFlyout.Parent = flyout
+	addCorner(closeFlyout, 8)
+	styleButton(closeFlyout)
+
+	local body = Instance.new("ScrollingFrame")
+	body.Size = UDim2.new(1, -20, 1, -52)
+	body.Position = UDim2.fromOffset(10, 44)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.ScrollBarThickness = 4
+	body.CanvasSize = UDim2.fromOffset(0, 0)
+	body.Parent = flyout
+	body:SetAttribute("IsDropdownBody", true)
+
+	local bodyLayout = Instance.new("UIListLayout")
+	bodyLayout.Padding = UDim.new(0, 8)
+	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyLayout.Parent = body
+
+	local bodyPadding = Instance.new("UIPadding")
+	bodyPadding.PaddingLeft = UDim.new(0, 4)
+	bodyPadding.PaddingRight = UDim.new(0, 4)
+	bodyPadding.Parent = body
+
+	local open = false
+	local flyoutTween = nil
+
+	local function getTargetPosition()
+		local x = mainFrame.AbsolutePosition.X + mainFrame.AbsoluteSize.X + 12
+		local y = mainFrame.AbsolutePosition.Y + 68
+
+		return UDim2.fromOffset(x, y)
+	end
+
+	local function getTargetHeight()
+		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 62, 120, math.max(220, mainFrame.AbsoluteSize.Y - 74))
+	end
+
+	local function refreshBody()
+		body.CanvasSize = UDim2.fromOffset(0, bodyLayout.AbsoluteContentSize.Y + 12)
+	end
+
+	local function tweenFlyout(targetSize, targetPosition, targetTransparency, duration)
+		if flyoutTween then
+			flyoutTween:Cancel()
+		end
+
+		flyoutTween = TweenService:Create(
+			flyout,
+			TweenInfo.new(duration or 0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{
+				Size = targetSize,
+				Position = targetPosition,
+				BackgroundTransparency = targetTransparency
+			}
+		)
+
+		flyoutTween:Play()
+		return flyoutTween
+	end
+
+	local function openFlyout()
+		open = true
+		refreshBody()
+
+		local targetPosition = getTargetPosition()
+		local targetHeight = getTargetHeight()
+
+		flyout.Position = UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset)
+		flyout.Size = UDim2.fromOffset(260, 0)
+		flyout.BackgroundTransparency = 0.35
+		flyout.Visible = true
+
+		tweenFlyout(UDim2.fromOffset(260, targetHeight), targetPosition, 0.04, 0.28)
+	end
+
+	local function closeFlyoutAnimated()
+		if not open then
+			return
+		end
+
+		open = false
+
+		local targetPosition = getTargetPosition()
+		local outTween = tweenFlyout(
+			UDim2.fromOffset(260, 0),
+			UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset),
+			0.35,
+			0.22
+		)
+
+		outTween.Completed:Connect(function()
+			if not open then
+				flyout.Visible = false
+			end
+		end)
+	end
+
+	header.MouseButton1Click:Connect(function()
+		if open then
+			closeFlyoutAnimated()
+		else
+			openFlyout()
+		end
+	end)
+
+	closeFlyout.MouseButton1Click:Connect(closeFlyoutAnimated)
+
+	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		refreshBody()
+
+		if open then
+			tweenFlyout(UDim2.fromOffset(260, getTargetHeight()), getTargetPosition(), 0.04, 0.18)
+		end
+	end)
+
+	updateCanvas()
+
+	UI.LastSideDropdownWrapper = wrapper
+
+	return body
+end
+
 local createSmallButton = UI.CreateSmallButton
 local createWarningLabel = UI.CreateWarningLabel
 local createToggleButton = UI.CreateToggleButton
 local createDropdown = UI.CreateDropdown
+local createSideDropdown = UI.CreateSideDropdown
 
 function Notify.GetKind(titleText, kind)
 	if kind and Notify.Presets[kind] then
@@ -1364,11 +1543,11 @@ local getCodeButton = createSmallButton(mainList, "Get Code", function()
 	end)
 end)
 
-local teleportDropdown = createDropdown(mainList, "Teleport", updateMainCanvas)
+local teleportDropdown = createSideDropdown(mainList, "Teleport", updateMainCanvas)
 createWarningLabel(teleportDropdown, "DONT SPAM")
 
-local itemsDropdown = createDropdown(itemsList, "Teleport to items", updateItemsCanvas)
-itemsDropdown.Parent.Parent.LayoutOrder = 10
+local itemsDropdown = createSideDropdown(itemsList, "Teleport to items", updateItemsCanvas)
+UI.LastSideDropdownWrapper.LayoutOrder = 10
 
 local itemsWarning = createWarningLabel(itemsDropdown, "DONT SPAM")
 itemsWarning.LayoutOrder = 0
