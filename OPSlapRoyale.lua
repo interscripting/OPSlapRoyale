@@ -18,6 +18,50 @@ local ContextActionService = Services.ContextActionService
 local ReplicatedStorage = Services.ReplicatedStorage
 local player = Players.LocalPlayer
 
+local function sendBlockedGameNotification()
+	local StarterGui = game:GetService("StarterGui")
+
+	task.spawn(function()
+		for _ = 1, 8 do
+			local success = pcall(function()
+				StarterGui:SetCore("SendNotification", {
+					Title = "Wrong Game",
+					Text = "You are not in slap royale!",
+					Duration = 5
+				})
+			end)
+
+			if success then
+				break
+			end
+
+			task.wait(0.25)
+		end
+	end)
+end
+
+local function isSlapRoyale()
+	local function matchesSlapRoyale(text)
+		text = string.lower(tostring(text or ""))
+		return string.find(text, "slap royale") ~= nil
+	end
+
+	local success, info = pcall(function()
+		return MarketplaceService:GetProductInfo(game.PlaceId)
+	end)
+
+	if success and info and matchesSlapRoyale(info.Name) then
+		return true
+	end
+
+	return matchesSlapRoyale(game.Name)
+end
+
+if not isSlapRoyale() then
+	sendBlockedGameNotification()
+	return
+end
+
 local Config = {}
 
 Config.Themes = {
@@ -150,30 +194,20 @@ function UI.StyleButton(button)
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.ClipsDescendants = true
-	UI.AddCorner(button, 9)
+	UI.AddCorner(button, 8)
 
-	local scale = button:FindFirstChild("ButtonScale") or Instance.new("UIScale")
+	local scale = Instance.new("UIScale")
 	scale.Name = "ButtonScale"
 	scale.Scale = 1
 	scale.Parent = button
 
-	local border = button:FindFirstChild("ButtonBorder") or Instance.new("UIStroke")
-	border.Name = "ButtonBorder"
-	border.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	border.Thickness = 1
-	border.Transparency = 0.42
-	border.Parent = button
-	UI.ThemeObject(border, "Color", "Stroke")
-
-	local shade = button:FindFirstChild("ButtonShade") or Instance.new("Frame")
-	shade.Name = "ButtonShade"
-	shade.Size = UDim2.fromScale(1, 1)
-	shade.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	shade.BackgroundTransparency = 0.94
-	shade.BorderSizePixel = 0
-	shade.ZIndex = button.ZIndex + 1
-	shade.Parent = button
-	UI.AddCorner(shade, 9)
+	local stroke = Instance.new("UIStroke")
+	stroke.Name = "ButtonStroke"
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Thickness = 1
+	stroke.Transparency = 0.25
+	stroke.Parent = button
+	UI.ThemeObject(stroke, "Color", "Stroke")
 
 	UI.ThemeObject(button, "TextColor3", "Text")
 
@@ -187,77 +221,28 @@ function UI.StyleButton(button)
 		):Play()
 	end
 
-	local function pulse()
-	local shockwave = Instance.new("Frame")
-	shockwave.Name = "ButtonShockwave"
-	shockwave.AnchorPoint = Vector2.new(0.5, 0.5)
-	shockwave.Position = UDim2.fromScale(0.5, 0.5)
-	shockwave.Size = UDim2.fromOffset(10, 10)
-	shockwave.BackgroundTransparency = 1
-	shockwave.BorderSizePixel = 0
-	shockwave.ZIndex = button.ZIndex + 2
-	shockwave.Parent = button
-	UI.AddCorner(shockwave, 999)
-
-	local ring = Instance.new("UIStroke")
-	ring.Name = "ShockwaveRing"
-	ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	ring.Thickness = 2
-	ring.Transparency = 0.12
-	ring.Parent = shockwave
-	ring.Color = Color3.fromRGB(255, 255, 255)
-
-	TweenService:Create(
-		shockwave,
-		TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
-		{
-			Size = UDim2.fromScale(1.45, 2.65)
-		}
-	):Play()
-
-	TweenService:Create(
-		ring,
-		TweenInfo.new(0.55, Enum.EasingStyle.Exponential, Enum.EasingDirection.Out),
-		{
-			Thickness = 0,
-			Transparency = 1
-		}
-	):Play()
-
-        task.delay(0.58, function()
-		if shockwave.Parent then
-			shockwave:Destroy()
-		end
-	end)
-end
-
 	button.MouseEnter:Connect(function()
 		hovering = true
 		tween(scale, 0.14, { Scale = 1.012 })
-		tween(button, 0.14, { BackgroundTransparency = 0.03 })
-		tween(border, 0.14, { Transparency = 0.18 })
-		tween(shade, 0.14, { BackgroundTransparency = 0.9 })
+		tween(button, 0.14, { BackgroundTransparency = 0.04 })
+		tween(stroke, 0.14, { Transparency = 0.08 })
 	end)
 
 	button.MouseLeave:Connect(function()
 		hovering = false
 		tween(scale, 0.16, { Scale = 1 })
 		tween(button, 0.16, { BackgroundTransparency = 0 })
-		tween(border, 0.16, { Transparency = 0.42 })
-		tween(shade, 0.16, { BackgroundTransparency = 0.94 })
+		tween(stroke, 0.16, { Transparency = 0.25 })
 	end)
 
 	button.MouseButton1Down:Connect(function()
-		pulse()
-		tween(scale, 0.08, { Scale = 0.975 })
-		tween(button, 0.08, { BackgroundTransparency = 0.08 })
-		tween(border, 0.08, { Transparency = 0.05 })
+		tween(scale, 0.08, { Scale = 0.97 })
+		tween(button, 0.08, { BackgroundTransparency = 0.1 })
 	end)
 
 	button.MouseButton1Up:Connect(function()
 		tween(scale, 0.16, { Scale = hovering and 1.012 or 1 })
-		tween(button, 0.16, { BackgroundTransparency = hovering and 0.03 or 0 })
-		tween(border, 0.16, { Transparency = hovering and 0.18 or 0.42 })
+		tween(button, 0.16, { BackgroundTransparency = hovering and 0.04 or 0 })
 	end)
 end
 
@@ -585,7 +570,7 @@ local miscList, updateMiscCanvas = UI.CreatePageList(miscPage)
 
 function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -12, 0, 44)
+	button.Size = UDim2.new(1, -12, 0, 40)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 13
@@ -594,25 +579,23 @@ function UI.CreateSmallButton(parent, text, callback)
 	themeObject(button, "BackgroundColor3", "ButtonDark")
 	styleButton(button)
 
-	local leftAccent = Instance.new("Frame")
-	leftAccent.Size = UDim2.new(0, 3, 1, -14)
-	leftAccent.Position = UDim2.fromOffset(10, 7)
-	leftAccent.BorderSizePixel = 0
-	leftAccent.ZIndex = button.ZIndex + 3
-	leftAccent.Parent = button
-	themeObject(leftAccent, "BackgroundColor3", "Button")
-	addCorner(leftAccent, 3)
+	local rail = Instance.new("Frame")
+	rail.Size = UDim2.new(0, 4, 1, -14)
+	rail.Position = UDim2.fromOffset(10, 7)
+	rail.BorderSizePixel = 0
+	rail.Parent = button
+	themeObject(rail, "BackgroundColor3", "Button")
+	addCorner(rail, 4)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -34, 1, 0)
-	label.Position = UDim2.fromOffset(22, 0)
+	label.Size = UDim2.new(1, -44, 1, 0)
+	label.Position = UDim2.fromOffset(34, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
 	label.TextSize = 13
 	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.ZIndex = button.ZIndex + 3
 	label.Parent = button
 	themeObject(label, "TextColor3", "Text")
 
@@ -637,7 +620,6 @@ UI.ToggleDescriptions = {
 	["Auto Collect"] = "Collects available items in priority order.",
 	["Auto Use"] = "Uses buff items from your inventory automatically.",
 	["Auto Heal"] = "Uses healing items when your health is low.",
-	["Show checklist"] = "Shows the item checklist on the right side of the screen.",
 	["Expand Hitbox"] = "Applies the selected hitbox size to other players.",
 	["Visualise Hitboxes"] = "Shows or hides the hitbox visuals.",
 	["Player Stats ESP"] = "Shows player stats above each player.",
@@ -750,14 +732,14 @@ end
 
 function UI.CreateDropdown(list, titleText, updateCanvas)
 	local wrapper = Instance.new("Frame")
-	wrapper.Size = UDim2.new(1, -6, 0, 47)
+	wrapper.Size = UDim2.new(1, -6, 0, 56)
 	wrapper.BackgroundTransparency = 1
 	wrapper.BorderSizePixel = 0
 	wrapper.ClipsDescendants = false
 	wrapper.Parent = list
 
 	local holder = Instance.new("Frame")
-	holder.Size = UDim2.new(1, -24, 0, 44)
+	holder.Size = UDim2.new(1, -24, 0, 52)
 	holder.Position = UDim2.new(0.5, 0, 0, 3)
 	holder.AnchorPoint = Vector2.new(0.5, 0)
 	holder.BorderSizePixel = 0
@@ -768,7 +750,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	addStroke(holder, Color3.fromRGB(0, 0, 0), 2)
 
 	local header = Instance.new("TextButton")
-	header.Size = UDim2.new(1, 0, 0, 44)
+	header.Size = UDim2.new(1, 0, 0, 52)
 	header.BackgroundTransparency = 1
 	header.Text = titleText
 	header.Font = Enum.Font.GothamBold
@@ -793,7 +775,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local body = Instance.new("Frame")
 	body.Size = UDim2.new(1, 0, 0, 0)
-	body.Position = UDim2.fromOffset(0, 48)
+	body.Position = UDim2.fromOffset(0, 56)
 	body.BackgroundTransparency = 1
 	body.Visible = false
 	body.Parent = holder
@@ -813,7 +795,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local function refreshSize(animated)
 		local bodyHeight = bodyLayout.AbsoluteContentSize.Y + 12
-		local targetHeight = open and (52 + bodyHeight) or 44
+		local targetHeight = open and (60 + bodyHeight) or 52
 
 		body.Size = UDim2.new(1, 0, 0, bodyHeight)
 		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 3)
@@ -879,15 +861,16 @@ end
 
 function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	local description = descriptionText or ""
+	local flyoutWidth = 340
 
 	local wrapper = Instance.new("Frame")
-	wrapper.Size = UDim2.new(1, -6, 0, description ~= "" and 64 or 47)
+	wrapper.Size = UDim2.new(1, -6, 0, description ~= "" and 70 or 54)
 	wrapper.BackgroundTransparency = 1
 	wrapper.BorderSizePixel = 0
 	wrapper.Parent = list
 
 	local header = Instance.new("TextButton")
-	header.Size = UDim2.new(1, -24, 0, description ~= "" and 61 or 44)
+	header.Size = UDim2.new(1, -24, 0, description ~= "" and 67 or 50)
 	header.Position = UDim2.new(0.5, 0, 0, 3)
 	header.AnchorPoint = Vector2.new(0.5, 0)
 	header.BorderSizePixel = 0
@@ -899,33 +882,33 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	styleButton(header)
 
 	local label = Instance.new("TextLabel")
-    label.Size = UDim2.new(1, -24, 0, 26)
-    label.Position = UDim2.fromOffset(12, description ~= "" and 6 or 9)
-    label.BackgroundTransparency = 1
-    label.Text = titleText
-    label.Font = Enum.Font.GothamBold
-    label.TextSize = 14
-    label.TextXAlignment = Enum.TextXAlignment.Center
-    label.Parent = header
-    themeObject(label, "TextColor3", "Text")
+	label.Size = UDim2.new(1, -24, 0, 28)
+	label.Position = UDim2.fromOffset(12, description ~= "" and 7 or 11)
+	label.BackgroundTransparency = 1
+	label.Text = titleText
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 14
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.Parent = header
+	themeObject(label, "TextColor3", "Text")
 
 	if description ~= "" then
-    	local desc = Instance.new("TextLabel")
-        desc.Size = UDim2.new(1, -28, 0, 24)
-        desc.Position = UDim2.fromOffset(14, 31)
-        desc.BackgroundTransparency = 1
-        desc.Text = description
-        desc.Font = Enum.Font.GothamMedium
-        desc.TextSize = 10
-        desc.TextWrapped = true
-        desc.TextXAlignment = Enum.TextXAlignment.Center
-        desc.TextYAlignment = Enum.TextYAlignment.Top
-        desc.Parent = header
-        themeObject(desc, "TextColor3", "SubText")
+		local desc = Instance.new("TextLabel")
+		desc.Size = UDim2.new(1, -28, 0, 26)
+		desc.Position = UDim2.fromOffset(14, 35)
+		desc.BackgroundTransparency = 1
+		desc.Text = description
+		desc.Font = Enum.Font.GothamMedium
+		desc.TextSize = 10
+		desc.TextWrapped = true
+		desc.TextXAlignment = Enum.TextXAlignment.Center
+		desc.TextYAlignment = Enum.TextYAlignment.Top
+		desc.Parent = header
+		themeObject(desc, "TextColor3", "SubText")
 	end
 
 	local flyout = Instance.new("Frame")
-	flyout.Size = UDim2.fromOffset(260, 0)
+	flyout.Size = UDim2.fromOffset(flyoutWidth, 0)
 	flyout.BackgroundTransparency = 0.04
 	flyout.BorderSizePixel = 0
 	flyout.Visible = false
@@ -938,8 +921,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	themeObject(flyoutStroke, "Color", "Stroke")
 
 	local flyoutTitle = Instance.new("TextLabel")
-	flyoutTitle.Size = UDim2.new(1, -52, 0, 40)
-	flyoutTitle.Position = UDim2.fromOffset(12, 0)
+	flyoutTitle.Size = UDim2.new(1, -52, 0, 44)
+	flyoutTitle.Position = UDim2.fromOffset(14, 0)
 	flyoutTitle.BackgroundTransparency = 1
 	flyoutTitle.Text = titleText
 	flyoutTitle.Font = Enum.Font.GothamBlack
@@ -949,8 +932,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	themeObject(flyoutTitle, "TextColor3", "Text")
 
 	local closeFlyout = Instance.new("TextButton")
-	closeFlyout.Size = UDim2.fromOffset(30, 30)
-	closeFlyout.Position = UDim2.new(1, -36, 0, 5)
+	closeFlyout.Size = UDim2.fromOffset(32, 32)
+	closeFlyout.Position = UDim2.new(1, -40, 0, 6)
 	closeFlyout.BorderSizePixel = 0
 	closeFlyout.Text = "X"
 	closeFlyout.Font = Enum.Font.GothamBlack
@@ -962,17 +945,17 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	styleButton(closeFlyout)
 
 	local body = Instance.new("ScrollingFrame")
-	body.Size = UDim2.new(1, -20, 1, -52)
-	body.Position = UDim2.fromOffset(10, 44)
+	body.Size = UDim2.new(1, -22, 1, -56)
+	body.Position = UDim2.fromOffset(11, 48)
 	body.BackgroundTransparency = 1
 	body.BorderSizePixel = 0
-	body.ScrollBarThickness = 4
+	body.ScrollBarThickness = 5
 	body.CanvasSize = UDim2.fromOffset(0, 0)
 	body.Parent = flyout
 	body:SetAttribute("IsDropdownBody", true)
 
 	local bodyLayout = Instance.new("UIListLayout")
-	bodyLayout.Padding = UDim.new(0, 8)
+	bodyLayout.Padding = UDim.new(0, 9)
 	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	bodyLayout.Parent = body
 
@@ -992,11 +975,18 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	end
 
 	local function getTargetHeight()
-		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 62, 120, math.max(220, mainFrame.AbsoluteSize.Y - 74))
+		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 66, 150, math.max(260, mainFrame.AbsoluteSize.Y - 74))
 	end
 
 	local function refreshBody()
-		body.CanvasSize = UDim2.fromOffset(0, bodyLayout.AbsoluteContentSize.Y + 12)
+		body.CanvasSize = UDim2.fromOffset(0, bodyLayout.AbsoluteContentSize.Y + 14)
+	end
+
+	local function repositionFlyout()
+		if open and flyout.Visible then
+			flyout.Position = getTargetPosition()
+			flyout.Size = UDim2.fromOffset(flyoutWidth, getTargetHeight())
+		end
 	end
 
 	local function tweenFlyout(targetSize, targetPosition, targetTransparency, duration)
@@ -1028,7 +1018,7 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 
 		local targetPosition = getTargetPosition()
 		local outTween = tweenFlyout(
-			UDim2.fromOffset(260, 0),
+			UDim2.fromOffset(flyoutWidth, 0),
 			UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset),
 			0.35,
 			0.22
@@ -1052,7 +1042,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 
 		UI.ActiveSideDropdown = {
 			Body = body,
-			Close = closeFlyoutAnimated
+			Close = closeFlyoutAnimated,
+			Reposition = repositionFlyout
 		}
 
 		open = true
@@ -1062,11 +1053,11 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 		local targetHeight = getTargetHeight()
 
 		flyout.Position = UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset)
-		flyout.Size = UDim2.fromOffset(260, 0)
+		flyout.Size = UDim2.fromOffset(flyoutWidth, 0)
 		flyout.BackgroundTransparency = 0.35
 		flyout.Visible = true
 
-		tweenFlyout(UDim2.fromOffset(260, targetHeight), targetPosition, 0.04, 0.28)
+		tweenFlyout(UDim2.fromOffset(flyoutWidth, targetHeight), targetPosition, 0.04, 0.28)
 	end
 
 	header.MouseButton1Click:Connect(function()
@@ -1083,9 +1074,12 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 		refreshBody()
 
 		if open then
-			tweenFlyout(UDim2.fromOffset(260, getTargetHeight()), getTargetPosition(), 0.04, 0.18)
+			tweenFlyout(UDim2.fromOffset(flyoutWidth, getTargetHeight()), getTargetPosition(), 0.04, 0.18)
 		end
 	end)
+
+	mainFrame:GetPropertyChangedSignal("Position"):Connect(repositionFlyout)
+	mainFrame:GetPropertyChangedSignal("Size"):Connect(repositionFlyout)
 
 	updateCanvas()
 	return body
@@ -1560,13 +1554,63 @@ function Teleport.ToLocation(locationName, position)
 	createNotification("Teleport", "Teleported to " .. locationName)
 end
 
+Items.SearchCache = {}
+Items.SearchCacheBusy = false
+Items.LastSearchCacheAt = 0
+Items.SearchCacheCooldown = 3
+
 function Items.GetSearchRoot()
 	return workspace:FindFirstChild(Items.SearchRootName)
 end
 
+function Items.RebuildSearchCache()
+	if Items.SearchCacheBusy then
+		return
+	end
+
+	Items.SearchCacheBusy = true
+
+	task.spawn(function()
+		local root = Items.GetSearchRoot() or workspace
+		local queue = root:GetChildren()
+		local results = {}
+		local scanned = 0
+		local lookup = Items.SearchNameLookup
+
+		while #queue > 0 do
+			local object = table.remove(queue)
+
+			local displayName = object:GetAttribute("ItemName")
+				or object:GetAttribute("DisplayName")
+				or object.Name
+
+			if not lookup or lookup[Utility.NormalizeName(displayName)] then
+				table.insert(results, object)
+			end
+
+			for _, child in ipairs(object:GetChildren()) do
+				table.insert(queue, child)
+			end
+
+			scanned += 1
+
+			if scanned % 45 == 0 then
+				task.wait()
+			end
+		end
+
+		Items.SearchCache = results
+		Items.LastSearchCacheAt = os.clock()
+		Items.SearchCacheBusy = false
+	end)
+end
+
 function Items.GetSearchDescendants()
-	local root = Items.GetSearchRoot()
-	return root and root:GetDescendants() or {}
+	if os.clock() - Items.LastSearchCacheAt > Items.SearchCacheCooldown then
+		Items.RebuildSearchCache()
+	end
+
+	return Items.SearchCache
 end
 
 function Items.FindManualItem(itemName)
@@ -1859,6 +1903,73 @@ local function getCollectibleSearchPool()
 	return getItemSearchDescendants()
 end
 
+local pinnedItemOrder = {
+	"True Power",
+	"Potion of Strength",
+	"Bull's Essence",
+	"Boba",
+	"Speed Potion",
+	"Frog Potion"
+}
+
+local PINNED_COLLECTION_SWITCH_PERCENT = 0.8
+local searchAllItemsUnlocked = false
+
+local function setItemSearchTargets(itemList)
+	Items.SearchNameLookup = {}
+
+	for _, itemName in ipairs(itemList) do
+		Items.SearchNameLookup[normalizeName(itemName)] = true
+	end
+
+	Items.SearchCache = {}
+	Items.LastSearchCacheAt = 0
+	Items.RebuildSearchCache()
+end
+
+local function getPinnedCollectionProgress()
+	local totalPinned = 0
+	local leftPinned = 0
+
+	for _, itemName in ipairs(pinnedItemOrder) do
+		local leftCount = 0
+		local totalCount = 0
+
+		for _, object in ipairs(getCollectibleSearchPool()) do
+			if itemNameMatches(object, itemName) then
+				totalCount += 1
+
+				if getLiveItemPart(object) then
+					leftCount += 1
+				end
+			end
+		end
+
+		totalPinned += totalCount
+		leftPinned += leftCount
+	end
+
+	if totalPinned <= 0 then
+		return 0
+	end
+
+	return (totalPinned - leftPinned) / totalPinned
+end
+
+local function updateItemSearchMode()
+	if searchAllItemsUnlocked then
+		return
+	end
+
+	if getPinnedCollectionProgress() >= PINNED_COLLECTION_SWITCH_PERCENT then
+		searchAllItemsUnlocked = true
+		setItemSearchTargets(itemNames)
+		createNotification("Items", "Most priority items collected. Searching all items now.", "Success")
+	end
+end
+
+setItemSearchTargets(pinnedItemOrder)
+
 local function findLiveItemByName(wantedName)
 	for _, object in ipairs(getCollectibleSearchPool()) do
 		if itemNameMatches(object, wantedName) then
@@ -2016,131 +2127,6 @@ local function runAutoCollect()
 	end
 
 	setMovementPaused(false)
-end
-
-local ItemChecklist = {
-	Visible = false,
-	Rows = {},
-	Thread = nil
-}
-
-ItemChecklist.Frame = Instance.new("Frame")
-ItemChecklist.Frame.Name = "ItemChecklist"
-ItemChecklist.Frame.Size = UDim2.fromOffset(260, 430)
-ItemChecklist.Frame.Position = UDim2.new(1, -280, 0.5, -215)
-ItemChecklist.Frame.BorderSizePixel = 0
-ItemChecklist.Frame.Visible = false
-ItemChecklist.Frame.Parent = gui
-themeObject(ItemChecklist.Frame, "BackgroundColor3", "Panel")
-addCorner(ItemChecklist.Frame, 10)
-addStroke(ItemChecklist.Frame, currentTheme.Stroke, 1)
-
-ItemChecklist.Title = Instance.new("TextLabel")
-ItemChecklist.Title.Size = UDim2.new(1, -20, 0, 34)
-ItemChecklist.Title.Position = UDim2.fromOffset(10, 8)
-ItemChecklist.Title.BackgroundTransparency = 1
-ItemChecklist.Title.Text = "Items 0/0"
-ItemChecklist.Title.Font = Enum.Font.GothamBlack
-ItemChecklist.Title.TextSize = 16
-ItemChecklist.Title.TextXAlignment = Enum.TextXAlignment.Left
-ItemChecklist.Title.Parent = ItemChecklist.Frame
-themeObject(ItemChecklist.Title, "TextColor3", "Text")
-
-ItemChecklist.List = Instance.new("ScrollingFrame")
-ItemChecklist.List.Size = UDim2.new(1, -20, 1, -54)
-ItemChecklist.List.Position = UDim2.fromOffset(10, 44)
-ItemChecklist.List.BackgroundTransparency = 1
-ItemChecklist.List.BorderSizePixel = 0
-ItemChecklist.List.ScrollBarThickness = 4
-ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, 0)
-ItemChecklist.List.Parent = ItemChecklist.Frame
-
-ItemChecklist.Layout = Instance.new("UIListLayout")
-ItemChecklist.Layout.Padding = UDim.new(0, 6)
-ItemChecklist.Layout.SortOrder = Enum.SortOrder.LayoutOrder
-ItemChecklist.Layout.Parent = ItemChecklist.List
-
-function ItemChecklist.GetItemCounts(itemName)
-	local totalCount = 0
-	local leftCount = 0
-
-	for _, object in ipairs(getCollectibleSearchPool()) do
-		if itemNameMatches(object, itemName) then
-			totalCount += 1
-
-			if getLiveItemPart(object) then
-				leftCount += 1
-			end
-		end
-	end
-
-	return leftCount, totalCount
-end
-
-function ItemChecklist.Build()
-	for _, row in pairs(ItemChecklist.Rows) do
-		row:Destroy()
-	end
-
-	ItemChecklist.Rows = {}
-
-	for index, itemName in ipairs(itemNames) do
-		local row = Instance.new("TextLabel")
-		row.Size = UDim2.new(1, -4, 0, 24)
-		row.BackgroundTransparency = 1
-		row.Font = Enum.Font.GothamBold
-		row.TextSize = 12
-		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.LayoutOrder = index
-		row.Parent = ItemChecklist.List
-		themeObject(row, "TextColor3", "Text")
-
-		ItemChecklist.Rows[itemName] = row
-	end
-
-	ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, ItemChecklist.Layout.AbsoluteContentSize.Y + 8)
-end
-
-function ItemChecklist.Refresh()
-	local totalLeft = 0
-	local totalItems = 0
-
-	for _, itemName in ipairs(itemNames) do
-		local row = ItemChecklist.Rows[itemName]
-		local leftCount, totalCount = ItemChecklist.GetItemCounts(itemName)
-
-		totalLeft += leftCount
-		totalItems += totalCount
-
-		if row then
-			row.Text = "[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "] " .. itemName
-			row.TextTransparency = leftCount > 0 and 0 or 0.45
-		end
-	end
-
-	ItemChecklist.Title.Text = "Items " .. tostring(totalLeft) .. "/" .. tostring(totalItems)
-	ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, ItemChecklist.Layout.AbsoluteContentSize.Y + 8)
-end
-
-function ItemChecklist.SetVisible(state)
-	ItemChecklist.Visible = state
-	ItemChecklist.Frame.Visible = state
-
-	if state then
-		ItemChecklist.Build()
-		ItemChecklist.Refresh()
-
-		if not ItemChecklist.Thread then
-			ItemChecklist.Thread = task.spawn(function()
-				while ItemChecklist.Visible do
-					ItemChecklist.Refresh()
-					task.wait(1)
-				end
-
-				ItemChecklist.Thread = nil
-			end)
-		end
-	end
 end
 
 local itemTogglesDropdown = createDropdown(itemsList, "Toggles", updateItemsCanvas)
@@ -2302,13 +2288,121 @@ local function runAutoHeal()
 	end
 end
 
-for index, itemName in ipairs(itemNames) do
-	local itemButton = createSmallButton(itemsDropdown, itemName, function()
+local itemChecklistOrder = {}
+local pinnedLookup = {}
+
+for _, itemName in ipairs(pinnedItemOrder) do
+	pinnedLookup[normalizeName(itemName)] = true
+	table.insert(itemChecklistOrder, itemName)
+end
+
+for _, itemName in ipairs(itemNames) do
+	if not pinnedLookup[normalizeName(itemName)] then
+		table.insert(itemChecklistOrder, itemName)
+	end
+end
+
+local ItemTeleportChecklist = {
+	Rows = {},
+	KnownTotals = {},
+	Open = false
+}
+
+local function getItemCounts(itemName)
+	local totalCount = 0
+	local leftCount = 0
+
+	for _, object in ipairs(getCollectibleSearchPool()) do
+		if itemNameMatches(object, itemName) then
+			totalCount += 1
+
+			if getLiveItemPart(object) then
+				leftCount += 1
+			end
+		end
+	end
+
+	if totalCount > 0 then
+		ItemTeleportChecklist.KnownTotals[itemName] = totalCount
+	end
+
+	return leftCount, ItemTeleportChecklist.KnownTotals[itemName] or totalCount
+end
+
+local function clearItemTeleportChecklist()
+	for _, row in pairs(ItemTeleportChecklist.Rows) do
+		if row and row.Parent then
+			row:Destroy()
+		end
+	end
+
+	ItemTeleportChecklist.Rows = {}
+end
+
+local function createItemChecklistRow(itemName, leftCount, totalCount, layoutOrder)
+	local row = Instance.new("Frame")
+	row.Name = normalizeName(itemName):gsub("%W", "") .. "ChecklistRow"
+	row.Size = UDim2.new(1, -8, 0, 78)
+	row.BackgroundTransparency = 1
+	row.BorderSizePixel = 0
+	row.LayoutOrder = layoutOrder
+	row.Parent = itemsDropdown
+
+	local countText = totalCount > 0 and ("[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "]") or "[checking]"
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -12, 0, 24)
+	title.Position = UDim2.fromOffset(6, 0)
+	title.BackgroundTransparency = 1
+	title.Text = countText .. " " .. itemName
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 13
+	title.TextXAlignment = Enum.TextXAlignment.Center
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.Parent = row
+	themeObject(title, "TextColor3", "Text")
+
+	local teleportButton = Instance.new("TextButton")
+	teleportButton.Size = UDim2.new(1, -12, 0, 42)
+	teleportButton.Position = UDim2.fromOffset(6, 30)
+	teleportButton.Text = "Teleport"
+	teleportButton.Font = Enum.Font.GothamBold
+	teleportButton.TextSize = 13
+	teleportButton.Parent = row
+	themeObject(teleportButton, "BackgroundColor3", "ButtonDark")
+	styleButton(teleportButton)
+
+	teleportButton.MouseButton1Click:Connect(function()
 		teleportToItem(itemName)
 	end)
 
-	itemButton.LayoutOrder = 10 + index
+	ItemTeleportChecklist.Rows[itemName] = row
 end
+
+local function refreshItemTeleportChecklist()
+    updateItemSearchMode()
+	clearItemTeleportChecklist()
+
+	local layoutOrder = 10
+
+	for _, itemName in ipairs(itemChecklistOrder) do
+		local leftCount, totalCount = getItemCounts(itemName)
+
+		if leftCount > 0 then
+			createItemChecklistRow(itemName, leftCount, totalCount, layoutOrder)
+			layoutOrder += 1
+		end
+	end
+end
+
+task.spawn(function()
+	task.wait(0.25)
+
+	while itemsDropdown and itemsDropdown.Parent do
+		refreshItemTeleportChecklist()
+		task.wait(1)
+	end
+end)
 
 local autoUseToggle = createToggleButton(autoUseDropdown, "Auto Use", false, function(state)
 	autoUseEnabled = state
@@ -2354,11 +2448,6 @@ local autoHealToggle = createToggleButton(autoUseDropdown, "Auto Heal", false, f
 end)
 
 autoHealToggle.Button.LayoutOrder = 3
-local checklistToggle = createToggleButton(itemTogglesDropdown, "Show checklist", false, function(state)
-	ItemChecklist.SetVisible(state)
-end)
-
-checklistToggle.Button.LayoutOrder = 4
 
 player.CharacterAdded:Connect(function()
 	task.wait(0.25)
