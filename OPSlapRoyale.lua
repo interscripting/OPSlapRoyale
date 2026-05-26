@@ -116,6 +116,9 @@ local themes = Config.Themes
 local currentTheme = themes["Midnight Arcade"]
 
 local UI = {
+	SideDropdowns = {},
+	DropdownClosers = {},
+	WindowTransparency = 0,
 	ThemedObjects = {},
 	TabButtons = {},
 	Pages = {},
@@ -194,18 +197,16 @@ function UI.StyleButton(button)
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.ClipsDescendants = true
-	UI.AddCorner(button, 8)
+	UI.AddCorner(button, 7)
 
 	local scale = Instance.new("UIScale")
-	scale.Name = "ButtonScale"
 	scale.Scale = 1
 	scale.Parent = button
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Name = "ButtonStroke"
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Thickness = 1
-	stroke.Transparency = 0.25
+	stroke.Transparency = 0.72
 	stroke.Parent = button
 	UI.ThemeObject(stroke, "Color", "Stroke")
 
@@ -223,26 +224,24 @@ function UI.StyleButton(button)
 
 	button.MouseEnter:Connect(function()
 		hovering = true
-		tween(scale, 0.14, { Scale = 1.012 })
-		tween(button, 0.14, { BackgroundTransparency = 0.04 })
-		tween(stroke, 0.14, { Transparency = 0.08 })
+		tween(scale, 0.14, { Scale = 1.01 })
+		tween(stroke, 0.14, { Transparency = 0.35 })
+		tween(button, 0.14, { BackgroundTransparency = 0.03 })
 	end)
 
 	button.MouseLeave:Connect(function()
 		hovering = false
 		tween(scale, 0.16, { Scale = 1 })
+		tween(stroke, 0.16, { Transparency = 0.72 })
 		tween(button, 0.16, { BackgroundTransparency = 0 })
-		tween(stroke, 0.16, { Transparency = 0.25 })
 	end)
 
 	button.MouseButton1Down:Connect(function()
-		tween(scale, 0.08, { Scale = 0.97 })
-		tween(button, 0.08, { BackgroundTransparency = 0.1 })
+		tween(scale, 0.08, { Scale = 0.975 })
 	end)
 
 	button.MouseButton1Up:Connect(function()
-		tween(scale, 0.16, { Scale = hovering and 1.012 or 1 })
-		tween(button, 0.16, { BackgroundTransparency = hovering and 0.04 or 0 })
+		tween(scale, 0.14, { Scale = hovering and 1.01 or 1 })
 	end)
 end
 
@@ -420,10 +419,11 @@ local createPage = UI.CreatePage
 
 local mainPage = createPage("Main")
 local itemsPage = createPage("Items")
-local teleportPage = createPage("Teleport")
+local teleportPage = createPage("Teleports")
 local combatPage = createPage("Combat")
-local miscPage = createPage("Misc")
-local themePage = createPage("Theme")
+local visualsPage = createPage("Visuals")
+local safetyPage = createPage("Safety")
+local settingsPage = createPage("Settings")
 
 function UI.ApplyTheme(themeName)
 	if not themes[themeName] then
@@ -462,10 +462,11 @@ local selectTab = UI.SelectTab
 local tabIcons = {
 	Main = "*",
 	Items = "!",
-	Teleport = "@",
+	Teleports = "@",
 	Combat = ">",
-	Misc = "+",
-	Theme = "#"
+	Visuals = "?",
+	Safety = "+",
+	Settings = "#"
 }
 
 function UI.CreateTab(name)
@@ -497,10 +498,11 @@ end
 
 UI.CreateTab("Main")
 UI.CreateTab("Items")
-UI.CreateTab("Teleport")
+UI.CreateTab("Teleports")
 UI.CreateTab("Combat")
-UI.CreateTab("Misc")
-UI.CreateTab("Theme")
+UI.CreateTab("Visuals")
+UI.CreateTab("Safety")
+UI.CreateTab("Settings")
 
 function UI.CreatePageTitle(parent, text)
 	local box = Instance.new("Frame")
@@ -534,10 +536,11 @@ end
 
 UI.CreatePageTitle(mainPage, "Main")
 UI.CreatePageTitle(itemsPage, "Items")
-UI.CreatePageTitle(teleportPage, "Teleport")
+UI.CreatePageTitle(teleportPage, "Teleports")
 UI.CreatePageTitle(combatPage, "Combat")
-UI.CreatePageTitle(miscPage, "Misc")
-UI.CreatePageTitle(themePage, "Theme")
+UI.CreatePageTitle(visualsPage, "Visuals")
+UI.CreatePageTitle(safetyPage, "Safety")
+UI.CreatePageTitle(settingsPage, "Settings")
 
 function UI.CreatePageList(parent)
 	local list = Instance.new("ScrollingFrame")
@@ -566,40 +569,40 @@ local mainList, updateMainCanvas = UI.CreatePageList(mainPage)
 local itemsList, updateItemsCanvas = UI.CreatePageList(itemsPage)
 local teleportList, updateTeleportCanvas = UI.CreatePageList(teleportPage)
 local combatList, updateCombatCanvas = UI.CreatePageList(combatPage)
-local miscList, updateMiscCanvas = UI.CreatePageList(miscPage)
+local visualsList, updateVisualsCanvas = UI.CreatePageList(visualsPage)
+local safetyList, updateSafetyCanvas = UI.CreatePageList(safetyPage)
+local settingsList, updateSettingsCanvas = UI.CreatePageList(settingsPage)
 
 function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
 	button.Size = UDim2.new(1, -12, 0, 40)
-	button.Text = ""
+	button.Text = text
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 13
+	button.TextXAlignment = Enum.TextXAlignment.Left
 	button.AutoButtonColor = false
 	button.Parent = parent
 	themeObject(button, "BackgroundColor3", "ButtonDark")
 	styleButton(button)
 
-	local rail = Instance.new("Frame")
-	rail.Size = UDim2.new(0, 4, 1, -14)
-	rail.Position = UDim2.fromOffset(10, 7)
-	rail.BorderSizePixel = 0
-	rail.Parent = button
-	themeObject(rail, "BackgroundColor3", "Button")
-	addCorner(rail, 4)
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 14)
+	padding.PaddingRight = UDim.new(0, 14)
+	padding.Parent = button
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -44, 1, 0)
-	label.Position = UDim2.fromOffset(34, 0)
-	label.BackgroundTransparency = 1
-	label.Text = text
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
-	label.TextXAlignment = Enum.TextXAlignment.Center
-	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Parent = button
-	themeObject(label, "TextColor3", "Text")
+	button.MouseButton1Click:Connect(function()
+		callback()
 
-	button.MouseButton1Click:Connect(callback)
+		local closer = UI.DropdownClosers[parent]
+		if closer then
+			closer()
+		end
+
+		if parent:GetAttribute("IsDropdownBody") then
+			UI.CloseActiveSideDropdown()
+		end
+	end)
+
 	return button
 end
 
@@ -614,6 +617,82 @@ function UI.CreateWarningLabel(parent, text)
 	label.TextColor3 = Color3.fromRGB(255, 80, 80)
 	label.Parent = parent
 	return label
+end
+
+function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callback)
+	local value = math.clamp(defaultValue, minValue, maxValue)
+
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -12, 0, 58)
+	holder.BorderSizePixel = 0
+	holder.Parent = parent
+	themeObject(holder, "BackgroundColor3", "ButtonDark")
+	addCorner(holder, 8)
+	addStroke(holder, currentTheme.Stroke, 1)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -24, 0, 24)
+	label.Position = UDim2.fromOffset(12, 4)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = holder
+	themeObject(label, "TextColor3", "Text")
+
+	local bar = Instance.new("TextButton")
+	bar.Size = UDim2.new(1, -28, 0, 8)
+	bar.Position = UDim2.fromOffset(14, 38)
+	bar.Text = ""
+	bar.BorderSizePixel = 0
+	bar.AutoButtonColor = false
+	bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	bar.Parent = holder
+	addCorner(bar, 4)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BorderSizePixel = 0
+	fill.Parent = bar
+	themeObject(fill, "BackgroundColor3", "Button")
+	addCorner(fill, 4)
+
+	local dragging = false
+
+	local function setValueFromX(x)
+		local percent = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+		value = minValue + ((maxValue - minValue) * percent)
+		fill.Size = UDim2.fromScale(percent, 1)
+		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+		callback(value)
+	end
+
+	local function refresh()
+		local percent = (value - minValue) / (maxValue - minValue)
+		fill.Size = UDim2.fromScale(percent, 1)
+		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+		callback(value)
+	end
+
+	bar.MouseButton1Down:Connect(function(x)
+		dragging = true
+		setValueFromX(UserInputService:GetMouseLocation().X)
+	end)
+
+	UserInputService.InputEnded:Connect(function(inputObject)
+		if inputObject.UserInputType == Enum.UserInputType.MouseButton1 then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(inputObject)
+		if dragging and inputObject.UserInputType == Enum.UserInputType.MouseMovement then
+			setValueFromX(inputObject.Position.X)
+		end
+	end)
+
+	refresh()
+	return holder
 end
 
 UI.ToggleDescriptions = {
@@ -845,9 +924,18 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 		end
 	end)
 
-	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 		refreshSize(false)
 	end)
+
+	UI.DropdownClosers[body] = function()
+		if open then
+			open = false
+			body.Visible = false
+			arrow.Text = "v"
+			refreshSize(true)
+		end
+	end
 
 	updateCanvas()
 	return body
@@ -1080,6 +1168,15 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 
 	mainFrame:GetPropertyChangedSignal("Position"):Connect(repositionFlyout)
 	mainFrame:GetPropertyChangedSignal("Size"):Connect(repositionFlyout)
+
+	UI.SideDropdowns[titleText] = {
+		Body = body,
+		Open = openFlyout,
+		Close = closeFlyoutAnimated,
+		IsOpen = function()
+			return open
+		end
+	}
 
 	updateCanvas()
 	return body
@@ -1702,7 +1799,8 @@ local teleportToLocation = Teleport.ToLocation
 local teleportToItem = Items.TeleportTo
 local getItemSearchDescendants = Items.GetSearchDescendants
 
-local getCodeButton = createSmallButton(mainList, "Get Code", function()
+local getCodeButton = createSmallButton(mainList, "Get Code + Go Barn", function()
+	Teleport.ToLocation("Barn", Vector3.new(477, 87, 318))
 	createNotification("Code", "Searching...")
 
 	task.spawn(function()
@@ -1711,19 +1809,31 @@ local getCodeButton = createSmallButton(mainList, "Get Code", function()
 	end)
 end)
 
+local quickTeleportDropdown = createDropdown(mainList, "Quick Teleports", updateMainCanvas)
+
+for _, quickLocation in ipairs({
+	{ Name = "Barn", Position = Vector3.new(477, 87, 318) },
+	{ Name = "Shop", Position = Vector3.new(-575, 13, -481) },
+	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
+	{ Name = "Volcano", Position = Vector3.new(-304, -26, 379) }
+}) do
+	createSmallButton(quickTeleportDropdown, quickLocation.Name, function()
+		Teleport.ToLocation(quickLocation.Name, quickLocation.Position)
+	end)
+end
+
 local teleportDropdown = createSideDropdown(
 	teleportList,
-	"Teleport to location",
+	"Map Locations",
 	updateTeleportCanvas,
 	"Moves you to a selected map location."
 )
-createWarningLabel(teleportDropdown, "DONT SPAM")
 
 local itemsDropdown = createSideDropdown(
 	itemsList,
-	"Teleport to items",
+	"Item Teleports",
 	updateItemsCanvas,
-	"Moves you to a selected item if it is available."
+	"Shows available items and moves you to them."
 )
 
 local itemsWarning = createWarningLabel(itemsDropdown, "DONT SPAM")
@@ -2129,7 +2239,7 @@ local function runAutoCollect()
 	setMovementPaused(false)
 end
 
-local itemTogglesDropdown = createDropdown(itemsList, "Toggles", updateItemsCanvas)
+local itemTogglesDropdown = createDropdown(itemsList, "Auto Items", updateItemsCanvas)
 
 autoCollectToggle = createToggleButton(itemTogglesDropdown, "Auto Collect", false, function(state)
 	autoCollectEnabled = state
@@ -2191,20 +2301,36 @@ end
 local function useTool(tool)
 	local character = player.Character or player.CharacterAdded:Wait()
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
 
 	if not humanoid or not tool or not tool:IsA("Tool") then
 		return false
 	end
 
+	if humanoid.Health <= 0 then
+		return false
+	end
+
 	if tool.Parent == player.Backpack then
 		humanoid:EquipTool(tool)
-		task.wait()
+		task.wait(0.15)
 	end
 
 	if tool.Parent == character then
 		pcall(function()
 			tool:Activate()
 		end)
+
+		task.wait(0.12)
+
+		if root then
+			root.AssemblyAngularVelocity = Vector3.zero
+			root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+		end
+
+		humanoid.PlatformStand = false
+		humanoid.Sit = false
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
 		return true
 	end
@@ -2274,9 +2400,9 @@ local function runAutoUse()
 
 		if tool then
 			useTool(tool)
-			task.wait(0.02)
+			task.wait(0.75)
 		else
-			task.wait(0.04)
+			task.wait(0.25)
 		end
 	end
 end
@@ -2375,10 +2501,9 @@ local function createItemChecklistRow(itemName, leftCount, totalCount, layoutOrd
 	themeObject(teleportButton, "BackgroundColor3", "ButtonDark")
 	styleButton(teleportButton)
 
-	teleportButton.MouseButton1Click:Connect(function()
-		teleportToItem(itemName)
-	end)
-
+		teleportButton.MouseButton1Click:Connect(function()
+	    teleportToItem(itemName)
+    end)
 	ItemTeleportChecklist.Rows[itemName] = row
 end
 
@@ -2615,7 +2740,17 @@ function Combat.TeleportToPlayer(targetPlayer)
 		return
 	end
 
-	root.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 4)
+	local rayOrigin = targetRoot.Position + Vector3.new(0, 8, 4)
+	local rayDirection = Vector3.new(0, -90, 0)
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { character, targetPlayer.Character }
+
+	local result = workspace:Raycast(rayOrigin, rayDirection, params)
+	local targetPosition = result and (result.Position + Vector3.new(0, 4, 0)) or (targetRoot.Position + Vector3.new(0, 4, 4))
+
+	Teleport.MoveRoot(root, CFrame.new(targetPosition))
 	createNotification("Players", "Teleported to " .. targetPlayer.Name)
 end
 
@@ -2708,7 +2843,7 @@ local setupPlayerHitboxRefresh = Combat.SetupPlayerHitboxRefresh
 
 local playersDropdown = createSideDropdown(
 	teleportList,
-	"Teleport to players",
+	"Player Teleports",
 	updateTeleportCanvas,
 	"Moves you to a player based on health or distance."
 )
@@ -2721,7 +2856,59 @@ createSmallButton(playersDropdown, "Teleport To Nearest", function()
 	Combat.TeleportToNearestPlayer()
 end)
 
-local hitboxMenu = createDropdown(combatList, "Hitbox Menu", updateCombatCanvas)
+local quickMenuHotkeysEnabled = false
+
+local function hasAvailableTeleportItems()
+	for _, itemName in ipairs(itemChecklistOrder) do
+		local leftCount = getItemCounts(itemName)
+
+		if leftCount and leftCount > 0 then
+			return true
+		end
+	end
+
+	return false
+end
+
+local function toggleSideDropdown(menuName)
+	local menu = UI.SideDropdowns[menuName]
+
+	if not menu then
+		return
+	end
+
+	if menu.IsOpen and menu.IsOpen() then
+		menu.Close()
+	else
+		UI.CloseActiveSideDropdown()
+		menu.Open()
+	end
+end
+
+createToggleButton(settingsList, "Quick Menu Hotkeys", false, function(state)
+	quickMenuHotkeysEnabled = state
+	createNotification("Hotkeys", state and "Quick menu hotkeys enabled." or "Quick menu hotkeys disabled.")
+end, "Q opens map teleports. G opens item teleports. Q opens player teleports.")
+
+UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
+	if gameProcessed or not quickMenuHotkeysEnabled then
+		return
+	end
+
+	if inputObject.KeyCode == Enum.KeyCode.Q then
+		toggleSideDropdown("Item Locations")
+	elseif inputObject.KeyCode == Enum.KeyCode.R then
+		if hasAvailableTeleportItems() then
+			toggleSideDropdown("Player Teleports")
+		else
+			createNotification("Items", "No item teleports are currently available.")
+		end
+	elseif inputObject.KeyCode == Enum.KeyCode.G then
+	    toggleSideDropdown("Map Teleports")
+    end
+end)
+
+local hitboxMenu = createDropdown(combatList, "Hitbox Controls", updateCombatCanvas)
 
 Combat.HitboxSizeLabel = Instance.new("TextLabel")
 Combat.HitboxSizeLabel.Size = UDim2.new(1, -12, 0, 30)
@@ -2980,7 +3167,7 @@ function ESP.Disable()
 	end
 end
 
-createToggleButton(miscList, "Player Stats ESP", false, function(state)
+createToggleButton(visualsList, "Player Stats ESP", false, function(state)
 	if state then
 		ESP.Enable()
 		createNotification("ESP", "Player Stats ESP enabled.", "Success")
@@ -3044,7 +3231,7 @@ function Anti.EnableAcidLava()
 	)
 end
 
-local antiDropdown = createDropdown(miscList, "Anti", updateMiscCanvas)
+local antiDropdown = createDropdown(safetyList, "World Safety", updateSafetyCanvas)
 
 createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
 	if state then
@@ -3056,40 +3243,21 @@ createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
 	end
 end)
 
-local themeList = Instance.new("ScrollingFrame")
-themeList.Size = UDim2.new(1, -36, 1, -124)
-themeList.Position = UDim2.fromOffset(18, 68)
-themeList.BackgroundTransparency = 1
-themeList.BorderSizePixel = 0
-themeList.ScrollBarThickness = 4
-themeList.CanvasSize = UDim2.fromOffset(0, 0)
-themeList.Parent = themePage
-
-local themeLayout = Instance.new("UIListLayout")
-themeLayout.Padding = UDim.new(0, 10)
-themeLayout.SortOrder = Enum.SortOrder.LayoutOrder
-themeLayout.Parent = themeList
+local themeDropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
 for themeName in pairs(themes) do
-	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -6, 0, 40)
-	button.Text = themeName
-	button.Font = Enum.Font.GothamBold
-	button.TextSize = 14
-	button.Parent = themeList
-	themeObject(button, "BackgroundColor3", "ButtonDark")
-    button.BorderSizePixel = 0
-    button.AutoButtonColor = false
-    button.ClipsDescendants = true
-    addCorner(button, 8)
-    themeObject(button, "TextColor3", "Text")
-
-	button.MouseButton1Click:Connect(function()
+	createSmallButton(themeDropdown, themeName, function()
 		applyTheme(themeName)
 	end)
 end
 
-themeList.CanvasSize = UDim2.fromOffset(0, themeLayout.AbsoluteContentSize.Y + 10)
+UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, 0, function(value)
+	UI.WindowTransparency = value
+
+	mainFrame.BackgroundTransparency = value
+	tabScroll.BackgroundTransparency = value
+	contentFrame.BackgroundTransparency = value
+end)
 
 Players.PlayerAdded:Connect(Combat.SetupPlayerHitboxRefresh)
 
@@ -3229,4 +3397,6 @@ updateMainCanvas()
 updateItemsCanvas()
 updateTeleportCanvas()
 updateCombatCanvas()
-updateMiscCanvas()
+updateVisualsCanvas()
+updateSafetyCanvas()
+updateSettingsCanvas()
