@@ -386,6 +386,7 @@ end
 local createPage = UI.CreatePage
 
 local mainPage = createPage("Main")
+local itemsPage = createPage("Items")
 local combatPage = createPage("Combat")
 local miscPage = createPage("Misc")
 local themePage = createPage("Theme")
@@ -426,6 +427,7 @@ local selectTab = UI.SelectTab
 
 local tabIcons = {
 	Main = "*",
+	Items = "!",
 	Combat = ">",
 	Misc = "+",
 	Theme = "#"
@@ -455,6 +457,7 @@ function UI.CreateTab(name)
 end
 
 UI.CreateTab("Main")
+UI.CreateTab("Items")
 UI.CreateTab("Combat")
 UI.CreateTab("Misc")
 UI.CreateTab("Theme")
@@ -490,6 +493,7 @@ function UI.CreatePageTitle(parent, text)
 end
 
 UI.CreatePageTitle(mainPage, "Main")
+UI.CreatePageTitle(itemsPage, "Items")
 UI.CreatePageTitle(combatPage, "Combat")
 UI.CreatePageTitle(miscPage, "Misc")
 UI.CreatePageTitle(themePage, "Theme")
@@ -518,6 +522,7 @@ function UI.CreatePageList(parent)
 end
 
 local mainList, updateMainCanvas = UI.CreatePageList(mainPage)
+local itemsList, updateItemsCanvas = UI.CreatePageList(itemsPage)
 local combatList, updateCombatCanvas = UI.CreatePageList(combatPage)
 local miscList, updateMiscCanvas = UI.CreatePageList(miscPage)
 
@@ -547,11 +552,23 @@ function UI.CreateWarningLabel(parent, text)
 	return label
 end
 
-function UI.CreateToggleButton(parent, text, defaultState, callback)
+UI.ToggleDescriptions = {
+	["Auto Collect"] = "Collects available items in priority order.",
+	["Auto Use"] = "Uses buff items from your inventory automatically.",
+	["Auto Heal"] = "Uses healing items when your health is low.",
+	["Show checklist"] = "Shows the item checklist on the right side of the screen.",
+	["Expand Hitbox"] = "Applies the selected hitbox size to other players.",
+	["Visualise Hitboxes"] = "Shows or hides the hitbox visuals.",
+	["Player Stats ESP"] = "Shows player stats above each player.",
+	["Anti Acid & Lava"] = "Creates invisible safety platforms over danger zones."
+}
+
+function UI.CreateToggleButton(parent, text, defaultState, callback, descriptionText)
 	local state = defaultState == true
+	local description = descriptionText or UI.ToggleDescriptions[text] or ""
 
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -12, 0, 40)
+	button.Size = UDim2.new(1, -12, 0, description ~= "" and 58 or 40)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 13
@@ -567,8 +584,8 @@ function UI.CreateToggleButton(parent, text, defaultState, callback)
 	styleButton(button)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -70, 1, 0)
-	label.Position = UDim2.fromOffset(12, 0)
+	label.Size = UDim2.new(1, -70, 0, description ~= "" and 24 or 40)
+	label.Position = UDim2.fromOffset(12, description ~= "" and 5 or 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
@@ -577,9 +594,24 @@ function UI.CreateToggleButton(parent, text, defaultState, callback)
 	label.Parent = button
 	themeObject(label, "TextColor3", "Text")
 
+	if description ~= "" then
+		local descriptionLabel = Instance.new("TextLabel")
+		descriptionLabel.Size = UDim2.new(1, -76, 0, 24)
+		descriptionLabel.Position = UDim2.fromOffset(12, 28)
+		descriptionLabel.BackgroundTransparency = 1
+		descriptionLabel.Text = description
+		descriptionLabel.Font = Enum.Font.GothamMedium
+		descriptionLabel.TextSize = 10
+		descriptionLabel.TextWrapped = true
+		descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
+		descriptionLabel.Parent = button
+		themeObject(descriptionLabel, "TextColor3", "SubText")
+	end
+
 	local switch = Instance.new("Frame")
 	switch.Size = UDim2.fromOffset(42, 22)
-	switch.Position = UDim2.new(1, -52, 0.5, -11)
+	switch.Position = UDim2.new(1, -52, 0, description ~= "" and 10 or 9)
 	switch.BorderSizePixel = 0
 	switch.Parent = button
 	addCorner(switch, 11)
@@ -1324,12 +1356,14 @@ local getCodeButton = createSmallButton(mainList, "Get Code", function()
 	end)
 end)
 
-local itemsDropdown = createDropdown(mainList, "Items", updateMainCanvas)
-local itemsWarning = createWarningLabel(itemsDropdown, "DONT SPAM")
-itemsWarning.LayoutOrder = 0
-
 local teleportDropdown = createDropdown(mainList, "Teleport", updateMainCanvas)
 createWarningLabel(teleportDropdown, "DONT SPAM")
+
+local itemsDropdown = createDropdown(itemsList, "Teleport to items", updateItemsCanvas)
+itemsDropdown.Parent.Parent.LayoutOrder = 10
+
+local itemsWarning = createWarningLabel(itemsDropdown, "DONT SPAM")
+itemsWarning.LayoutOrder = 0
 
 for _, location in ipairs(Teleport.Locations) do
 	createSmallButton(teleportDropdown, location.Name, function()
@@ -1664,7 +1698,138 @@ local function runAutoCollect()
 	setMovementPaused(false)
 end
 
-autoCollectToggle = createToggleButton(itemsDropdown, "Auto Collect", false, function(state)
+local ItemChecklist = {
+	Visible = false,
+	Rows = {},
+	Thread = nil
+}
+
+ItemChecklist.Frame = Instance.new("Frame")
+ItemChecklist.Frame.Name = "ItemChecklist"
+ItemChecklist.Frame.Size = UDim2.fromOffset(260, 430)
+ItemChecklist.Frame.Position = UDim2.new(1, -280, 0.5, -215)
+ItemChecklist.Frame.BorderSizePixel = 0
+ItemChecklist.Frame.Visible = false
+ItemChecklist.Frame.Parent = gui
+themeObject(ItemChecklist.Frame, "BackgroundColor3", "Panel")
+addCorner(ItemChecklist.Frame, 10)
+addStroke(ItemChecklist.Frame, currentTheme.Stroke, 1)
+
+ItemChecklist.Title = Instance.new("TextLabel")
+ItemChecklist.Title.Size = UDim2.new(1, -20, 0, 34)
+ItemChecklist.Title.Position = UDim2.fromOffset(10, 8)
+ItemChecklist.Title.BackgroundTransparency = 1
+ItemChecklist.Title.Text = "Items 0/0"
+ItemChecklist.Title.Font = Enum.Font.GothamBlack
+ItemChecklist.Title.TextSize = 16
+ItemChecklist.Title.TextXAlignment = Enum.TextXAlignment.Left
+ItemChecklist.Title.Parent = ItemChecklist.Frame
+themeObject(ItemChecklist.Title, "TextColor3", "Text")
+
+ItemChecklist.List = Instance.new("ScrollingFrame")
+ItemChecklist.List.Size = UDim2.new(1, -20, 1, -54)
+ItemChecklist.List.Position = UDim2.fromOffset(10, 44)
+ItemChecklist.List.BackgroundTransparency = 1
+ItemChecklist.List.BorderSizePixel = 0
+ItemChecklist.List.ScrollBarThickness = 4
+ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, 0)
+ItemChecklist.List.Parent = ItemChecklist.Frame
+
+ItemChecklist.Layout = Instance.new("UIListLayout")
+ItemChecklist.Layout.Padding = UDim.new(0, 6)
+ItemChecklist.Layout.SortOrder = Enum.SortOrder.LayoutOrder
+ItemChecklist.Layout.Parent = ItemChecklist.List
+
+function ItemChecklist.GetItemCounts(itemName)
+	local totalCount = 0
+	local leftCount = 0
+
+	for _, object in ipairs(getCollectibleSearchPool()) do
+		if itemNameMatches(object, itemName) then
+			totalCount += 1
+
+			if getLiveItemPart(object) then
+				leftCount += 1
+			end
+		end
+	end
+
+	return leftCount, totalCount
+end
+
+function ItemChecklist.Build()
+	for _, row in pairs(ItemChecklist.Rows) do
+		row:Destroy()
+	end
+
+	ItemChecklist.Rows = {}
+
+	for index, itemName in ipairs(itemNames) do
+		local row = Instance.new("TextLabel")
+		row.Size = UDim2.new(1, -4, 0, 24)
+		row.BackgroundTransparency = 1
+		row.Font = Enum.Font.GothamBold
+		row.TextSize = 12
+		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.LayoutOrder = index
+		row.Parent = ItemChecklist.List
+		themeObject(row, "TextColor3", "Text")
+
+		ItemChecklist.Rows[itemName] = row
+	end
+
+	ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, ItemChecklist.Layout.AbsoluteContentSize.Y + 8)
+end
+
+function ItemChecklist.Refresh()
+	local totalLeft = 0
+	local totalItems = 0
+
+	for _, itemName in ipairs(itemNames) do
+		local row = ItemChecklist.Rows[itemName]
+		local leftCount, totalCount = ItemChecklist.GetItemCounts(itemName)
+
+		totalLeft += leftCount
+		totalItems += totalCount
+
+		if row then
+			row.Text = "[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "] " .. itemName
+			row.TextTransparency = leftCount > 0 and 0 or 0.45
+		end
+	end
+
+	ItemChecklist.Title.Text = "Items " .. tostring(totalLeft) .. "/" .. tostring(totalItems)
+	ItemChecklist.List.CanvasSize = UDim2.fromOffset(0, ItemChecklist.Layout.AbsoluteContentSize.Y + 8)
+end
+
+function ItemChecklist.SetVisible(state)
+	ItemChecklist.Visible = state
+	ItemChecklist.Frame.Visible = state
+
+	if state then
+		ItemChecklist.Build()
+		ItemChecklist.Refresh()
+
+		if not ItemChecklist.Thread then
+			ItemChecklist.Thread = task.spawn(function()
+				while ItemChecklist.Visible do
+					ItemChecklist.Refresh()
+					task.wait(1)
+				end
+
+				ItemChecklist.Thread = nil
+			end)
+		end
+	end
+end
+
+local checklistToggle = createToggleButton(itemsList, "Show checklist", false, function(state)
+	ItemChecklist.SetVisible(state)
+end)
+
+checklistToggle.Button.LayoutOrder = 4
+
+autoCollectToggle = createToggleButton(itemsList, "Auto Collect", false, function(state)
 	autoCollectEnabled = state
 
 	if autoCollectEnabled then
@@ -1686,7 +1851,7 @@ autoCollectToggle = createToggleButton(itemsDropdown, "Auto Collect", false, fun
 	end
 end)
 autoCollectToggle.Button.LayoutOrder = 1
-local autoUseDropdown = itemsDropdown
+local autoUseDropdown = itemsList
 
 local autoUseEnabled = false
 local autoUseThread = nil
@@ -2636,6 +2801,7 @@ selectTab("Main")
 applyTheme("Midnight Arcade")
 
 tabScroll.CanvasSize = UDim2.fromOffset(0, tabLayout.AbsoluteContentSize.Y + 20)
+updateItemsCanvas()
 updateMainCanvas()
 updateCombatCanvas()
 updateMiscCanvas()
