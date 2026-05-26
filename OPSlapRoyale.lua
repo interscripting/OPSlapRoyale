@@ -594,8 +594,10 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	label.Parent = button
 	themeObject(label, "TextColor3", "Text")
 
+	local descriptionLabel = nil
+
 	if description ~= "" then
-		local descriptionLabel = Instance.new("TextLabel")
+		descriptionLabel = Instance.new("TextLabel")
 		descriptionLabel.Size = UDim2.new(1, -76, 0, 24)
 		descriptionLabel.Position = UDim2.fromOffset(12, 28)
 		descriptionLabel.BackgroundTransparency = 1
@@ -631,6 +633,12 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 		button.BackgroundColor3 = state and currentTheme.Button or currentTheme.ButtonDark
 		switch.BackgroundColor3 = state and currentTheme.Button or Color3.fromRGB(35, 35, 35)
 
+		label.TextColor3 = state and Color3.fromRGB(8, 12, 18) or currentTheme.Text
+
+		if descriptionLabel then
+			descriptionLabel.TextColor3 = state and Color3.fromRGB(18, 28, 36) or currentTheme.SubText
+		end
+
 		TweenService:Create(
 			knob,
 			TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
@@ -651,13 +659,13 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	return {
 		Button = button,
 		Label = label,
+		Description = descriptionLabel,
 		Set = setState,
 		Get = function()
 			return state
 		end
 	}
 end
-
 function UI.CreateDropdown(list, titleText, updateCanvas)
 	local wrapper = Instance.new("Frame")
 	wrapper.Size = UDim2.new(1, -6, 0, 47)
