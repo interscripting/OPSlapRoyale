@@ -2885,27 +2885,27 @@ local function toggleSideDropdown(menuName)
 	end
 end
 
-createToggleButton(settingsList, "Quick Menu Hotkeys", false, function(state)
+local quickMenuHotkeysToggle = createToggleButton(settingsList, "Quick Menu Hotkeys", false, function(state)
 	quickMenuHotkeysEnabled = state
 	createNotification("Hotkeys", state and "Quick menu hotkeys enabled." or "Quick menu hotkeys disabled.")
-end, "Q opens map teleports. G opens item teleports. Q opens player teleports.")
+end, "R opens item teleports. Q opens player teleports. G opens map teleports.")
 
 UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
 	if gameProcessed or not quickMenuHotkeysEnabled then
 		return
 	end
 
-	if inputObject.KeyCode == Enum.KeyCode.Q then
-		toggleSideDropdown("Item Locations")
-	elseif inputObject.KeyCode == Enum.KeyCode.R then
+	if inputObject.KeyCode == Enum.KeyCode.R then
 		if hasAvailableTeleportItems() then
-			toggleSideDropdown("Player Teleports")
+			toggleSideDropdown("Item Teleports")
 		else
 			createNotification("Items", "No item teleports are currently available.")
 		end
+	elseif inputObject.KeyCode == Enum.KeyCode.Q then
+		toggleSideDropdown("Player Teleports")
 	elseif inputObject.KeyCode == Enum.KeyCode.G then
-	    toggleSideDropdown("Map Teleports")
-    end
+		toggleSideDropdown("Map Locations")
+	end
 end)
 
 local hitboxMenu = createDropdown(combatList, "Hitbox Controls", updateCombatCanvas)
@@ -2929,7 +2929,7 @@ end)
 
 Combat.SetHitboxSize(Combat.HitboxSize)
 
-createToggleButton(hitboxMenu, "Expand Hitbox", false, function(state)
+local expandHitboxToggle = createToggleButton(hitboxMenu, "Expand Hitbox", false, function(state)
 	Combat.HitboxExpanded = state
 	hitboxExpanded = state
 	Combat.RefreshHitboxes()
@@ -3167,7 +3167,7 @@ function ESP.Disable()
 	end
 end
 
-createToggleButton(visualsList, "Player Stats ESP", false, function(state)
+local playerEspToggle = createToggleButton(visualsList, "Player Stats ESP", false, function(state)
 	if state then
 		ESP.Enable()
 		createNotification("ESP", "Player Stats ESP enabled.", "Success")
@@ -3233,7 +3233,7 @@ end
 
 local antiDropdown = createDropdown(safetyList, "World Safety", updateSafetyCanvas)
 
-createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
+local antiAcidLavaToggle = createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
 	if state then
 		Anti.EnableAcidLava()
 		createNotification("Anti", "Anti Acid & Lava enabled.", "Success")
@@ -3242,6 +3242,37 @@ createToggleButton(antiDropdown, "Anti Acid & Lava", false, function(state)
 		createNotification("Anti", "Anti Acid & Lava disabled.")
 	end
 end)
+
+local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommended settings?", false, function(state)	if autoUseToggle then
+		autoUseToggle.Set(state, true)
+	end
+
+	if autoHealToggle then
+		autoHealToggle.Set(state, true)
+	end
+
+	if playerEspToggle then
+		playerEspToggle.Set(state, true)
+	end
+
+	if expandHitboxToggle then
+		expandHitboxToggle.Set(state, true)
+	end
+
+	if quickMenuHotkeysToggle then
+		quickMenuHotkeysToggle.Set(state, true)
+	end
+
+	if antiAcidLavaToggle then
+		antiAcidLavaToggle.Set(state, true)
+	end
+
+	createNotification(
+		"Recommended Settings",
+		state and "Recommended settings enabled." or "Recommended settings disabled.",
+		state and "Success" or "Info"
+	)
+end, "Turns on auto use, auto heal, ESP, hitbox, teleport hotkeys, and anti acid/lava.")
 
 local themeDropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
