@@ -630,13 +630,13 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	local function setState(newState, runCallback)
 		state = newState
 
-		button.BackgroundColor3 = state and currentTheme.Button or currentTheme.ButtonDark
+		button.BackgroundColor3 = currentTheme.ButtonDark
 		switch.BackgroundColor3 = state and currentTheme.Button or Color3.fromRGB(35, 35, 35)
 
-		label.TextColor3 = state and Color3.fromRGB(8, 12, 18) or currentTheme.Text
+		label.TextColor3 = currentTheme.Text
 
 		if descriptionLabel then
-			descriptionLabel.TextColor3 = state and Color3.fromRGB(18, 28, 36) or currentTheme.SubText
+			descriptionLabel.TextColor3 = currentTheme.SubText
 		end
 
 		TweenService:Create(
