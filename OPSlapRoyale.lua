@@ -2309,12 +2309,12 @@ local ItemTeleportChecklist = {
 }
 
 local function getItemCounts(itemName)
-	local totalCount = 0
 	local leftCount = 0
+	local currentTotal = 0
 
 	for _, object in ipairs(getCollectibleSearchPool()) do
 		if itemNameMatches(object, itemName) then
-			totalCount += 1
+			currentTotal += 1
 
 			if getLiveItemPart(object) then
 				leftCount += 1
@@ -2322,11 +2322,14 @@ local function getItemCounts(itemName)
 		end
 	end
 
-	if totalCount > 0 then
-		ItemTeleportChecklist.KnownTotals[itemName] = totalCount
+	local knownTotal = ItemTeleportChecklist.KnownTotals[itemName]
+
+	if not knownTotal or currentTotal > knownTotal then
+		knownTotal = currentTotal
+		ItemTeleportChecklist.KnownTotals[itemName] = knownTotal
 	end
 
-	return leftCount, ItemTeleportChecklist.KnownTotals[itemName] or totalCount
+	return leftCount, knownTotal or currentTotal
 end
 
 local function clearItemTeleportChecklist()
