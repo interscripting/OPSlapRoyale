@@ -924,7 +924,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 		end
 	end)
 
-		bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+			bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
 		refreshSize(false)
 	end)
 
@@ -1617,13 +1617,31 @@ function Teleport.MoveRoot(root, targetCFrame)
 	root.AssemblyAngularVelocity = Vector3.zero
 end
 
+function Teleport.GetGroundCFrame(position, excludeInstances)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = excludeInstances or {}
+
+	local rayOrigin = position + Vector3.new(0, 4, 0)
+	local rayDirection = Vector3.new(0, -80, 0)
+	local result = workspace:Raycast(rayOrigin, rayDirection, params)
+
+	if result then
+		return CFrame.new(result.Position + Vector3.new(0, 4, 0))
+	end
+
+	return CFrame.new(position + Vector3.new(0, 4, 0))
+end
+
 function Teleport.CreateMarker(position)
 	local markerPart = Instance.new("Part")
-	markerPart.Name = "Part"
+	markerPart.Name = "TeleportMarker"
 	markerPart.Size = Vector3.new(5, 1, 5)
 	markerPart.Anchored = true
 	markerPart.CanCollide = false
-	markerPart.Transparency = 0.25
+	markerPart.CanTouch = false
+	markerPart.CanQuery = false
+	markerPart.Transparency = 1
 	markerPart.Color = Color3.fromRGB(0, 170, 255)
 	markerPart.Material = Enum.Material.SmoothPlastic
 	markerPart.Position = position
@@ -1644,8 +1662,10 @@ function Teleport.ToLocation(locationName, position)
 		return
 	end
 
-	Teleport.CreateMarker(position)
-	Teleport.MoveRoot(root, CFrame.new(position + Vector3.new(0, 5, 0)))
+	local groundCFrame = Teleport.GetGroundCFrame(position, { character })
+
+	Teleport.CreateMarker(groundCFrame.Position - Vector3.new(0, 4, 0))
+	Teleport.MoveRoot(root, groundCFrame)
 	Teleport.AddStrike()
 	Teleport.StartFBlock()
 	createNotification("Teleport", "Teleported to " .. locationName)
@@ -1766,7 +1786,9 @@ function Items.TeleportTo(itemName)
 		return
 	end
 
-	Teleport.MoveRoot(root, itemPart.CFrame + Vector3.new(0, 4, 0))
+	local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject })
+
+	Teleport.MoveRoot(root, groundCFrame)
 	Teleport.AddStrike()
 	Teleport.StartFBlock()
 	createNotification("Items", "Teleported to " .. itemName)
@@ -1907,6 +1929,10 @@ local autoCollectPriority = {
 }
 
 local function matchesItem(toolName, itemList)
+	if not toolName or not itemList then
+		return false
+	end
+
 	local normalized = normalizeName(toolName)
 
 	for _, itemName in ipairs(itemList) do
@@ -2220,7 +2246,9 @@ local function runAutoCollect()
 
 		if root then
 			markVisitedCollectPosition(itemPosition)
-			teleportRootSafely(root, itemPart.CFrame + Vector3.new(0, 4, 0))
+			local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject })
+
+			teleportRootSafely(root, groundCFrame)
 			addTeleportStrike()
 			startFBlockAfterTeleport()
 			recordAutoCollectTeleport()
@@ -2279,24 +2307,19 @@ local autoUseItems = {
 	"Frog Potion"
 }
 
+local AutoUse = {
+	UseDelay = 0.45,
+	ScanDelay = 0.15,
+	PerItemCooldown = 1.2,
+	LastUsed = {}
+}
+
 local healingItems = {
 	"Healing Potion",
 	"Bandage",
 	"First Aid Kit",
 	"Apple"
 }
-
-local function matchesItem(toolName, itemList)
-	local normalized = normalizeName(toolName)
-
-	for _, itemName in ipairs(itemList) do
-		if normalized == normalizeName(itemName) then
-			return true
-		end
-	end
-
-	return false
-end
 
 local function useTool(tool)
 	local character = player.Character or player.CharacterAdded:Wait()
@@ -2313,19 +2336,28 @@ local function useTool(tool)
 
 	if tool.Parent == player.Backpack then
 		humanoid:EquipTool(tool)
-		task.wait(0.15)
+		task.wait(0.12)
 	end
 
 	if tool.Parent == character then
+		local wasAnchored = root and root.Anchored or false
+
+		if root then
+			root.AssemblyAngularVelocity = Vector3.zero
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.Anchored = true
+		end
+
 		pcall(function()
 			tool:Activate()
 		end)
 
-		task.wait(0.12)
+		task.wait(0.08)
 
 		if root then
+			root.Anchored = wasAnchored
 			root.AssemblyAngularVelocity = Vector3.zero
-			root.AssemblyLinearVelocity = Vector3.new(0, root.AssemblyLinearVelocity.Y, 0)
+			root.AssemblyLinearVelocity = Vector3.zero
 		end
 
 		humanoid.PlatformStand = false
@@ -2400,7 +2432,7 @@ local function runAutoUse()
 
 		if tool then
 			useTool(tool)
-			task.wait(0.75)
+			task.wait(0.5)
 		else
 			task.wait(0.25)
 		end
@@ -2502,8 +2534,9 @@ local function createItemChecklistRow(itemName, leftCount, totalCount, layoutOrd
 	styleButton(teleportButton)
 
 		teleportButton.MouseButton1Click:Connect(function()
-	    teleportToItem(itemName)
-    end)
+		teleportToItem(itemName)
+	end)
+
 	ItemTeleportChecklist.Rows[itemName] = row
 end
 
@@ -3243,10 +3276,7 @@ local antiAcidLavaToggle = createToggleButton(antiDropdown, "Anti Acid & Lava", 
 	end
 end)
 
-local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommended settings?", false, function(state)	if autoUseToggle then
-		autoUseToggle.Set(state, true)
-	end
-
+local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommended settings?", false, function(state)
 	if autoHealToggle then
 		autoHealToggle.Set(state, true)
 	end
@@ -3272,7 +3302,7 @@ local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommend
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on auto use, auto heal, ESP, hitbox, teleport hotkeys, and anti acid/lava.")
+end, "Turns on auto heal, ESP, hitbox, teleport hotkeys, and anti acid/lava.")
 
 local themeDropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
