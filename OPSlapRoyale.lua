@@ -1634,19 +1634,7 @@ function Teleport.GetGroundCFrame(position, excludeInstances)
 end
 
 function Teleport.CreateMarker(position)
-	local markerPart = Instance.new("Part")
-	markerPart.Name = "TeleportMarker"
-	markerPart.Size = Vector3.new(5, 1, 5)
-	markerPart.Anchored = true
-	markerPart.CanCollide = false
-	markerPart.CanTouch = false
-	markerPart.CanQuery = false
-	markerPart.Transparency = 1
-	markerPart.Color = Color3.fromRGB(0, 170, 255)
-	markerPart.Material = Enum.Material.SmoothPlastic
-	markerPart.Position = position
-	markerPart.Parent = workspace
-	return markerPart
+	return nil
 end
 
 function Teleport.ToLocation(locationName, position)
@@ -1663,8 +1651,10 @@ function Teleport.ToLocation(locationName, position)
 	end
 
 	local groundCFrame = Teleport.GetGroundCFrame(position, { character })
+	local distance = (root.Position - groundCFrame.Position).Magnitude
 
-	Teleport.CreateMarker(groundCFrame.Position - Vector3.new(0, 4, 0))
+	print("[TELEPORT DEBUG]", locationName, "distance:", math.floor(distance), "target:", groundCFrame.Position)
+
 	Teleport.MoveRoot(root, groundCFrame)
 	Teleport.AddStrike()
 	Teleport.StartFBlock()
@@ -3277,10 +3267,6 @@ local antiAcidLavaToggle = createToggleButton(antiDropdown, "Anti Acid & Lava", 
 end)
 
 local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommended settings?", false, function(state)
-	if autoHealToggle then
-		autoHealToggle.Set(state, true)
-	end
-
 	if playerEspToggle then
 		playerEspToggle.Set(state, true)
 	end
@@ -3302,7 +3288,7 @@ local recommendedSettingsToggle = createToggleButton(mainList, "Toggle recommend
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on auto heal, ESP, hitbox, teleport hotkeys, and anti acid/lava.")
+end, "Turns on ESP, hitbox, teleport hotkeys, and anti acid/lava.")
 
 local themeDropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
