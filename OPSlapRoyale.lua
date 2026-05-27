@@ -1721,8 +1721,23 @@ function Items.GetSearchDescendants()
 end
 
 function Items.FindManualItem(itemName)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return nil, nil
+	end
+
+	local closestObject = nil
+	local closestPart = nil
+	local closestDistance = math.huge
+
 	for _, object in ipairs(Items.GetSearchDescendants()) do
-		if Utility.NormalizeName(object.Name) == Utility.NormalizeName(itemName) then
+		local displayName = object:GetAttribute("ItemName")
+			or object:GetAttribute("DisplayName")
+			or object.Name
+
+		if Utility.NormalizeName(displayName) == Utility.NormalizeName(itemName) then
 			local itemCFrame = Utility.GetObjectCFrame(object)
 
 			if itemCFrame then
@@ -1736,13 +1751,19 @@ function Items.FindManualItem(itemName)
 					and part.Size.Y > 0
 					and part.Size.Z > 0
 				then
-					return object, part
+					local distance = (root.Position - part.Position).Magnitude
+
+					if distance < closestDistance then
+						closestDistance = distance
+						closestObject = object
+						closestPart = part
+					end
 				end
 			end
 		end
 	end
 
-	return nil, nil
+	return closestObject, closestPart
 end
 
 function Items.TeleportTo(itemName)
@@ -2097,26 +2118,70 @@ end
 setItemSearchTargets(pinnedItemOrder)
 
 local function findLiveItemByName(wantedName)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return nil, nil, nil, nil, nil
+	end
+
+	local closestObject = nil
+	local closestPart = nil
+	local closestDistance = math.huge
+
 	for _, object in ipairs(getCollectibleSearchPool()) do
 		if itemNameMatches(object, wantedName) then
 			local part = getLiveItemPart(object)
 
 			if part and not isVisitedCollectPosition(part.Position) then
-				return wantedName, part.CFrame, part.Position, object, part
+				local distance = (root.Position - part.Position).Magnitude
+
+				if distance < closestDistance then
+					closestDistance = distance
+					closestObject = object
+					closestPart = part
+				end
 			end
 		end
+	end
+
+	if closestObject and closestPart then
+		return wantedName, closestPart.CFrame, closestPart.Position, closestObject, closestPart
 	end
 
 	return nil, nil, nil, nil, nil
 end
 
 local function findNextCollectTarget()
-	for _, wantedName in ipairs(autoCollectPriority) do
-		local itemName, itemCFrame, itemPosition, itemObject, itemPart = findLiveItemByName(wantedName)
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
 
-		if itemName and itemCFrame and itemPosition and itemObject and itemPart then
-			return itemName, itemCFrame, itemPosition, itemObject, itemPart
+	if not root then
+		return nil, nil, nil, nil, nil
+	end
+
+	local closestName = nil
+	local closestPart = nil
+	local closestObject = nil
+	local closestDistance = math.huge
+
+	for _, wantedName in ipairs(autoCollectPriority) do
+		local itemName, _, _, itemObject, itemPart = findLiveItemByName(wantedName)
+
+		if itemName and itemObject and itemPart then
+			local distance = (root.Position - itemPart.Position).Magnitude
+
+			if distance < closestDistance then
+				closestDistance = distance
+				closestName = itemName
+				closestObject = itemObject
+				closestPart = itemPart
+			end
 		end
+	end
+
+	if closestName and closestObject and closestPart then
+		return closestName, closestPart.CFrame, closestPart.Position, closestObject, closestPart
 	end
 
 	return nil, nil, nil, nil, nil
