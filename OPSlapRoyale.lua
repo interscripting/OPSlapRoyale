@@ -67,7 +67,7 @@ Config.Themes = {
 }
 
 local themes = Config.Themes
-local currentTheme = themes["Midnight Arcade"]
+local currentTheme = themes["Royal Pulse"]
 
 local UI = {
 	SideDropdowns = {},
@@ -89,7 +89,8 @@ local Notify = {
 	BottomOffset = 104,
 	RightOffset = 22,
 	LifeTime = 4.2,
-	MaxVisible = 5
+	MaxVisible = 5,
+	Muted = false
 }
 
 Notify.Presets = {
@@ -209,8 +210,8 @@ UI.Icons = {
 	["Player Teleports"] = "👤",
 	["Auto Items"] = "🤖",
 	["Auto Collect"] = "🧲",
-	["Auto Use"] = "🧪",
 	["Auto Heal"] = "❤️",
+	["Sort Inventory"] = "🎒",
 	["Hitbox Controls"] = "🎯",
 	["Expand Hitbox"] = "📦",
 	["Visualise Hitboxes"] = "✨",
@@ -221,6 +222,17 @@ UI.Icons = {
 	["Window Transparency"] = "🪟",
 	["Quick Menu Hotkeys"] = "⌨️",
 	["Toggle recommended settings?"] = "⭐",
+	["Menu Controls"] = "🧰",
+	["Reset Window Position"] = "🎯",
+	["Close Dropdowns"] = "📁",
+	["Minimize Menu"] = "🔮",
+	["Mute Notifications"] = "🔕",
+	["Custom Keybinds"] = "🎛️",
+	["Set Menu Keybind"] = "🕹️",
+	["Theme Creator"] = "🌈",
+	["Accent Red"] = "🔴",
+	["Accent Green"] = "🟢",
+	["Accent Blue"] = "🔵",
 	["Teleport To Lowest Health"] = "🩹",
 	["Teleport To Nearest"] = "📍",
 	["Open Item Teleports"] = "🎁",
@@ -243,6 +255,8 @@ UI.Descriptions = {
 	["Hitbox Controls"] = "Adjust size and visibility for player hitboxes.",
 	["World Safety"] = "Invisible protection over danger zones.",
 	["Themes"] = "Switch the full menu color profile.",
+	["Menu Controls"] = "Quick actions for the menu, popups, and window.",
+	["Theme Creator"] = "Tune the accent color for your current theme.",
 	["Get Code + Go Barn"] = "Moves to barn, scans puzzle assets, and reports the code.",
 	["Toggle recommended settings?"] = "Turns on the useful defaults without enabling auto heal."
 }
@@ -287,12 +301,12 @@ local function getWindowSize()
 
 	if isTouchDevice or viewport.X < 720 then
 		return UDim2.fromOffset(
-			math.clamp(viewport.X - 20, 320, 620),
+			math.clamp(viewport.X - 16, 340, 700),
 			math.clamp(viewport.Y - 36, 360, 560)
 		)
 	end
 
-	return UDim2.fromOffset(640, 500)
+	return UDim2.fromOffset(760, 520)
 end
 
 local function getMinimizedSize()
@@ -629,8 +643,8 @@ function UI.CreateTab(name)
 end
 
 UI.CreateTab("Main")
-UI.CreateTab("Items")
 UI.CreateTab("Teleports")
+UI.CreateTab("Items")
 UI.CreateTab("Combat")
 UI.CreateTab("Visuals")
 UI.CreateTab("Safety")
@@ -888,9 +902,49 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 	return holder
 end
 
+function UI.CreateSearchBox(parent, placeholderText, callback)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -14, 0, 58)
+	holder.BorderSizePixel = 0
+	holder.Parent = parent
+	themeObject(holder, "BackgroundColor3", "ButtonDark")
+	addCorner(holder, 10)
+	addStroke(holder, currentTheme.Stroke, 1)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(30, 30)
+	icon.Position = UDim2.fromOffset(12, 14)
+	icon.BackgroundTransparency = 1
+	icon.Text = "🔎"
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 18
+	icon.Parent = holder
+	themeObject(icon, "TextColor3", "Button")
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, -58, 1, -12)
+	box.Position = UDim2.fromOffset(48, 6)
+	box.BackgroundTransparency = 1
+	box.ClearTextOnFocus = false
+	box.PlaceholderText = placeholderText
+	box.Text = ""
+	box.Font = Enum.Font.GothamBold
+	box.TextSize = 13
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.TextTruncate = Enum.TextTruncate.AtEnd
+	box.Parent = holder
+	themeObject(box, "TextColor3", "Text")
+	themeObject(box, "PlaceholderColor3", "SubText")
+
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		callback(box.Text)
+	end)
+
+	return holder, box
+end
+
 UI.ToggleDescriptions = {
 	["Auto Collect"] = "Moves to the closest available item and collects it.",
-	["Auto Use"] = "Equips and activates useful buff tools from your inventory.",
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
 	["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
 	["Visualise Hitboxes"] = "Toggles the neon hitbox preview on or off.",
@@ -1488,6 +1542,7 @@ end
 local createSmallButton = UI.CreateSmallButton
 local createWarningLabel = UI.CreateWarningLabel
 local createToggleButton = UI.CreateToggleButton
+local createSearchBox = UI.CreateSearchBox
 local createDropdown = UI.CreateDropdown
 local createSideDropdown = UI.CreateSideDropdown
 
@@ -1555,9 +1610,24 @@ function Notify.Trim()
 	end
 end
 
-function Notify.Show(titleText, messageText, kind)
+function Notify.Clear()
+	for _, slot in ipairs(Notify.Active) do
+		if slot and slot.Parent then
+			slot:Destroy()
+		end
+	end
+
+	Notify.Active = {}
+end
+
+function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
+	if Notify.Muted then
+		return
+	end
+
 	Notify.RefreshLayout()
 	Notify.Order += 1
+	lifeTime = lifeTime or Notify.LifeTime
 
 	local preset = Notify.Presets[Notify.GetKind(titleText, kind)]
 
@@ -1722,7 +1792,7 @@ function Notify.Show(titleText, messageText, kind)
 
 	TweenService:Create(
 		progress,
-		TweenInfo.new(Notify.LifeTime, Enum.EasingStyle.Linear),
+		TweenInfo.new(lifeTime, Enum.EasingStyle.Linear),
 		{ Size = UDim2.new(0, 0, 1, 0) }
 	):Play()
 
@@ -1736,9 +1806,15 @@ function Notify.Show(titleText, messageText, kind)
 		TweenService:Create(glow, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 0.76 }):Play()
 	end)
 
-	popup.MouseButton1Click:Connect(dismiss)
+	popup.MouseButton1Click:Connect(function()
+		if clickCallback then
+			clickCallback()
+		end
 
-	task.delay(Notify.LifeTime, function()
+		dismiss()
+	end)
+
+	task.delay(lifeTime, function()
 		if popup.Parent then
 			dismiss()
 		end
@@ -1767,6 +1843,7 @@ Teleport.LastClickAt = 0
 Teleport.BlockFUntil = 0
 
 Items.SearchRootName = "Items"
+Items.SearchText = ""
 
 Teleport.Locations = {
 	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
@@ -1939,17 +2016,58 @@ function Teleport.MoveRoot(root, targetCFrame)
 	root.AssemblyAngularVelocity = Vector3.zero
 end
 
-function Teleport.GetGroundCFrame(position, excludeInstances)
+function Teleport.GetGroundCFrame(position, excludeInstances, stayClose)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = excludeInstances or {}
 
-	local rayOrigin = position + Vector3.new(0, 4, 0)
-	local rayDirection = Vector3.new(0, -80, 0)
-	local result = workspace:Raycast(rayOrigin, rayDirection, params)
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+	overlapParams.FilterDescendantsInstances = excludeInstances or {}
 
-	if result then
-		return CFrame.new(result.Position + Vector3.new(0, 4, 0))
+	local function hasRoom(candidatePosition)
+		local touching = workspace:GetPartBoundsInBox(CFrame.new(candidatePosition + Vector3.new(0, 2, 0)), Vector3.new(4, 5, 4), overlapParams)
+
+		for _, part in ipairs(touching) do
+			if part.CanCollide and part.Transparency < 0.95 then
+				return false
+			end
+		end
+
+		return true
+	end
+
+	local offsets = stayClose and {
+		Vector3.zero,
+		Vector3.new(2, 0, 0),
+		Vector3.new(-2, 0, 0),
+		Vector3.new(0, 0, 2),
+		Vector3.new(0, 0, -2),
+		Vector3.new(3, 0, 3),
+		Vector3.new(-3, 0, 3),
+		Vector3.new(3, 0, -3),
+		Vector3.new(-3, 0, -3)
+	} or {
+		Vector3.zero,
+		Vector3.new(6, 0, 0),
+		Vector3.new(-6, 0, 0),
+		Vector3.new(0, 0, 6),
+		Vector3.new(0, 0, -6),
+		Vector3.new(8, 0, 8),
+		Vector3.new(-8, 0, 8),
+		Vector3.new(8, 0, -8),
+		Vector3.new(-8, 0, -8)
+	}
+
+	for _, offset in ipairs(offsets) do
+		local rayOrigin = position + offset + Vector3.new(0, 6, 0)
+		local rayDirection = Vector3.new(0, -90, 0)
+		local result = workspace:Raycast(rayOrigin, rayDirection, params)
+		local candidatePosition = result and (result.Position + Vector3.new(0, 4, 0)) or (position + offset + Vector3.new(0, 4, 0))
+
+		if hasRoom(candidatePosition) then
+			return CFrame.new(candidatePosition)
+		end
 	end
 
 	return CFrame.new(position + Vector3.new(0, 4, 0))
@@ -2009,9 +2127,7 @@ function Items.RebuildSearchCache()
 		while #queue > 0 do
 			local object = table.remove(queue)
 
-			local displayName = object:GetAttribute("ItemName")
-				or object:GetAttribute("DisplayName")
-				or object.Name
+			local displayName = object.Name
 
 			if not lookup or lookup[Utility.NormalizeName(displayName)] then
 				table.insert(results, object)
@@ -2055,9 +2171,7 @@ function Items.FindManualItem(itemName)
 	local closestDistance = math.huge
 
 	for _, object in ipairs(Items.GetSearchDescendants()) do
-		local displayName = object:GetAttribute("ItemName")
-			or object:GetAttribute("DisplayName")
-			or object.Name
+		local displayName = object.Name
 
 		if Utility.NormalizeName(displayName) == Utility.NormalizeName(itemName) then
 			local itemCFrame = Utility.GetObjectCFrame(object)
@@ -2119,7 +2233,7 @@ function Items.TeleportTo(itemName)
 		return
 	end
 
-	local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject })
+	local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject }, true)
 
 	Teleport.MoveRoot(root, groundCFrame)
 	Teleport.AddStrike()
@@ -2143,6 +2257,94 @@ ContextActionService:BindActionAtPriority(
 )
 
 local normalizeName = Utility.NormalizeName
+
+do
+	local card = Instance.new("Frame")
+	card.Size = UDim2.new(1, -14, 0, 104)
+	card.BorderSizePixel = 0
+	card.LayoutOrder = -1200
+	card.ClipsDescendants = false
+	card.Parent = mainList
+	themeObject(card, "BackgroundColor3", "ButtonDark")
+	addCorner(card, 12)
+	addStroke(card, currentTheme.Stroke, 1)
+
+	local glow = Instance.new("UIStroke")
+	glow.Thickness = 4
+	glow.Transparency = 0.78
+	glow.Parent = card
+	themeObject(glow, "Color", "Stroke")
+
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(0, 5, 1, -24)
+	accent.Position = UDim2.fromOffset(12, 12)
+	accent.BorderSizePixel = 0
+	accent.Parent = card
+	themeObject(accent, "BackgroundColor3", "Button")
+	addCorner(accent, 4)
+
+	local avatarFrame = Instance.new("Frame")
+	avatarFrame.Size = UDim2.fromOffset(72, 72)
+	avatarFrame.Position = UDim2.fromOffset(28, 16)
+	avatarFrame.BorderSizePixel = 0
+	avatarFrame.ClipsDescendants = true
+	avatarFrame.Parent = card
+	themeObject(avatarFrame, "BackgroundColor3", "Panel")
+	addCorner(avatarFrame, 100)
+	addStroke(avatarFrame, currentTheme.Stroke, 2)
+
+	local avatar = Instance.new("ImageLabel")
+	avatar.Size = UDim2.new(1, -8, 1, -8)
+	avatar.Position = UDim2.fromOffset(4, 4)
+	avatar.BackgroundTransparency = 1
+	avatar.Image = ""
+	avatar.Parent = avatarFrame
+	addCorner(avatar, 100)
+
+	local welcome = Instance.new("TextLabel")
+	welcome.Size = UDim2.new(1, -128, 0, 24)
+	welcome.Position = UDim2.fromOffset(116, 18)
+	welcome.BackgroundTransparency = 1
+	welcome.Text = "Welcome back,"
+	welcome.Font = Enum.Font.GothamBold
+	welcome.TextSize = 14
+	welcome.TextXAlignment = Enum.TextXAlignment.Left
+	welcome.Parent = card
+	themeObject(welcome, "TextColor3", "SubText")
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, -128, 0, 34)
+	nameLabel.Position = UDim2.fromOffset(116, 42)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = player.DisplayName ~= "" and player.DisplayName or player.Name
+	nameLabel.Font = Enum.Font.GothamBlack
+	nameLabel.TextSize = 22
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.Parent = card
+	themeObject(nameLabel, "TextColor3", "Text")
+
+	local subLabel = Instance.new("TextLabel")
+	subLabel.Size = UDim2.new(1, -128, 0, 20)
+	subLabel.Position = UDim2.fromOffset(116, 74)
+	subLabel.BackgroundTransparency = 1
+	subLabel.Text = "Ready when you are."
+	subLabel.Font = Enum.Font.GothamMedium
+	subLabel.TextSize = 11
+	subLabel.TextXAlignment = Enum.TextXAlignment.Left
+	subLabel.Parent = card
+	themeObject(subLabel, "TextColor3", "SubText")
+
+	task.spawn(function()
+		local success, image = pcall(function()
+			return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
+		end)
+
+		if success and avatar.Parent then
+			avatar.Image = image
+		end
+	end)
+end
 
 createSmallButton(mainList, "Get Code + Go Barn", function()
 	Teleport.ToLocation("Barn", Vector3.new(477, 87, 318))
@@ -2273,9 +2475,7 @@ local function matchesItem(toolName, itemList)
 end
 
 local function getItemDisplayName(object)
-	return object:GetAttribute("ItemName")
-		or object:GetAttribute("DisplayName")
-		or object.Name
+	return object.Name
 end
 
 local function itemNameMatches(object, wantedName)
@@ -2376,8 +2576,9 @@ local pinnedItemOrder = {
 	"Frog Potion"
 }
 
-local PINNED_COLLECTION_SWITCH_PERCENT = 0.8
+local PINNED_COLLECTION_SWITCH_PERCENT = 1
 local searchAllItemsUnlocked = false
+local pinnedItemsEverSeen = false
 
 local function setItemSearchTargets(itemList)
 	Items.SearchNameLookup = {}
@@ -2409,12 +2610,16 @@ local function getPinnedCollectionProgress()
 			end
 		end
 
+		if totalCount > 0 then
+			pinnedItemsEverSeen = true
+		end
+
 		totalPinned += totalCount
 		leftPinned += leftCount
 	end
 
 	if totalPinned <= 0 then
-		return 0
+		return pinnedItemsEverSeen and 1 or 0
 	end
 
 	return (totalPinned - leftPinned) / totalPinned
@@ -2432,7 +2637,7 @@ local function updateItemSearchMode()
 	end
 end
 
-setItemSearchTargets(pinnedItemOrder)
+setItemSearchTargets(itemNames)
 
 local function findLiveItemByName(wantedName)
 	local character = player.Character
@@ -2618,7 +2823,7 @@ local function runAutoCollect()
 
 		if root then
 			markVisitedCollectPosition(itemPosition)
-			local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject })
+			local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject }, true)
 
 			Teleport.MoveRoot(root, groundCFrame)
 			Teleport.AddStrike()
@@ -2664,19 +2869,11 @@ autoCollectToggle = createToggleButton(autoUseDropdown, "Auto Collect", false, f
 end)
 autoCollectToggle.Button.LayoutOrder = 1
 
-local autoUseEnabled = false
-local autoUseThread = nil
 local autoHealEnabled = false
 local autoHealThread = nil
 local autoHealConnection = nil
-
-local autoUseItems = {
-	"Speed Potion",
-	"Potion of Strength",
-	"Bull's Essence",
-	"Boba",
-	"Frog Potion"
-}
+local lastAutoHealAt = 0
+local AUTO_HEAL_DELAY = 2.25
 
 local healingItems = {
 	"Healing Potion",
@@ -2684,6 +2881,102 @@ local healingItems = {
 	"First Aid Kit",
 	"Apple"
 }
+
+local inventorySortOrder = {
+	"Gravitation Shard",
+	"Forcefield Crystal",
+	"Tomahawk",
+	"Sphere of Fury",
+	"Healing Potion",
+	"Bandage",
+	"First Aid Kit",
+	"Apple"
+}
+
+local function getInventoryTools()
+	local tools = {}
+	local character = player.Character
+	local backpack = player:FindFirstChild("Backpack")
+
+	if character then
+		for _, tool in ipairs(character:GetChildren()) do
+			if tool:IsA("Tool") then
+				table.insert(tools, tool)
+			end
+		end
+	end
+
+	if backpack then
+		for _, tool in ipairs(backpack:GetChildren()) do
+			if tool:IsA("Tool") then
+				table.insert(tools, tool)
+			end
+		end
+	end
+
+	return tools
+end
+
+local function getToolSortRank(tool)
+	for index, itemName in ipairs(inventorySortOrder) do
+		if normalizeName(tool.Name) == normalizeName(itemName) then
+			return index + 1
+		end
+	end
+
+	for _, itemName in ipairs(itemNames) do
+		if normalizeName(tool.Name) == normalizeName(itemName) then
+			return 50
+		end
+	end
+
+	return 1
+end
+
+local function sortInventory()
+	local backpack = player:FindFirstChild("Backpack")
+
+	if not backpack then
+		createNotification("Inventory", "Backpack not found.", "Error")
+		return
+	end
+
+	local tools = getInventoryTools()
+
+	table.sort(tools, function(left, right)
+		local leftRank = getToolSortRank(left)
+		local rightRank = getToolSortRank(right)
+
+		if leftRank == rightRank then
+			return left.Name < right.Name
+		end
+
+		return leftRank < rightRank
+	end)
+
+	for _, tool in ipairs(tools) do
+		if matchesItem(tool.Name, healingItems) or tool.Parent ~= backpack then
+			tool.Parent = backpack
+		end
+	end
+
+	task.wait()
+
+	for _, tool in ipairs(tools) do
+		tool.Parent = backpack
+		task.wait()
+	end
+
+	createNotification("Inventory", "Inventory sorted with glove first and healing items in backpack.", "Success")
+end
+
+do
+	local button = createSmallButton(autoUseDropdown, "Sort Inventory", function()
+		sortInventory()
+	end)
+
+	button.LayoutOrder = 2
+end
 
 local function useTool(tool)
 	local character = player.Character or player.CharacterAdded:Wait()
@@ -2762,6 +3055,10 @@ local function tryAutoHeal()
 		return
 	end
 
+	if os.clock() - lastAutoHealAt < AUTO_HEAL_DELAY then
+		return
+	end
+
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
@@ -2769,6 +3066,7 @@ local function tryAutoHeal()
 		local tool = findMatchingTool(healingItems)
 
 		if tool then
+			lastAutoHealAt = os.clock()
 			useTool(tool)
 		end
 	end
@@ -2790,23 +3088,10 @@ local function hookAutoHealCharacter()
 	end
 end
 
-local function runAutoUse()
-	while autoUseEnabled do
-		local tool = findMatchingTool(autoUseItems)
-
-		if tool then
-			useTool(tool)
-			task.wait(0.5)
-		else
-			task.wait(0.25)
-		end
-	end
-end
-
 local function runAutoHeal()
 	while autoHealEnabled do
 		tryAutoHeal()
-		task.wait(0.02)
+		task.wait(0.35)
 	end
 end
 
@@ -2829,6 +3114,14 @@ local ItemTeleportChecklist = {
 	KnownTotals = {},
 	Open = false
 }
+
+local function isItemBeingScanned(itemName)
+	if searchAllItemsUnlocked then
+		return true
+	end
+
+	return pinnedLookup[normalizeName(itemName)] == true
+end
 
 local function getItemCounts(itemName)
 	local leftCount = 0
@@ -2855,15 +3148,7 @@ local function getItemCounts(itemName)
 end
 
 function Items.HasAvailableTeleportItems()
-	for _, itemName in ipairs(itemChecklistOrder) do
-		local leftCount = getItemCounts(itemName)
-
-		if leftCount and leftCount > 0 then
-			return true
-		end
-	end
-
-	return false
+	return #itemChecklistOrder > 0
 end
 
 local function clearItemTeleportChecklist()
@@ -2876,32 +3161,35 @@ local function clearItemTeleportChecklist()
 	ItemTeleportChecklist.Rows = {}
 end
 
-local function createItemChecklistRow(itemName, leftCount, totalCount, layoutOrder)
+local function createItemChecklistRow(itemName, layoutOrder, showCount, leftCount, totalCount)
 	local row = Instance.new("Frame")
 	row.Name = normalizeName(itemName):gsub("%W", "") .. "ChecklistRow"
-	row.Size = UDim2.new(1, -8, 0, 78)
+	row.Size = UDim2.new(1, -8, 0, 68)
 	row.BackgroundTransparency = 1
 	row.BorderSizePixel = 0
 	row.LayoutOrder = layoutOrder
 	row.Parent = itemsDropdown
 
-	local countText = totalCount > 0 and ("[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "]") or "[checking]"
-
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -12, 0, 24)
+	title.Size = UDim2.new(1, -104, 0, 42)
 	title.Position = UDim2.fromOffset(6, 0)
 	title.BackgroundTransparency = 1
-	title.Text = countText .. " " .. itemName
-	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
-	title.TextXAlignment = Enum.TextXAlignment.Center
+	if showCount and totalCount and totalCount > 0 then
+		title.Text = "[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "] " .. itemName
+	else
+		title.Text = itemName
+	end
+	title.Font = Enum.Font.GothamBlack
+	title.TextSize = 14
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.TextYAlignment = Enum.TextYAlignment.Center
 	title.Parent = row
 	themeObject(title, "TextColor3", "Text")
 
 	local teleportButton = Instance.new("TextButton")
-	teleportButton.Size = UDim2.new(1, -12, 0, 42)
-	teleportButton.Position = UDim2.fromOffset(6, 30)
+	teleportButton.Size = UDim2.new(0, 92, 0, 42)
+	teleportButton.Position = UDim2.new(1, -98, 0, 0)
 	teleportButton.Text = "Teleport"
 	teleportButton.Font = Enum.Font.GothamBold
 	teleportButton.TextSize = 13
@@ -2916,19 +3204,52 @@ local function createItemChecklistRow(itemName, leftCount, totalCount, layoutOrd
 	ItemTeleportChecklist.Rows[itemName] = row
 end
 
+local function createNoItemsRow(layoutOrder)
+	local row = Instance.new("TextLabel")
+	row.Name = "NoItemsFoundRow"
+	row.Size = UDim2.new(1, -8, 0, 52)
+	row.BackgroundTransparency = 1
+	row.LayoutOrder = layoutOrder
+	row.Text = "No items found"
+	row.Font = Enum.Font.GothamBold
+	row.TextSize = 14
+	row.TextXAlignment = Enum.TextXAlignment.Center
+	row.Parent = itemsDropdown
+	themeObject(row, "TextColor3", "SubText")
+
+	ItemTeleportChecklist.Rows.NoItemsFound = row
+end
+
 local function refreshItemTeleportChecklist()
-    updateItemSearchMode()
+	updateItemSearchMode()
 	clearItemTeleportChecklist()
 
 	local layoutOrder = 10
+	local shown = 0
 
 	for _, itemName in ipairs(itemChecklistOrder) do
-		local leftCount, totalCount = getItemCounts(itemName)
+		local showCount = isItemBeingScanned(itemName)
+		local leftCount = nil
+		local totalCount = nil
+		local itemDetected = false
 
-		if leftCount > 0 then
-			createItemChecklistRow(itemName, leftCount, totalCount, layoutOrder)
-			layoutOrder += 1
+		if showCount then
+			leftCount, totalCount = getItemCounts(itemName)
+			itemDetected = leftCount and leftCount > 0
+		else
+			local _, _, _, itemObject, itemPart = findLiveItemByName(itemName)
+			itemDetected = itemObject ~= nil and itemPart ~= nil
 		end
+
+		if itemDetected then
+			createItemChecklistRow(itemName, layoutOrder, showCount, leftCount, totalCount)
+			layoutOrder += 1
+			shown += 1
+		end
+	end
+
+	if shown == 0 then
+		createNoItemsRow(layoutOrder)
 	end
 end
 
@@ -2937,29 +3258,46 @@ task.spawn(function()
 
 	while itemsDropdown and itemsDropdown.Parent do
 		refreshItemTeleportChecklist()
-		task.wait(1)
+		task.wait(0.35)
 	end
 end)
 
 do
-	local toggle = createToggleButton(autoUseDropdown, "Auto Use", false, function(state)
-		autoUseEnabled = state
+	local knownItemLookup = {}
+	local notifiedDrops = {}
 
-		if autoUseEnabled then
-			createNotification("Auto Use", "Auto Use enabled.")
+	for _, itemName in ipairs(itemChecklistOrder) do
+		knownItemLookup[normalizeName(itemName)] = itemName
+	end
 
-			if not autoUseThread then
-				autoUseThread = task.spawn(function()
-					runAutoUse()
-					autoUseThread = nil
-				end)
+	task.spawn(function()
+		local firstScan = true
+
+		while itemsDropdown and itemsDropdown.Parent do
+			for _, object in ipairs(getCollectibleSearchPool()) do
+				local itemName = knownItemLookup[normalizeName(getItemDisplayName(object))]
+
+				if itemName and not notifiedDrops[object] and getLiveItemPart(object) then
+					notifiedDrops[object] = true
+
+					if not firstScan then
+						createNotification(
+							itemName .. " was dropped!",
+							"Click to teleport.",
+							"Success",
+							function()
+								Items.TeleportTo(itemName)
+							end,
+							10
+						)
+					end
+				end
 			end
-		else
-			createNotification("Auto Use", "Auto Use disabled.")
+
+			firstScan = false
+			task.wait(1)
 		end
 	end)
-
-	toggle.Button.LayoutOrder = 2
 end
 
 do
@@ -3686,6 +4024,42 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 end, "Turns on ESP, hitbox, teleport hotkeys, and anti acid/lava.")
 
 do
+	local creator = createDropdown(settingsList, "Theme Creator", updateSettingsCanvas)
+	local customAccent = { R = 190, G = 116, B = 255 }
+
+	local function applyCustomAccent()
+		local accent = Color3.fromRGB(customAccent.R, customAccent.G, customAccent.B)
+
+		currentTheme.Button = accent
+		currentTheme.Stroke = accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)
+		currentTheme.SubText = accent:Lerp(Color3.fromRGB(230, 230, 245), 0.45)
+
+		for _, item in ipairs(UI.ThemedObjects) do
+			if item.Object and item.Object.Parent then
+				item.Object[item.Property] = currentTheme[item.Key]
+			end
+		end
+
+		selectTab(UI.SelectedTab)
+	end
+
+	UI.CreateSlider(creator, "Accent Red", 0, 1, customAccent.R / 255, function(value)
+		customAccent.R = math.floor(value * 255 + 0.5)
+		applyCustomAccent()
+	end)
+
+	UI.CreateSlider(creator, "Accent Green", 0, 1, customAccent.G / 255, function(value)
+		customAccent.G = math.floor(value * 255 + 0.5)
+		applyCustomAccent()
+	end)
+
+	UI.CreateSlider(creator, "Accent Blue", 0, 1, customAccent.B / 255, function(value)
+		customAccent.B = math.floor(value * 255 + 0.5)
+		applyCustomAccent()
+	end)
+end
+
+do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
 	for themeName in pairs(themes) do
@@ -3726,7 +4100,10 @@ local Window = {
 	Launcher = nil,
 	LauncherScale = nil,
 	LauncherSize = isTouchDevice and 78 or 74,
-	ReopenKey = Enum.KeyCode.T
+	DefaultReopenKey = Enum.KeyCode.T,
+	ReopenKey = Enum.KeyCode.T,
+	CustomKeybindsEnabled = false,
+	WaitingForKeybind = false
 }
 
 local function isPointerBegin(inputObject)
@@ -3972,7 +4349,7 @@ function Window.Minimize()
 
 	createNotification(
 		"Menu Minimized",
-		isTouchDevice and "Tap the OP circle to open the menu again." or "Press T or click the OP circle to open the menu again.",
+		isTouchDevice and "Tap the OP circle to open the menu again." or ("Press " .. ((Window.CustomKeybindsEnabled and Window.ReopenKey or Window.DefaultReopenKey).Name) .. " or click the OP circle to open the menu again."),
 		"Info"
 	)
 end
@@ -4009,6 +4386,27 @@ function Window.ToggleMinimized()
 	end
 end
 
+function Window.ResetPosition()
+	UI.CloseAllDropdowns()
+	normalSize = getWindowSize()
+	mainFrame.Visible = true
+	mainFrame.Size = normalSize
+	mainFrame.Position = getOpenWindowPosition()
+	mainFrame.BackgroundTransparency = UI.WindowTransparency
+
+	if Window.Minimized then
+		Window.Minimized = false
+		Window.HideLauncher()
+	end
+
+	tabScroll.Visible = true
+	contentFrame.Visible = true
+
+	if Window.ResizeHandle then
+		Window.ResizeHandle.Visible = true
+	end
+end
+
 Window.ResizeHandle = Instance.new("TextButton")
 Window.ResizeHandle.Size = isTouchDevice and UDim2.fromOffset(42, 42) or UDim2.fromOffset(30, 30)
 Window.ResizeHandle.Position = isTouchDevice and UDim2.new(1, -50, 1, -50) or UDim2.new(1, -38, 1, -38)
@@ -4035,7 +4433,17 @@ UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
 		return
 	end
 
-	if inputObject.KeyCode == Window.ReopenKey then
+	if Window.WaitingForKeybind and inputObject.KeyCode ~= Enum.KeyCode.Unknown then
+		Window.ReopenKey = inputObject.KeyCode
+		Window.CustomKeybindsEnabled = true
+		Window.WaitingForKeybind = false
+		createNotification("Keybind", "Menu key set to " .. inputObject.KeyCode.Name .. ".", "Success")
+		return
+	end
+
+	local reopenKey = Window.CustomKeybindsEnabled and Window.ReopenKey or Window.DefaultReopenKey
+
+	if inputObject.KeyCode == reopenKey then
 		Window.ToggleMinimized()
 	end
 end)
@@ -4043,6 +4451,48 @@ end)
 closeButton.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
+
+local menuControlsDropdown = createDropdown(settingsList, "Menu Controls", updateSettingsCanvas)
+
+createToggleButton(menuControlsDropdown, "Custom Keybinds", false, function(state)
+	Window.CustomKeybindsEnabled = state
+	Window.WaitingForKeybind = false
+
+	createNotification(
+		"Keybind",
+		state and ("Custom menu key enabled: " .. Window.ReopenKey.Name .. ".") or "Default menu key restored: T.",
+		state and "Success" or "Info"
+	)
+end, "Uses your saved menu key instead of the default T key.")
+
+createSmallButton(menuControlsDropdown, "Set Menu Keybind", function()
+	Window.WaitingForKeybind = true
+	createNotification("Keybind", "Press any keyboard key to use for opening the menu.", "Info")
+end)
+
+createSmallButton(menuControlsDropdown, "Reset Window Position", function()
+	Window.ResetPosition()
+	createNotification("Menu", "Window moved back to the top center.", "Success")
+end)
+
+createSmallButton(menuControlsDropdown, "Close Dropdowns", function()
+	UI.CloseAllDropdowns()
+	createNotification("Menu", "Open dropdowns closed.", "Success")
+end)
+
+createSmallButton(menuControlsDropdown, "Minimize Menu", function()
+	Window.Minimize()
+end)
+
+createToggleButton(menuControlsDropdown, "Mute Notifications", false, function(state)
+	if state then
+		createNotification("Notifications", "Notifications muted.")
+		Notify.Muted = true
+	else
+		Notify.Muted = false
+		createNotification("Notifications", "Notifications unmuted.", "Success")
+	end
+end, "Stops popups until you turn this back off.")
 
 local function applyResponsiveWindow()
 	applyMobileMetrics()
@@ -4090,7 +4540,7 @@ if workspace.CurrentCamera then
 end
 
 selectTab("Main")
-applyTheme("Midnight Arcade")
+applyTheme("Royal Pulse")
 
 tabScroll.CanvasSize = UDim2.fromOffset(0, tabLayout.AbsoluteContentSize.Y + 20)
 updateMainCanvas()
