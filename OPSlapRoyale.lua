@@ -3809,10 +3809,11 @@ end
 function Window.GetLauncherPosition()
 	local viewport = getViewportSize()
 	local size = Window.LauncherSize
+	local topPadding = isTouchDevice and 26 or 32
 
 	return UDim2.fromOffset(
-		math.max(14, viewport.X - size - 18),
-		math.max(14, viewport.Y - size - 30)
+		math.max(14, math.floor((viewport.X - size) / 2)),
+		topPadding
 	)
 end
 
