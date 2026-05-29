@@ -5,7 +5,6 @@ local Services = {
 	UserInputService = game:GetService("UserInputService"),
 	MarketplaceService = game:GetService("MarketplaceService"),
 	ContextActionService = game:GetService("ContextActionService"),
-	ReplicatedStorage = game:GetService("ReplicatedStorage"),
 	CollectionService = game:GetService("CollectionService")
 }
 
@@ -15,52 +14,7 @@ local TweenService = Services.TweenService
 local UserInputService = Services.UserInputService
 local MarketplaceService = Services.MarketplaceService
 local ContextActionService = Services.ContextActionService
-local ReplicatedStorage = Services.ReplicatedStorage
 local player = Players.LocalPlayer
-
-local function sendBlockedGameNotification()
-	local StarterGui = game:GetService("StarterGui")
-
-	task.spawn(function()
-		for _ = 1, 8 do
-			local success = pcall(function()
-				StarterGui:SetCore("SendNotification", {
-					Title = "Wrong Game",
-					Text = "You are not in slap royale!",
-					Duration = 5
-				})
-			end)
-
-			if success then
-				break
-			end
-
-			task.wait(0.25)
-		end
-	end)
-end
-
-local function isSlapRoyale()
-	local function matchesSlapRoyale(text)
-		text = string.lower(tostring(text or ""))
-		return string.find(text, "slap royale") ~= nil
-	end
-
-	local success, info = pcall(function()
-		return MarketplaceService:GetProductInfo(game.PlaceId)
-	end)
-
-	if success and info and matchesSlapRoyale(info.Name) then
-		return true
-	end
-
-	return matchesSlapRoyale(game.Name)
-end
-
-if not isSlapRoyale() then
-	sendBlockedGameNotification()
-	return
-end
 
 local Config = {}
 
@@ -140,19 +94,19 @@ local Notify = {
 
 Notify.Presets = {
 	Info = {
-		Icon = "i",
+		Icon = "💬",
 		Color = Color3.fromRGB(95, 205, 255)
 	},
 	Success = {
-		Icon = "+",
+		Icon = "✅",
 		Color = Color3.fromRGB(95, 255, 165)
 	},
 	Warning = {
-		Icon = "!",
+		Icon = "⚠️",
 		Color = Color3.fromRGB(255, 205, 85)
 	},
 	Error = {
-		Icon = "x",
+		Icon = "❌",
 		Color = Color3.fromRGB(255, 90, 105)
 	}
 }
@@ -240,39 +194,39 @@ function UI.StyleButton(button)
 end
 
 UI.Icons = {
-	Main = "M",
-	Items = "I",
-	Teleports = "T",
-	Combat = "C",
-	Visuals = "V",
-	Safety = "S",
-	Settings = "G",
-	["Get Code + Go Barn"] = "#",
-	["Quick Teleports"] = ">",
-	["Mobile Quick Menus"] = "Q",
-	["Map Locations"] = "M",
-	["Item Teleports"] = "I",
-	["Player Teleports"] = "P",
-	["Auto Items"] = "A",
-	["Auto Collect"] = "+",
-	["Auto Use"] = "U",
-	["Auto Heal"] = "H",
-	["Hitbox Controls"] = "X",
-	["Expand Hitbox"] = "X",
-	["Visualise Hitboxes"] = "E",
-	["Player Stats ESP"] = "V",
-	["World Safety"] = "!",
-	["Anti Acid & Lava"] = "!",
-	["Themes"] = "*",
-	["Window Transparency"] = "%",
-	["Quick Menu Hotkeys"] = "K",
-	["Toggle recommended settings?"] = "R",
-	["Teleport To Lowest Health"] = "L",
-	["Teleport To Nearest"] = "N",
-	["Open Item Teleports"] = "I",
-	["Open Player Teleports"] = "P",
-	["Open Map Locations"] = "M",
-	Teleport = ">"
+	Main = "🏠",
+	Items = "🎒",
+	Teleports = "🧭",
+	Combat = "⚔️",
+	Visuals = "👁️",
+	Safety = "🛡️",
+	Settings = "⚙️",
+	["Get Code + Go Barn"] = "🔢",
+	["Quick Teleports"] = "⚡",
+	["Mobile Quick Menus"] = "📱",
+	["Map Locations"] = "🗺️",
+	["Item Teleports"] = "🎁",
+	["Player Teleports"] = "👤",
+	["Auto Items"] = "🤖",
+	["Auto Collect"] = "🧲",
+	["Auto Use"] = "🧪",
+	["Auto Heal"] = "❤️",
+	["Hitbox Controls"] = "🎯",
+	["Expand Hitbox"] = "📦",
+	["Visualise Hitboxes"] = "✨",
+	["Player Stats ESP"] = "📊",
+	["World Safety"] = "🚧",
+	["Anti Acid & Lava"] = "🔥",
+	["Themes"] = "🎨",
+	["Window Transparency"] = "🪟",
+	["Quick Menu Hotkeys"] = "⌨️",
+	["Toggle recommended settings?"] = "⭐",
+	["Teleport To Lowest Health"] = "🩹",
+	["Teleport To Nearest"] = "📍",
+	["Open Item Teleports"] = "🎁",
+	["Open Player Teleports"] = "👤",
+	["Open Map Locations"] = "🗺️",
+	Teleport = "🚀"
 }
 
 UI.Descriptions = {
@@ -298,8 +252,7 @@ function UI.GetIcon(text)
 		return UI.Icons[text]
 	end
 
-	local first = string.match(tostring(text or ""), "%w")
-	return first and string.upper(first) or UI.Icons.Teleport
+	return UI.Icons.Teleport
 end
 
 function UI.GetDescription(text)
@@ -334,22 +287,22 @@ local function getWindowSize()
 
 	if isTouchDevice or viewport.X < 720 then
 		return UDim2.fromOffset(
-			math.clamp(viewport.X - 24, 300, 560),
-			math.clamp(viewport.Y - 48, 280, 520)
+			math.clamp(viewport.X - 20, 320, 620),
+			math.clamp(viewport.Y - 36, 360, 560)
 		)
 	end
 
-	return UDim2.fromOffset(560, 430)
+	return UDim2.fromOffset(640, 500)
 end
 
 local function getMinimizedSize()
 	local viewport = getViewportSize()
 
 	if isTouchDevice or viewport.X < 720 then
-		return UDim2.fromOffset(math.clamp(viewport.X - 24, 300, 560), 54)
+		return UDim2.fromOffset(math.clamp(viewport.X - 24, 300, 560), 58)
 	end
 
-	return UDim2.fromOffset(520, 54)
+	return UDim2.fromOffset(560, 58)
 end
 
 local function applyMobileMetrics()
@@ -367,8 +320,17 @@ local normalSize = getWindowSize()
 local minimizedSize = getMinimizedSize()
 local windowTween = nil
 
+local function getOpenWindowPosition()
+	local viewport = getViewportSize()
+	local topPadding = isTouchDevice and 28 or 38
+	local centerY = math.floor((normalSize.Y.Offset / 2) + topPadding)
+	local maxCenterY = math.max(centerY, viewport.Y - math.floor(normalSize.Y.Offset / 2) - 12)
+
+	return UDim2.new(0.5, 0, 0, math.min(centerY, maxCenterY))
+end
+
 mainFrame.Size = UDim2.fromOffset(math.max(normalSize.X.Offset - 48, 300), math.max(normalSize.Y.Offset - 48, 280))
-mainFrame.Position = UDim2.fromScale(0.5, 0.54)
+mainFrame.Position = getOpenWindowPosition()
 
 local function tweenWindow(targetSize, targetPosition, duration)
 	if windowTween then
@@ -389,7 +351,7 @@ local function tweenWindow(targetSize, targetPosition, duration)
 end
 
 task.defer(function()
-	tweenWindow(normalSize, UDim2.fromScale(0.5, 0.5), 0.45)
+	tweenWindow(normalSize, getOpenWindowPosition(), 0.45)
 end)
 
 do
@@ -494,12 +456,12 @@ themeObject(closeButton, "BackgroundColor3", "ButtonDark")
 styleButton(closeButton)
 
 local viewportSize = getViewportSize()
-local sideTabWidth = viewportSize.X < 420 and 92 or 112
-local contentLeftOffset = sideTabWidth + 22
+local sideTabWidth = viewportSize.X < 420 and 104 or 132
+local contentLeftOffset = sideTabWidth + 26
 
 local tabScroll = Instance.new("ScrollingFrame")
-tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -82)
-tabScroll.Position = UDim2.fromOffset(12, 68)
+tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -88)
+tabScroll.Position = UDim2.fromOffset(14, 72)
 tabScroll.BorderSizePixel = 0
 tabScroll.ScrollBarThickness = 4
 tabScroll.CanvasSize = UDim2.fromOffset(0, 0)
@@ -513,7 +475,7 @@ themeObject(tabStroke, "Color", "Stroke")
 tabStroke.Transparency = 0.35
 
 local tabLayout = Instance.new("UIListLayout")
-tabLayout.Padding = UDim.new(0, 7)
+tabLayout.Padding = UDim.new(0, 10)
 tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 tabLayout.Parent = tabScroll
 
@@ -524,8 +486,8 @@ tabPadding.PaddingRight = UDim.new(0, isTouchDevice and 6 or 10)
 tabPadding.Parent = tabScroll
 
 local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 12), 1, -82)
-contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 68)
+contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 14), 1, -88)
+contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 72)
 contentFrame.BorderSizePixel = 0
 contentFrame.ClipsDescendants = true
 contentFrame.Parent = mainFrame
@@ -612,20 +574,10 @@ end
 local applyTheme = UI.ApplyTheme
 local selectTab = UI.SelectTab
 
-local tabIcons = {
-	Main = "*",
-	Items = "!",
-	Teleports = "@",
-	Combat = ">",
-	Visuals = "?",
-	Safety = "+",
-	Settings = "#"
-}
-
 function UI.CreateTab(name)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
-	button.Size = UDim2.new(1, -4, 0, 50)
+	button.Size = UDim2.new(1, -4, 0, 58)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBlack
 	button.TextSize = 12
@@ -641,7 +593,7 @@ function UI.CreateTab(name)
 	local icon = Instance.new("TextLabel")
 	icon.Name = "IconBadge"
 	icon.Size = UDim2.fromOffset(24, 24)
-	icon.Position = UDim2.new(0.5, -12, 0, 5)
+	icon.Position = UDim2.new(0.5, -13, 0, 7)
 	icon.BackgroundTransparency = 0
 	icon.Text = UI.GetIcon(name)
 	icon.Font = Enum.Font.GothamBlack
@@ -653,12 +605,12 @@ function UI.CreateTab(name)
 
 	local label = Instance.new("TextLabel")
 	label.Name = "TabLabel"
-	label.Size = UDim2.new(1, -6, 0, 16)
-	label.Position = UDim2.fromOffset(3, 31)
+	label.Size = UDim2.new(1, -8, 0, 18)
+	label.Position = UDim2.fromOffset(4, 36)
 	label.BackgroundTransparency = 1
 	label.Text = name
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 10
+	label.TextSize = 11
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.Parent = button
@@ -686,8 +638,8 @@ UI.CreateTab("Settings")
 
 function UI.CreatePageTitle(parent, text)
 	local box = Instance.new("Frame")
-	box.Size = UDim2.new(1, -18, 0, 54)
-	box.Position = UDim2.fromOffset(9, 9)
+	box.Size = UDim2.new(1, -24, 0, 66)
+	box.Position = UDim2.fromOffset(12, 12)
 	box.BorderSizePixel = 0
 	box.Parent = parent
 	themeObject(box, "BackgroundColor3", "ButtonDark")
@@ -705,8 +657,8 @@ function UI.CreatePageTitle(parent, text)
 	addCorner(rail, 4)
 
 	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromOffset(28, 28)
-	icon.Position = UDim2.fromOffset(24, 8)
+	icon.Size = UDim2.fromOffset(34, 34)
+	icon.Position = UDim2.fromOffset(26, 15)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
@@ -717,24 +669,24 @@ function UI.CreatePageTitle(parent, text)
 	addCorner(icon, 9)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -68, 0, 24)
-	label.Position = UDim2.fromOffset(58, 5)
+	label.Size = UDim2.new(1, -80, 0, 26)
+	label.Position = UDim2.fromOffset(70, 10)
 	label.BackgroundTransparency = 1
 	label.Text = string.upper(text)
 	label.Font = Enum.Font.GothamBlack
-	label.TextSize = 14
+	label.TextSize = 16
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = box
 	themeObject(label, "TextColor3", "Text")
 
 	local description = Instance.new("TextLabel")
-	description.Size = UDim2.new(1, -68, 0, 18)
-	description.Position = UDim2.fromOffset(58, 29)
+	description.Size = UDim2.new(1, -82, 0, 22)
+	description.Position = UDim2.fromOffset(70, 36)
 	description.BackgroundTransparency = 1
 	description.Text = UI.GetDescription(text)
 	description.Font = Enum.Font.GothamMedium
-	description.TextSize = 10
+	description.TextSize = 11
 	description.TextTruncate = Enum.TextTruncate.AtEnd
 	description.TextXAlignment = Enum.TextXAlignment.Left
 	description.TextYAlignment = Enum.TextYAlignment.Center
@@ -752,8 +704,8 @@ UI.CreatePageTitle(UI.Pages.Settings, "Settings")
 
 function UI.CreatePageList(parent)
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1, -18, 1, -116)
-	list.Position = UDim2.fromOffset(9, 70)
+	list.Size = UDim2.new(1, -24, 1, -142)
+	list.Position = UDim2.fromOffset(12, 92)
 	list.BackgroundTransparency = 1
 	list.BorderSizePixel = 0
 	list.ScrollBarThickness = 6
@@ -761,7 +713,7 @@ function UI.CreatePageList(parent)
 	list.Parent = parent
 
 	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 10)
+	layout.Padding = UDim.new(0, 14)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = list
 
@@ -783,7 +735,7 @@ local settingsList, updateSettingsCanvas = UI.CreatePageList(UI.Pages.Settings)
 
 function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -12, 0, 46)
+	button.Size = UDim2.new(1, -14, 0, 54)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 12
@@ -795,7 +747,7 @@ function UI.CreateSmallButton(parent, text, callback)
 
 	local icon = Instance.new("TextLabel")
 	icon.Size = UDim2.fromOffset(28, 28)
-	icon.Position = UDim2.fromOffset(10, 9)
+	icon.Position = UDim2.fromOffset(12, 13)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
@@ -807,11 +759,11 @@ function UI.CreateSmallButton(parent, text, callback)
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -54, 1, 0)
-	label.Position = UDim2.fromOffset(46, 0)
+	label.Position = UDim2.fromOffset(52, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 12
+	label.TextSize = 13
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
@@ -953,7 +905,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	local description = descriptionText or UI.ToggleDescriptions[text] or ""
 
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -12, 0, description ~= "" and 64 or 46)
+	button.Size = UDim2.new(1, -14, 0, description ~= "" and 76 or 54)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 13
@@ -968,19 +920,19 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	styleButton(button)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -102, 0, description ~= "" and 24 or 46)
-	label.Position = UDim2.fromOffset(48, description ~= "" and 6 or 0)
+	label.Size = UDim2.new(1, -108, 0, description ~= "" and 26 or 54)
+	label.Position = UDim2.fromOffset(54, description ~= "" and 9 or 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 12
+	label.TextSize = 13
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = button
 	themeObject(label, "TextColor3", "Text")
 
 	local icon = Instance.new("TextLabel")
 	icon.Size = UDim2.fromOffset(28, 28)
-	icon.Position = UDim2.fromOffset(12, description ~= "" and 9 or 9)
+	icon.Position = UDim2.fromOffset(14, description ~= "" and 14 or 13)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
@@ -994,12 +946,12 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 
 	if description ~= "" then
 		descriptionLabel = Instance.new("TextLabel")
-		descriptionLabel.Size = UDim2.new(1, -112, 0, 27)
-        descriptionLabel.Position = UDim2.fromOffset(50, 29)
+		descriptionLabel.Size = UDim2.new(1, -118, 0, 33)
+        descriptionLabel.Position = UDim2.fromOffset(56, 36)
 		descriptionLabel.BackgroundTransparency = 1
 		descriptionLabel.Text = description
 		descriptionLabel.Font = Enum.Font.GothamMedium
-		descriptionLabel.TextSize = 10
+		descriptionLabel.TextSize = 11
 		descriptionLabel.TextWrapped = true
 		descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
 		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -1009,7 +961,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 
 	local switch = Instance.new("Frame")
 	switch.Size = UDim2.fromOffset(42, 22)
-	switch.Position = UDim2.new(1, -52, 0, description ~= "" and 10 or 9)
+	switch.Position = UDim2.new(1, -56, 0, description ~= "" and 18 or 16)
 	switch.BorderSizePixel = 0
 	switch.Parent = button
 	addCorner(switch, 11)
@@ -1065,14 +1017,14 @@ end
 
 function UI.CreateDropdown(list, titleText, updateCanvas)
 	local wrapper = Instance.new("Frame")
-	wrapper.Size = UDim2.new(1, -6, 0, 56)
+	wrapper.Size = UDim2.new(1, -6, 0, 68)
 	wrapper.BackgroundTransparency = 1
 	wrapper.BorderSizePixel = 0
 	wrapper.ClipsDescendants = false
 	wrapper.Parent = list
 
 	local holder = Instance.new("Frame")
-	holder.Size = UDim2.new(1, -24, 0, 52)
+	holder.Size = UDim2.new(1, -24, 0, 64)
 	holder.Position = UDim2.new(0.5, 0, 0, 3)
 	holder.AnchorPoint = Vector2.new(0.5, 0)
 	holder.BorderSizePixel = 0
@@ -1087,7 +1039,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	end
 
 	local header = Instance.new("TextButton")
-	header.Size = UDim2.new(1, 0, 0, 52)
+	header.Size = UDim2.new(1, 0, 0, 64)
 	header.BackgroundTransparency = 1
 	header.Text = ""
 	header.Font = Enum.Font.GothamBold
@@ -1097,8 +1049,8 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	themeObject(header, "TextColor3", "Text")
 
 	local headerIcon = Instance.new("TextLabel")
-	headerIcon.Size = UDim2.fromOffset(30, 30)
-	headerIcon.Position = UDim2.fromOffset(12, 11)
+	headerIcon.Size = UDim2.fromOffset(34, 34)
+	headerIcon.Position = UDim2.fromOffset(14, 15)
 	headerIcon.BorderSizePixel = 0
 	headerIcon.Text = UI.GetIcon(titleText)
 	headerIcon.Font = Enum.Font.GothamBlack
@@ -1109,24 +1061,24 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	addCorner(headerIcon, 10)
 
 	local headerLabel = Instance.new("TextLabel")
-	headerLabel.Size = UDim2.new(1, -92, 0, 22)
-	headerLabel.Position = UDim2.fromOffset(50, 6)
+	headerLabel.Size = UDim2.new(1, -98, 0, 24)
+	headerLabel.Position = UDim2.fromOffset(58, 10)
 	headerLabel.BackgroundTransparency = 1
 	headerLabel.Text = titleText
 	headerLabel.Font = Enum.Font.GothamBlack
-	headerLabel.TextSize = 13
+	headerLabel.TextSize = 14
 	headerLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
 	headerLabel.Parent = holder
 	themeObject(headerLabel, "TextColor3", "Text")
 
 	local headerDescription = Instance.new("TextLabel")
-	headerDescription.Size = UDim2.new(1, -92, 0, 18)
-	headerDescription.Position = UDim2.fromOffset(50, 28)
+	headerDescription.Size = UDim2.new(1, -98, 0, 20)
+	headerDescription.Position = UDim2.fromOffset(58, 35)
 	headerDescription.BackgroundTransparency = 1
 	headerDescription.Text = UI.GetDescription(titleText)
 	headerDescription.Font = Enum.Font.GothamMedium
-	headerDescription.TextSize = 10
+	headerDescription.TextSize = 11
 	headerDescription.TextTruncate = Enum.TextTruncate.AtEnd
 	headerDescription.TextXAlignment = Enum.TextXAlignment.Left
 	headerDescription.Parent = holder
@@ -1134,7 +1086,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local arrow = Instance.new("TextLabel")
 	arrow.Size = UDim2.fromOffset(28, 28)
-	arrow.Position = UDim2.new(1, -40, 0, 8)
+	arrow.Position = UDim2.new(1, -42, 0, 18)
 	arrow.BackgroundTransparency = 1
 	arrow.Active = true
 	arrow.Text = "v"
@@ -1149,7 +1101,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local body = Instance.new("Frame")
 	body.Size = UDim2.new(1, 0, 0, 0)
-	body.Position = UDim2.fromOffset(0, 56)
+	body.Position = UDim2.fromOffset(0, 68)
 	body.BackgroundTransparency = 1
 	body.Visible = false
 	body.Parent = holder
@@ -1169,7 +1121,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local function refreshSize(animated)
 		local bodyHeight = bodyLayout.AbsoluteContentSize.Y + 12
-		local targetHeight = open and (60 + bodyHeight) or 52
+		local targetHeight = open and (72 + bodyHeight) or 64
 
 		body.Size = UDim2.new(1, 0, 0, bodyHeight)
 		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 3)
@@ -1242,6 +1194,16 @@ function UI.CloseActiveSideDropdown()
 	if UI.ActiveSideDropdown and UI.ActiveSideDropdown.Close then
 		UI.ActiveSideDropdown.Close()
 	end
+end
+
+function UI.CloseAllDropdowns()
+	for _, closer in pairs(UI.DropdownClosers) do
+		if closer then
+			closer()
+		end
+	end
+
+	UI.CloseActiveSideDropdown()
 end
 
 function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
@@ -3760,7 +3722,11 @@ local Window = {
 	ResizeStart = nil,
 	StartPosition = nil,
 	StartSize = nil,
-	ResizeHandle = nil
+	ResizeHandle = nil,
+	Launcher = nil,
+	LauncherScale = nil,
+	LauncherSize = isTouchDevice and 78 or 74,
+	ReopenKey = Enum.KeyCode.T
 }
 
 local function isPointerBegin(inputObject)
@@ -3840,30 +3806,205 @@ function Window.HandleInputChanged(inputObject)
 	end
 end
 
-function Window.ToggleMinimized()
-	Window.Minimized = not Window.Minimized
+function Window.GetLauncherPosition()
+	local viewport = getViewportSize()
+	local size = Window.LauncherSize
 
+	return UDim2.fromOffset(
+		math.max(14, viewport.X - size - 18),
+		math.max(14, viewport.Y - size - 30)
+	)
+end
+
+function Window.GetLauncherCenterPosition()
+	local position = Window.GetLauncherPosition()
+	local halfSize = math.floor(Window.LauncherSize / 2)
+
+	return UDim2.fromOffset(position.X.Offset + halfSize, position.Y.Offset + halfSize)
+end
+
+function Window.CreateLauncher()
+	if Window.Launcher then
+		return
+	end
+
+	Window.Launcher = Instance.new("TextButton")
+	Window.Launcher.Name = "OPSlapLauncher"
+	Window.Launcher.Size = UDim2.fromOffset(Window.LauncherSize, Window.LauncherSize)
+	Window.Launcher.Position = Window.GetLauncherPosition()
+	Window.Launcher.AnchorPoint = Vector2.new(0, 0)
+	Window.Launcher.BackgroundTransparency = 0.02
+	Window.Launcher.BorderSizePixel = 0
+	Window.Launcher.Text = ""
+	Window.Launcher.AutoButtonColor = false
+	Window.Launcher.Visible = false
+	Window.Launcher.Parent = gui
+	themeObject(Window.Launcher, "BackgroundColor3", "Panel")
+	addCorner(Window.Launcher, 100)
+
+	do
+		local stroke = addStroke(Window.Launcher, currentTheme.Stroke, 2)
+		stroke.Transparency = 0.12
+		themeObject(stroke, "Color", "Stroke")
+	end
+
+	do
+		local glow = Instance.new("UIStroke")
+		glow.Thickness = 6
+		glow.Transparency = 0.7
+		glow.Parent = Window.Launcher
+		themeObject(glow, "Color", "Stroke")
+	end
+
+	Window.LauncherScale = Instance.new("UIScale")
+	Window.LauncherScale.Scale = 0
+	Window.LauncherScale.Parent = Window.Launcher
+
+	do
+		local logo = Instance.new("TextLabel")
+		logo.Name = "Logo"
+		logo.Size = UDim2.fromOffset(Window.LauncherSize - 22, Window.LauncherSize - 22)
+		logo.Position = UDim2.fromOffset(11, 7)
+		logo.BackgroundTransparency = 1
+		logo.Text = "OP"
+		logo.Font = Enum.Font.GothamBlack
+		logo.TextSize = isTouchDevice and 22 or 21
+		logo.TextXAlignment = Enum.TextXAlignment.Center
+		logo.TextYAlignment = Enum.TextYAlignment.Center
+		logo.Parent = Window.Launcher
+		themeObject(logo, "TextColor3", "Button")
+	end
+
+	do
+		local hint = Instance.new("TextLabel")
+		hint.Size = UDim2.new(1, 0, 0, 16)
+		hint.Position = UDim2.new(0, 0, 1, -19)
+		hint.BackgroundTransparency = 1
+		hint.Text = "OPEN"
+		hint.Font = Enum.Font.GothamBlack
+		hint.TextSize = 8
+		hint.TextXAlignment = Enum.TextXAlignment.Center
+		hint.Parent = Window.Launcher
+		themeObject(hint, "TextColor3", "SubText")
+	end
+
+	Window.Launcher.MouseButton1Click:Connect(function()
+		Window.Open()
+	end)
+end
+
+function Window.ShowLauncher()
+	Window.CreateLauncher()
+
+	Window.Launcher.Position = Window.GetLauncherPosition()
+	Window.Launcher.Visible = true
+	Window.Launcher.BackgroundTransparency = 0.22
+	Window.LauncherScale.Scale = 0
+
+	TweenService:Create(
+		Window.LauncherScale,
+		TweenInfo.new(0.34, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Scale = 1 }
+	):Play()
+
+	TweenService:Create(
+		Window.Launcher,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{ BackgroundTransparency = 0.02 }
+	):Play()
+end
+
+function Window.HideLauncher()
+	if not Window.Launcher or not Window.Launcher.Visible then
+		return
+	end
+
+	TweenService:Create(
+		Window.LauncherScale,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+		{ Scale = 0.72 }
+	):Play()
+
+	local tween = TweenService:Create(
+		Window.Launcher,
+		TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+		{ BackgroundTransparency = 0.5 }
+	)
+
+	tween:Play()
+	tween.Completed:Connect(function()
+		if Window.Launcher and not Window.Minimized then
+			Window.Launcher.Visible = false
+		end
+	end)
+end
+
+function Window.Minimize()
 	if Window.Minimized then
-	UI.CloseActiveSideDropdown()
+		return
+	end
 
+	UI.CloseAllDropdowns()
+	Window.Minimized = true
 	normalSize = mainFrame.Size
 	minimizedSize = getMinimizedSize()
 
-		tabScroll.Visible = false
-		contentFrame.Visible = false
-		Window.ResizeHandle.Visible = false
+	tabScroll.Visible = false
+	contentFrame.Visible = false
+	Window.ResizeHandle.Visible = false
 
-		tweenWindow(minimizedSize, mainFrame.Position, 0.3)
+	local targetPosition = Window.GetLauncherCenterPosition()
+	local tween = tweenWindow(UDim2.fromOffset(Window.LauncherSize, Window.LauncherSize), targetPosition, 0.28)
+
+	TweenService:Create(
+		mainFrame,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+		{ BackgroundTransparency = 0.35 }
+	):Play()
+
+	tween.Completed:Connect(function()
+		if Window.Minimized then
+			mainFrame.Visible = false
+			Window.ShowLauncher()
+		end
+	end)
+
+	createNotification(
+		"Menu Minimized",
+		isTouchDevice and "Tap the OP circle to open the menu again." or "Press T or click the OP circle to open the menu again.",
+		"Info"
+	)
+end
+
+function Window.Open()
+	if not Window.Minimized then
+		return
+	end
+
+	Window.Minimized = false
+	Window.HideLauncher()
+
+	mainFrame.Visible = true
+	mainFrame.Size = UDim2.fromOffset(Window.LauncherSize, Window.LauncherSize)
+	mainFrame.Position = Window.GetLauncherCenterPosition()
+	mainFrame.BackgroundTransparency = UI.WindowTransparency
+
+	tweenWindow(normalSize, getOpenWindowPosition(), 0.38)
+
+	task.delay(0.15, function()
+		if not Window.Minimized then
+			tabScroll.Visible = true
+			contentFrame.Visible = true
+			Window.ResizeHandle.Visible = true
+		end
+	end)
+end
+
+function Window.ToggleMinimized()
+	if Window.Minimized then
+		Window.Open()
 	else
-		tweenWindow(normalSize, mainFrame.Position, 0.35)
-
-		task.delay(0.12, function()
-			if not Window.Minimized then
-				tabScroll.Visible = true
-				contentFrame.Visible = true
-				Window.ResizeHandle.Visible = true
-			end
-		end)
+		Window.Minimize()
 	end
 end
 
@@ -3888,6 +4029,16 @@ UserInputService.InputChanged:Connect(Window.HandleInputChanged)
 
 minimizeButton.MouseButton1Click:Connect(Window.ToggleMinimized)
 
+UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
+	if gameProcessed or UserInputService:GetFocusedTextBox() then
+		return
+	end
+
+	if inputObject.KeyCode == Window.ReopenKey then
+		Window.ToggleMinimized()
+	end
+end)
+
 closeButton.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
@@ -3897,7 +4048,13 @@ local function applyResponsiveWindow()
 
 	if Window.Minimized then
 		minimizedSize = getMinimizedSize()
-		mainFrame.Size = minimizedSize
+		mainFrame.Size = UDim2.fromOffset(Window.LauncherSize, Window.LauncherSize)
+		mainFrame.Position = Window.GetLauncherCenterPosition()
+
+		if Window.Launcher then
+			Window.Launcher.Position = Window.GetLauncherPosition()
+		end
+
 		if Notify.RefreshLayout then
 			Notify.RefreshLayout()
 		end
@@ -3905,14 +4062,14 @@ local function applyResponsiveWindow()
 	end
 
 	local viewport = getViewportSize()
-	sideTabWidth = viewport.X < 420 and 92 or 112
-	contentLeftOffset = sideTabWidth + 22
+	sideTabWidth = viewport.X < 420 and 104 or 132
+	contentLeftOffset = sideTabWidth + 26
 	normalSize = getWindowSize()
 	mainFrame.Size = normalSize
-	mainFrame.Position = UDim2.fromScale(0.5, 0.5)
-	tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -82)
-	contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 12), 1, -82)
-	contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 68)
+	mainFrame.Position = getOpenWindowPosition()
+	tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -88)
+	contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 14), 1, -88)
+	contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 72)
 
 	if Notify.RefreshLayout then
 		Notify.RefreshLayout()
