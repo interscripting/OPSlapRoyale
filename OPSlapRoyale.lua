@@ -1599,7 +1599,7 @@ function Notify.RefreshLayout()
 		if slot and slot.Parent then
 			slot.Size = UDim2.fromOffset(Notify.Width, slot.Size.Y.Offset)
 
-			local popup = slot:FindFirstChildWhichIsA("TextButton")
+			local popup = slot:FindFirstChild("Popup")
 			if popup then
 				popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
 			end
@@ -1649,14 +1649,16 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forc
 	table.insert(Notify.Active, slot)
 	Notify.Trim()
 
-	local popup = Instance.new("TextButton")
+	local hasClickAction = clickCallback ~= nil
+
+	local popup = Instance.new("Frame")
+	popup.Name = "Popup"
 	popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
 	popup.Position = UDim2.fromOffset(Notify.Width + 42, 0)
 	popup.BackgroundTransparency = 0.04
 	popup.BorderSizePixel = 0
-	popup.Text = ""
-	popup.AutoButtonColor = false
 	popup.ClipsDescendants = true
+	popup.Active = false
 	popup.ZIndex = 101
 	popup.Parent = slot
 	themeObject(popup, "BackgroundColor3", "Panel")
@@ -1734,8 +1736,30 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forc
 	addCorner(progress, 3)
 
 	local dismissed = false
+	local dismiss = nil
 
-	local function dismiss()
+	if hasClickAction then
+		local clickButton = Instance.new("TextButton")
+		clickButton.Size = UDim2.fromOffset(44, 28)
+		clickButton.Position = UDim2.new(1, -54, 0, 10)
+		clickButton.BorderSizePixel = 0
+		clickButton.Text = "GO"
+		clickButton.Font = Enum.Font.GothamBlack
+		clickButton.TextSize = 12
+		clickButton.TextColor3 = Color3.fromRGB(10, 12, 18)
+		clickButton.BackgroundColor3 = preset.Color
+		clickButton.AutoButtonColor = false
+		clickButton.ZIndex = popup.ZIndex + 1
+		clickButton.Parent = popup
+		addCorner(clickButton, 6)
+
+		clickButton.MouseButton1Click:Connect(function()
+			clickCallback()
+			dismiss()
+		end)
+	end
+
+	dismiss = function()
 		if dismissed then
 			return
 		end
@@ -1815,14 +1839,6 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forc
 		TweenService:Create(glow, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 0.76 }):Play()
 	end)
 
-	popup.MouseButton1Click:Connect(function()
-		if clickCallback then
-			clickCallback()
-		end
-
-		dismiss()
-	end)
-
 	task.delay(lifeTime, function()
 		if popup.Parent then
 			dismiss()
@@ -1844,8 +1860,8 @@ Main.CodeKeywords = {
 
 Teleport.MaxStrikes = 5
 Teleport.Cooldown = 5
-Teleport.Debounce = 1.5
-Teleport.PostFLock = 0.5
+Teleport.Debounce = 2
+Teleport.PostFLock = 2
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -2091,6 +2107,65 @@ function Teleport.GetGroundCFrame(position, excludeInstances, stayClose)
 	return CFrame.new(position + Vector3.new(0, 4, 0))
 end
 
+function Teleport.GetItemCFrame(itemPart, excludeInstances)
+	local position = itemPart.Position
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = excludeInstances or {}
+
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+	overlapParams.FilterDescendantsInstances = excludeInstances or {}
+
+	local function hasRoom(candidatePosition)
+		local touching = workspace:GetPartBoundsInBox(CFrame.new(candidatePosition + Vector3.new(0, 2, 0)), Vector3.new(4, 5, 4), overlapParams)
+
+		for _, part in ipairs(touching) do
+			if part ~= itemPart and part.CanCollide and part.Transparency < 0.95 then
+				return false
+			end
+		end
+
+		return true
+	end
+
+	local offsets = {
+		Vector3.new(2.5, 0, 0),
+		Vector3.new(-2.5, 0, 0),
+		Vector3.new(0, 0, 2.5),
+		Vector3.new(0, 0, -2.5),
+		Vector3.new(3.5, 0, 3.5),
+		Vector3.new(-3.5, 0, 3.5),
+		Vector3.new(3.5, 0, -3.5),
+		Vector3.new(-3.5, 0, -3.5),
+		Vector3.zero
+	}
+
+	for _, offset in ipairs(offsets) do
+		local rayOrigin = position + offset + Vector3.new(0, 5, 0)
+		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -18, 0), params)
+
+		if result and math.abs(result.Position.Y - position.Y) <= 12 then
+			local candidatePosition = result.Position + Vector3.new(0, 4, 0)
+
+			if hasRoom(candidatePosition) then
+				return CFrame.new(candidatePosition)
+			end
+		end
+	end
+
+	for _, offset in ipairs(offsets) do
+		local candidatePosition = position + offset + Vector3.new(0, 3, 0)
+
+		if hasRoom(candidatePosition) then
+			return CFrame.new(candidatePosition)
+		end
+	end
+
+	return CFrame.new(position + Vector3.new(0, 4, 0))
+end
+
 function Teleport.CreateMarker(position)
 	return nil
 end
@@ -2251,7 +2326,7 @@ function Items.TeleportTo(itemName)
 		return
 	end
 
-	local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject }, true)
+	local groundCFrame = Teleport.GetItemCFrame(itemPart, { character, itemObject })
 
 	Teleport.MoveRoot(root, groundCFrame)
 	Teleport.AddStrike()
@@ -2732,7 +2807,7 @@ local function runAutoCollect()
 
 		if root then
 			markVisitedCollectPosition(itemPosition)
-			local groundCFrame = Teleport.GetGroundCFrame(itemPart.Position, { character, itemObject }, true)
+			local groundCFrame = Teleport.GetItemCFrame(itemPart, { character, itemObject })
 
 			Teleport.MoveRoot(root, groundCFrame)
 			Teleport.AddStrike()
