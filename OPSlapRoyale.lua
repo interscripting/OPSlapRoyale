@@ -3392,8 +3392,9 @@ function Combat.ApplyHitbox(otherPlayer)
 		return
 	end
 
+	local character = otherPlayer.Character
 	local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
-	if not humanoid or humanoid.Health <= 0 then
+	if not humanoid or humanoid.Health <= 0 or Combat.IsRagdolledTarget(character, humanoid) then
 		Combat.ResetHitbox(otherPlayer)
 		return
 	end
@@ -3624,25 +3625,6 @@ function Combat.TapEquippedGlove()
 	if tool then
 		pcall(function()
 			tool:Activate()
-		end)
-	end
-
-	local VirtualInputManager = game:GetService("VirtualInputManager")
-	local viewport = getViewportSize()
-	local x = math.floor(viewport.X / 2)
-	local y = math.floor(viewport.Y / 2)
-
-	pcall(function()
-		VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-		task.wait(0.03)
-		VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-	end)
-
-	if isTouchDevice then
-		pcall(function()
-			VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.Begin, x, y)
-			task.wait(0.03)
-			VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.End, x, y)
 		end)
 	end
 end
