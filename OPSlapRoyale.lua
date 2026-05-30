@@ -72,7 +72,7 @@ local currentTheme = themes["Royal Pulse"]
 local UI = {
 	SideDropdowns = {},
 	DropdownClosers = {},
-	WindowTransparency = 0,
+	WindowTransparency = 0.45,
 	ThemedObjects = {},
 	TabButtons = {},
 	Pages = {},
@@ -148,7 +148,8 @@ function UI.StyleButton(button)
 	button.BorderSizePixel = 0
 	button.AutoButtonColor = false
 	button.ClipsDescendants = true
-	UI.AddCorner(button, 9)
+	button.BackgroundTransparency = 0.12
+	UI.AddCorner(button, 6)
 
 	local scale = Instance.new("UIScale")
 	scale.Scale = 1
@@ -157,7 +158,7 @@ function UI.StyleButton(button)
 	local stroke = Instance.new("UIStroke")
 	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	stroke.Thickness = 1
-	stroke.Transparency = 0.58
+	stroke.Transparency = 0.76
 	stroke.Parent = button
 	UI.ThemeObject(stroke, "Color", "Stroke")
 
@@ -175,24 +176,24 @@ function UI.StyleButton(button)
 
 	button.MouseEnter:Connect(function()
 		hovering = true
-		tween(scale, 0.14, { Scale = 1.015 })
-		tween(stroke, 0.14, { Transparency = 0.22 })
-		tween(button, 0.14, { BackgroundTransparency = 0 })
+		tween(scale, 0.14, { Scale = 1.006 })
+		tween(stroke, 0.14, { Transparency = 0.42 })
+		tween(button, 0.14, { BackgroundTransparency = 0.04 })
 	end)
 
 	button.MouseLeave:Connect(function()
 		hovering = false
 		tween(scale, 0.16, { Scale = 1 })
-		tween(stroke, 0.16, { Transparency = 0.58 })
-		tween(button, 0.16, { BackgroundTransparency = 0.04 })
+		tween(stroke, 0.16, { Transparency = 0.76 })
+		tween(button, 0.16, { BackgroundTransparency = 0.12 })
 	end)
 
 	button.MouseButton1Down:Connect(function()
-		tween(scale, 0.08, { Scale = 0.975 })
+		tween(scale, 0.08, { Scale = 0.985 })
 	end)
 
 	button.MouseButton1Up:Connect(function()
-		tween(scale, 0.14, { Scale = hovering and 1.015 or 1 })
+		tween(scale, 0.14, { Scale = hovering and 1.006 or 1 })
 	end)
 end
 
@@ -213,7 +214,7 @@ UI.Icons = {
 	["Auto Items"] = "🤖",
 	["Auto Collect"] = "🧲",
 	["Auto Heal"] = "❤️",
-	["Sort Inventory"] = "🎒",
+	["Auto Sort"] = "🎒",
 	["Hitbox Controls"] = "🎯",
 	["Expand Hitbox"] = "📦",
 	["Visualise Hitboxes"] = "✨",
@@ -225,17 +226,6 @@ UI.Icons = {
 	["Window Transparency"] = "🪟",
 	["Quick Menu Hotkeys"] = "⌨️",
 	["Toggle recommended settings?"] = "⭐",
-	["Menu Controls"] = "🧰",
-	["Reset Window Position"] = "🎯",
-	["Close Dropdowns"] = "📁",
-	["Minimize Menu"] = "🔮",
-	["Mute Notifications"] = "🔕",
-	["Custom Keybinds"] = "🎛️",
-	["Set Menu Keybind"] = "🕹️",
-	["Theme Creator"] = "🌈",
-	["Accent Red"] = "🔴",
-	["Accent Green"] = "🟢",
-	["Accent Blue"] = "🔵",
 	["Teleport To Lowest Health"] = "🩹",
 	["Teleport To Nearest"] = "📍",
 	["Kill Players"] = "⚔️",
@@ -261,7 +251,6 @@ UI.Descriptions = {
 	["World Safety"] = "Invisible protection over danger zones.",
 	["Kill Players"] = "Cycles through players from lowest health upward.",
 	["Themes"] = "Switch the full menu color profile.",
-	["Menu Controls"] = "Quick actions for the menu, popups, and window.",
 	["Theme Creator"] = "Tune the accent color for your current theme.",
 	["Get Code + Go Barn"] = "Moves to barn, scans puzzle assets, and reports the code.",
 	["Toggle recommended settings?"] = "Turns on the useful defaults without enabling auto heal."
@@ -332,7 +321,7 @@ local function applyMobileMetrics()
 	Notify.Width = (isTouchDevice or viewport.X < 720) and math.clamp(viewport.X - 30, 230, 292) or 312
 	Notify.RightOffset = (isTouchDevice or viewport.X < 720) and 8 or 12
 	Notify.BottomOffset = (isTouchDevice or viewport.X < 720) and 54 or 72
-	Notify.Height = (isTouchDevice or viewport.X < 720) and 68 or 74
+	Notify.Height = (isTouchDevice or viewport.X < 720) and 78 or 88
 end
 
 applyMobileMetrics()
@@ -537,7 +526,6 @@ UI.CreatePage("Main")
 UI.CreatePage("Items")
 UI.CreatePage("Teleports")
 UI.CreatePage("Combat")
-UI.CreatePage("Visuals")
 UI.CreatePage("Safety")
 UI.CreatePage("Settings")
 
@@ -656,7 +644,6 @@ UI.CreateTab("Main")
 UI.CreateTab("Teleports")
 UI.CreateTab("Items")
 UI.CreateTab("Combat")
-UI.CreateTab("Visuals")
 UI.CreateTab("Safety")
 UI.CreateTab("Settings")
 
@@ -722,7 +709,6 @@ UI.CreatePageTitle(UI.Pages.Main, "Main")
 UI.CreatePageTitle(UI.Pages.Items, "Items")
 UI.CreatePageTitle(UI.Pages.Teleports, "Teleports")
 UI.CreatePageTitle(UI.Pages.Combat, "Combat")
-UI.CreatePageTitle(UI.Pages.Visuals, "Visuals")
 UI.CreatePageTitle(UI.Pages.Safety, "Safety")
 UI.CreatePageTitle(UI.Pages.Settings, "Settings")
 
@@ -753,13 +739,12 @@ local mainList, updateMainCanvas = UI.CreatePageList(UI.Pages.Main)
 local itemsList, updateItemsCanvas = UI.CreatePageList(UI.Pages.Items)
 local teleportList, updateTeleportCanvas = UI.CreatePageList(UI.Pages.Teleports)
 local combatList, updateCombatCanvas = UI.CreatePageList(UI.Pages.Combat)
-local visualsList, updateVisualsCanvas = UI.CreatePageList(UI.Pages.Visuals)
 local safetyList, updateSafetyCanvas = UI.CreatePageList(UI.Pages.Safety)
 local settingsList, updateSettingsCanvas = UI.CreatePageList(UI.Pages.Settings)
 
 function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -10, 0, isTouchDevice and 42 or 46)
+	button.Size = UDim2.new(1, -10, 0, isTouchDevice and 38 or 40)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 12
@@ -770,20 +755,19 @@ function UI.CreateSmallButton(parent, text, callback)
 	styleButton(button)
 
 	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromOffset(23, 23)
-	icon.Position = UDim2.fromOffset(10, isTouchDevice and 9 or 11)
+	icon.Size = UDim2.fromOffset(20, 20)
+	icon.Position = UDim2.fromOffset(10, isTouchDevice and 9 or 10)
 	icon.BorderSizePixel = 0
+	icon.BackgroundTransparency = 1
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
 	icon.TextSize = 10
 	icon.Parent = button
-	themeObject(icon, "BackgroundColor3", "Panel")
 	themeObject(icon, "TextColor3", "Button")
-	addCorner(icon, 9)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -44, 1, 0)
-	label.Position = UDim2.fromOffset(42, 0)
+	label.Size = UDim2.new(1, -46, 1, 0)
+	label.Position = UDim2.fromOffset(36, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
@@ -962,7 +946,6 @@ UI.ToggleDescriptions = {
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Anti Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
-	["Bus Catch Platform"] = "Spawns a wide platform below you on your first jump or fall.",
 	["Toggle recommended settings?"] = "Turns on ESP, hitbox, auto tap, hotkeys, and safety."
 }
 
@@ -977,10 +960,8 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	button.TextSize = 13
 	button.Parent = parent
 
-	if not parent:GetAttribute("IsDropdownBody") then
-		UI.TopLevelToggleOrder += 1
-		button.LayoutOrder = -1000 + UI.TopLevelToggleOrder
-	end
+	UI.TopLevelToggleOrder += 1
+	button.LayoutOrder = -10000 + UI.TopLevelToggleOrder
 
 	themeObject(button, "BackgroundColor3", "ButtonDark")
 	styleButton(button)
@@ -1097,10 +1078,11 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	holder.ClipsDescendants = true
 	holder.Parent = wrapper
 	themeObject(holder, "BackgroundColor3", "ButtonDark")
-	addCorner(holder, 10)
+	holder.BackgroundTransparency = 0.1
+	addCorner(holder, 6)
 	do
 		local stroke = addStroke(holder, currentTheme.Stroke, 1)
-		stroke.Transparency = 0.48
+		stroke.Transparency = 0.78
 		themeObject(stroke, "Color", "Stroke")
 	end
 
@@ -1124,7 +1106,8 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	headerIcon.Parent = holder
 	themeObject(headerIcon, "BackgroundColor3", "Panel")
 	themeObject(headerIcon, "TextColor3", "Button")
-	addCorner(headerIcon, 10)
+	headerIcon.BackgroundTransparency = 0.22
+	addCorner(headerIcon, 6)
 
 	local headerLabel = Instance.new("TextLabel")
 	headerLabel.Size = UDim2.new(1, -98, 0, 24)
@@ -1155,7 +1138,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	arrow.Position = UDim2.new(1, -42, 0, 18)
 	arrow.BackgroundTransparency = 1
 	arrow.Active = true
-	arrow.Text = "v"
+	arrow.Text = "+"
 	arrow.Font = Enum.Font.GothamBold
 	arrow.TextSize = 16
 	arrow.Parent = holder
@@ -1187,10 +1170,10 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local function refreshSize(animated)
 		local bodyHeight = bodyLayout.AbsoluteContentSize.Y + 12
-		local targetHeight = open and (58 + bodyHeight) or 52
+		local targetHeight = open and (72 + bodyHeight) or 64
 
 		body.Size = UDim2.new(1, 0, 0, bodyHeight)
-		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 3)
+		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 8)
 
 		if animated then
 			TweenService:Create(
@@ -1209,7 +1192,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 	local function toggle()
 		open = not open
 		body.Visible = open
-		arrow.Text = open and "^" or "v"
+		arrow.Text = open and "-" or "+"
 
 		TweenService:Create(
 			dropdownScale,
@@ -1247,7 +1230,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 		if open then
 			open = false
 			body.Visible = false
-			arrow.Text = "v"
+			arrow.Text = "+"
 			refreshSize(true)
 		end
 	end
@@ -1298,6 +1281,7 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	header.TextSize = 14
 	header.Parent = wrapper
 	themeObject(header, "BackgroundColor3", "ButtonDark")
+	header.BackgroundTransparency = 0.1
 	styleButton(header)
 
 	local headerIcon = Instance.new("TextLabel")
@@ -1310,7 +1294,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	headerIcon.Parent = header
 	themeObject(headerIcon, "BackgroundColor3", "Panel")
 	themeObject(headerIcon, "TextColor3", "Button")
-	addCorner(headerIcon, 10)
+	headerIcon.BackgroundTransparency = 0.22
+	addCorner(headerIcon, 6)
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -60, 0, 25)
@@ -1349,11 +1334,11 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	flyout.ClipsDescendants = true
 	flyout.Parent = gui
 	themeObject(flyout, "BackgroundColor3", "Panel")
-	addCorner(flyout, 10)
+	addCorner(flyout, 6)
 
 	local flyoutStroke = addStroke(flyout, currentTheme.Stroke, 1)
 	themeObject(flyoutStroke, "Color", "Stroke")
-	flyoutStroke.Transparency = 0.35
+	flyoutStroke.Transparency = 0.72
 
 	local flyoutTitle = Instance.new("TextLabel")
 	flyoutTitle.Size = UDim2.new(1, -94, 0, 44)
@@ -1376,7 +1361,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	flyoutIcon.Parent = flyout
 	themeObject(flyoutIcon, "BackgroundColor3", "ButtonDark")
 	themeObject(flyoutIcon, "TextColor3", "Button")
-	addCorner(flyoutIcon, 10)
+	flyoutIcon.BackgroundTransparency = 0.22
+	addCorner(flyoutIcon, 6)
 
 	local closeFlyout = Instance.new("TextButton")
 	closeFlyout.Size = UDim2.fromOffset(32, 32)
@@ -1707,26 +1693,26 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forc
 	icon.Parent = iconBubble
 
 	local noteTitle = Instance.new("TextLabel")
-	noteTitle.Size = UDim2.new(1, -58, 0, 21)
-	noteTitle.Position = UDim2.fromOffset(48, 9)
+	noteTitle.Size = UDim2.new(1, -58, 0, 24)
+	noteTitle.Position = UDim2.fromOffset(48, 10)
 	noteTitle.BackgroundTransparency = 1
 	noteTitle.Text = tostring(titleText)
 	noteTitle.Font = Enum.Font.GothamBlack
-	noteTitle.TextSize = 13
+	noteTitle.TextSize = isTouchDevice and 14 or 15
 	noteTitle.TextXAlignment = Enum.TextXAlignment.Left
 	noteTitle.TextTruncate = Enum.TextTruncate.AtEnd
 	noteTitle.Parent = popup
 	themeObject(noteTitle, "TextColor3", "Text")
 
 	local message = Instance.new("TextLabel")
-	message.Size = UDim2.new(1, -58, 0, 30)
-	message.Position = UDim2.fromOffset(48, 31)
+	message.Size = UDim2.new(1, -58, 0, 38)
+	message.Position = UDim2.fromOffset(48, 36)
 	message.BackgroundTransparency = 1
 	message.Text = tostring(messageText)
 	message.Font = Enum.Font.GothamMedium
-	message.TextSize = 10
+	message.TextSize = isTouchDevice and 12 or 13
 	message.TextWrapped = true
-	message.TextXAlignment = Enum.TextXAlignment.Center
+	message.TextXAlignment = Enum.TextXAlignment.Left
 	message.TextYAlignment = Enum.TextYAlignment.Top
 	message.Parent = popup
 	themeObject(message, "TextColor3", "SubText")
@@ -1856,18 +1842,10 @@ Main.CodeKeywords = {
 	"question", "solve", "answer", "number"
 }
 
-Main.BusCatchEnabled = false
-Main.BusCatchSpawned = false
-Main.BusCatchLanded = false
-Main.BusCatchPlatform = nil
-Main.BusCatchConnections = {}
-Main.BusCatchSize = Vector3.new(120, 2, 120)
-Main.BusCatchDrop = 8
-
 Teleport.MaxStrikes = 5
 Teleport.Cooldown = 5
-Teleport.Debounce = 2
-Teleport.PostFLock = 2
+Teleport.Debounce = 1.5
+Teleport.PostFLock = 0.5
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -1917,153 +1895,6 @@ function Utility.GetObjectCFrame(object)
 
 	local part = object:FindFirstChildWhichIsA("BasePart", true)
 	return part and part.CFrame or nil
-end
-
-function Main.ClearBusCatchConnections()
-	for _, connection in ipairs(Main.BusCatchConnections) do
-		if connection and connection.Connected then
-			connection:Disconnect()
-		end
-	end
-
-	Main.BusCatchConnections = {}
-end
-
-function Main.RemoveBusCatchPlatform()
-	if Main.BusCatchPlatform then
-		Main.BusCatchPlatform:Destroy()
-		Main.BusCatchPlatform = nil
-	end
-end
-
-function Main.DeleteAllGliders()
-	local function looksLikeGlider(object)
-		local name = string.lower(object.Name)
-		return string.find(name, "glider")
-			or string.find(name, "parachute")
-			or string.find(name, "paraglider")
-	end
-
-	local deleted = 0
-
-	for _, object in ipairs(game:GetDescendants()) do
-		if looksLikeGlider(object) then
-			pcall(function()
-				object:Destroy()
-				deleted += 1
-			end)
-		end
-	end
-
-	createNotification("Bus Catch", "Deleted " .. tostring(deleted) .. " glider objects.", "Success")
-end
-
-function Main.HandleBusCatchLanding()
-	if Main.BusCatchLanded then
-		return
-	end
-
-	Main.BusCatchLanded = true
-	Main.DeleteAllGliders()
-end
-
-function Main.SpawnBusCatchPlatform(root)
-	if not Main.BusCatchEnabled or Main.BusCatchSpawned or not root then
-		return
-	end
-
-	Main.BusCatchSpawned = true
-	Main.BusCatchLanded = false
-	Main.RemoveBusCatchPlatform()
-
-	local platform = Instance.new("Part")
-	platform.Name = "Part"
-	platform.Size = Main.BusCatchSize
-	platform.Anchored = true
-	platform.CanCollide = true
-	platform.CanTouch = true
-	platform.CanQuery = false
-	platform.Material = Enum.Material.Neon
-	platform.Color = Color3.fromRGB(72, 255, 196)
-	platform.Transparency = 0.25
-	platform.CFrame = CFrame.new(root.Position.X, root.Position.Y - Main.BusCatchDrop, root.Position.Z)
-	platform.Parent = workspace
-	platform.Touched:Connect(function(hit)
-		local character = player.Character
-
-		if character and hit and hit:IsDescendantOf(character) then
-			Main.HandleBusCatchLanding()
-		end
-	end)
-
-	task.spawn(function()
-		for _ = 1, 80 do
-			if not Main.BusCatchEnabled or not platform.Parent then
-				return
-			end
-
-			local character = player.Character
-			local liveRoot = character and character:FindFirstChild("HumanoidRootPart")
-
-			if liveRoot and math.abs(liveRoot.Position.Y - platform.Position.Y) <= 7 then
-				Main.HandleBusCatchLanding()
-				return
-			end
-
-			task.wait(0.1)
-		end
-	end)
-
-	Main.BusCatchPlatform = platform
-	createNotification("Bus Catch", "Platform spawned below you.", "Success")
-end
-
-function Main.WatchBusCatchCharacter(character)
-	Main.BusCatchSpawned = false
-
-	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
-	local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
-
-	if not humanoid or not root then
-		return
-	end
-
-	table.insert(Main.BusCatchConnections, humanoid.StateChanged:Connect(function(_, newState)
-		if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
-			Main.SpawnBusCatchPlatform(root)
-		end
-	end))
-
-	local currentState = humanoid:GetState()
-	if currentState == Enum.HumanoidStateType.Jumping or currentState == Enum.HumanoidStateType.Freefall then
-		Main.SpawnBusCatchPlatform(root)
-	end
-end
-
-function Main.SetBusCatchPlatform(state)
-	Main.BusCatchEnabled = state == true
-	Main.ClearBusCatchConnections()
-
-	if not Main.BusCatchEnabled then
-		Main.BusCatchSpawned = false
-		Main.RemoveBusCatchPlatform()
-		createNotification("Bus Catch", "Bus Catch Platform disabled.")
-		return
-	end
-
-	createNotification("Bus Catch", "Bus Catch Platform enabled.", "Success")
-
-	if player.Character then
-		Main.WatchBusCatchCharacter(player.Character)
-	end
-
-	table.insert(Main.BusCatchConnections, player.CharacterAdded:Connect(function(character)
-		task.wait(0.15)
-
-		if Main.BusCatchEnabled then
-			Main.WatchBusCatchCharacter(character)
-		end
-	end))
 end
 
 function Main.GetPuzzleCode()
@@ -2445,94 +2276,6 @@ ContextActionService:BindActionAtPriority(
 
 local normalizeName = Utility.NormalizeName
 
-do
-	local card = Instance.new("Frame")
-	card.Size = UDim2.new(1, -14, 0, 104)
-	card.BorderSizePixel = 0
-	card.LayoutOrder = -1200
-	card.ClipsDescendants = false
-	card.Parent = mainList
-	themeObject(card, "BackgroundColor3", "ButtonDark")
-	addCorner(card, 12)
-	addStroke(card, currentTheme.Stroke, 1)
-
-	local glow = Instance.new("UIStroke")
-	glow.Thickness = 4
-	glow.Transparency = 0.78
-	glow.Parent = card
-	themeObject(glow, "Color", "Stroke")
-
-	local accent = Instance.new("Frame")
-	accent.Size = UDim2.new(0, 5, 1, -24)
-	accent.Position = UDim2.fromOffset(12, 12)
-	accent.BorderSizePixel = 0
-	accent.Parent = card
-	themeObject(accent, "BackgroundColor3", "Button")
-	addCorner(accent, 4)
-
-	local avatarFrame = Instance.new("Frame")
-	avatarFrame.Size = UDim2.fromOffset(72, 72)
-	avatarFrame.Position = UDim2.fromOffset(28, 16)
-	avatarFrame.BorderSizePixel = 0
-	avatarFrame.ClipsDescendants = true
-	avatarFrame.Parent = card
-	themeObject(avatarFrame, "BackgroundColor3", "Panel")
-	addCorner(avatarFrame, 100)
-	addStroke(avatarFrame, currentTheme.Stroke, 2)
-
-	local avatar = Instance.new("ImageLabel")
-	avatar.Size = UDim2.new(1, -8, 1, -8)
-	avatar.Position = UDim2.fromOffset(4, 4)
-	avatar.BackgroundTransparency = 1
-	avatar.Image = ""
-	avatar.Parent = avatarFrame
-	addCorner(avatar, 100)
-
-	local welcome = Instance.new("TextLabel")
-	welcome.Size = UDim2.new(1, -128, 0, 24)
-	welcome.Position = UDim2.fromOffset(116, 18)
-	welcome.BackgroundTransparency = 1
-	welcome.Text = "Welcome back,"
-	welcome.Font = Enum.Font.GothamBold
-	welcome.TextSize = 14
-	welcome.TextXAlignment = Enum.TextXAlignment.Left
-	welcome.Parent = card
-	themeObject(welcome, "TextColor3", "SubText")
-
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Size = UDim2.new(1, -128, 0, 34)
-	nameLabel.Position = UDim2.fromOffset(116, 42)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = player.DisplayName ~= "" and player.DisplayName or player.Name
-	nameLabel.Font = Enum.Font.GothamBlack
-	nameLabel.TextSize = 22
-	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	nameLabel.Parent = card
-	themeObject(nameLabel, "TextColor3", "Text")
-
-	local subLabel = Instance.new("TextLabel")
-	subLabel.Size = UDim2.new(1, -128, 0, 20)
-	subLabel.Position = UDim2.fromOffset(116, 74)
-	subLabel.BackgroundTransparency = 1
-	subLabel.Text = "Ready when you are."
-	subLabel.Font = Enum.Font.GothamMedium
-	subLabel.TextSize = 11
-	subLabel.TextXAlignment = Enum.TextXAlignment.Left
-	subLabel.Parent = card
-	themeObject(subLabel, "TextColor3", "SubText")
-
-	task.spawn(function()
-		local success, image = pcall(function()
-			return Players:GetUserThumbnailAsync(player.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size100x100)
-		end)
-
-		if success and avatar.Parent then
-			avatar.Image = image
-		end
-	end)
-end
-
 createSmallButton(mainList, "Get Code + Go Barn", function()
 	Teleport.ToLocation("Barn", Vector3.new(477, 87, 318))
 	createNotification("Code", "Searching...")
@@ -2542,25 +2285,6 @@ createSmallButton(mainList, "Get Code + Go Barn", function()
 		createNotification("Code Found", code ~= "" and code or "No code found.", code ~= "" and "Success" or "Info")
 	end)
 end)
-
-createToggleButton(mainList, "Bus Catch Platform", false, function(state)
-	Main.SetBusCatchPlatform(state)
-end)
-
-do
-	local dropdown = createDropdown(mainList, "Quick Teleports", updateMainCanvas)
-
-	for _, quickLocation in ipairs({
-		{ Name = "Barn", Position = Vector3.new(477, 87, 318) },
-		{ Name = "Shop", Position = Vector3.new(-575, 13, -481) },
-		{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
-		{ Name = "Volcano", Position = Vector3.new(-304, -26, 379) }
-	}) do
-		createSmallButton(dropdown, quickLocation.Name, function()
-			Teleport.ToLocation(quickLocation.Name, quickLocation.Position)
-		end)
-	end
-end
 
 do
 	local itemsDropdown = createSideDropdown(
@@ -3052,8 +2776,6 @@ autoCollectToggle = createToggleButton(autoUseDropdown, "Auto Collect", false, f
 		createNotification("Auto Collect", "Auto Collect disabled.")
 	end
 end)
-autoCollectToggle.Button.LayoutOrder = 1
-
 local autoHealEnabled = false
 local autoHealThread = nil
 local autoHealConnection = nil
@@ -3065,15 +2787,13 @@ local healingItems = {
 	"Apple"
 }
 
-local inventorySortOrder = {
+local priorityHotbarItems = {
+	"True Power",
 	"Gravitation Shard",
+	"Lightning Potion",
 	"Forcefield Crystal",
-	"Tomahawk",
 	"Sphere of Fury",
-	"Healing Potion",
-	"Bandage",
-	"First Aid Kit",
-	"Apple"
+	"Tomahawk"
 }
 
 local function getInventoryTools()
@@ -3100,20 +2820,48 @@ local function getInventoryTools()
 	return tools
 end
 
+local function getItemOrderRank(toolName, itemList)
+	for index, itemName in ipairs(itemList) do
+		if normalizeName(toolName) == normalizeName(itemName) then
+			return index
+		end
+	end
+
+	return nil
+end
+
+local function isLikelyGloveTool(tool)
+	local name = normalizeName(tool.Name)
+
+	if string.find(name, "glove") or string.find(name, "slap") then
+		return true
+	end
+
+	return not matchesItem(tool.Name, itemNames)
+end
+
 local function getToolSortRank(tool)
-	for index, itemName in ipairs(inventorySortOrder) do
+	if isLikelyGloveTool(tool) then
+		return 1
+	end
+
+	local priorityRank = getItemOrderRank(tool.Name, priorityHotbarItems)
+	if priorityRank then
+		return 10 + priorityRank
+	end
+
+	local healingRank = getItemOrderRank(tool.Name, healingItems)
+	if healingRank then
+		return 100 + healingRank
+	end
+
+	for index, itemName in ipairs(itemNames) do
 		if normalizeName(tool.Name) == normalizeName(itemName) then
-			return index + 1
+			return 50 + index
 		end
 	end
 
-	for _, itemName in ipairs(itemNames) do
-		if normalizeName(tool.Name) == normalizeName(itemName) then
-			return 50
-		end
-	end
-
-	return 1
+	return 80
 end
 
 local function sortInventory()
@@ -3125,6 +2873,11 @@ local function sortInventory()
 	end
 
 	local tools = getInventoryTools()
+	local holdingFolder = Instance.new("Folder")
+
+	for _, tool in ipairs(tools) do
+		tool.Parent = holdingFolder
+	end
 
 	table.sort(tools, function(left, right)
 		local leftRank = getToolSortRank(left)
@@ -3138,27 +2891,21 @@ local function sortInventory()
 	end)
 
 	for _, tool in ipairs(tools) do
-		if matchesItem(tool.Name, healingItems) or tool.Parent ~= backpack then
-			tool.Parent = backpack
-		end
-	end
-
-	task.wait()
-
-	for _, tool in ipairs(tools) do
 		tool.Parent = backpack
 		task.wait()
 	end
 
-	createNotification("Inventory", "Inventory sorted with glove first and healing items in backpack.", "Success")
+	holdingFolder:Destroy()
+
+	createNotification("Auto Sort", "Glove first, priority items next, healing grouped in backpack.", "Success")
 end
 
 do
-	local button = createSmallButton(autoUseDropdown, "Sort Inventory", function()
+	local button = createSmallButton(itemsList, "Auto Sort", function()
 		sortInventory()
 	end)
 
-	button.LayoutOrder = 2
+	button.LayoutOrder = -9500
 end
 
 local function useTool(tool)
@@ -3503,7 +3250,6 @@ do
 		end
 	end)
 
-	toggle.Button.LayoutOrder = 3
 end
 
 player.CharacterAdded:Connect(function()
@@ -3978,20 +3724,29 @@ function Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
 
 	local lookVector = targetRoot.CFrame.LookVector
 	local rightVector = targetRoot.CFrame.RightVector
+	local velocity = targetRoot.AssemblyLinearVelocity or Vector3.zero
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+	local predictedPosition = targetRoot.Position
+
+	if horizontalVelocity.Magnitude > 1 then
+		predictedPosition += horizontalVelocity.Unit * math.min(horizontalVelocity.Magnitude * 0.25, 5)
+	end
+
 	local candidatePositions = {
-		targetRoot.Position - (lookVector * 4),
-		targetRoot.Position + (rightVector * 4),
-		targetRoot.Position - (rightVector * 4),
-		targetRoot.Position + (lookVector * 4),
-		targetRoot.Position - (lookVector * 5) + (rightVector * 3),
-		targetRoot.Position - (lookVector * 5) - (rightVector * 3),
+		predictedPosition + (rightVector * 2.2),
+		predictedPosition - (rightVector * 2.2),
+		predictedPosition - (lookVector * 2),
+		predictedPosition + (lookVector * 1.5),
+		predictedPosition,
+		targetRoot.Position + (rightVector * 2),
+		targetRoot.Position - (rightVector * 2),
 		targetRoot.Position
 	}
 
 	for _, candidatePosition in ipairs(candidatePositions) do
 		local groundCFrame = Teleport.GetGroundCFrame(candidatePosition, excludeInstances, true)
 
-		if (groundCFrame.Position - targetRoot.Position).Magnitude <= 10 then
+		if (groundCFrame.Position - targetRoot.Position).Magnitude <= 7 then
 			return groundCFrame
 		end
 	end
@@ -4579,7 +4334,7 @@ function ESP.Disable()
 	end
 end
 
-local playerEspToggle = createToggleButton(visualsList, "Player Stats ESP", false, function(state)
+local playerEspToggle = createToggleButton(mainList, "Player Stats ESP", false, function(state)
 	if state then
 		ESP.Enable()
 		createNotification("ESP", "Player Stats ESP enabled.", "Success")
@@ -4688,42 +4443,6 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 end, "Turns on ESP, hitbox, auto tap, teleport hotkeys, and anti acid/lava.")
 
 do
-	local creator = createDropdown(settingsList, "Theme Creator", updateSettingsCanvas)
-	local customAccent = { R = 190, G = 116, B = 255 }
-
-	local function applyCustomAccent()
-		local accent = Color3.fromRGB(customAccent.R, customAccent.G, customAccent.B)
-
-		currentTheme.Button = accent
-		currentTheme.Stroke = accent:Lerp(Color3.fromRGB(255, 255, 255), 0.35)
-		currentTheme.SubText = accent:Lerp(Color3.fromRGB(230, 230, 245), 0.45)
-
-		for _, item in ipairs(UI.ThemedObjects) do
-			if item.Object and item.Object.Parent then
-				item.Object[item.Property] = currentTheme[item.Key]
-			end
-		end
-
-		selectTab(UI.SelectedTab)
-	end
-
-	UI.CreateSlider(creator, "Accent Red", 0, 1, customAccent.R / 255, function(value)
-		customAccent.R = math.floor(value * 255 + 0.5)
-		applyCustomAccent()
-	end)
-
-	UI.CreateSlider(creator, "Accent Green", 0, 1, customAccent.G / 255, function(value)
-		customAccent.G = math.floor(value * 255 + 0.5)
-		applyCustomAccent()
-	end)
-
-	UI.CreateSlider(creator, "Accent Blue", 0, 1, customAccent.B / 255, function(value)
-		customAccent.B = math.floor(value * 255 + 0.5)
-		applyCustomAccent()
-	end)
-end
-
-do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
 
 	for themeName in pairs(themes) do
@@ -4733,7 +4452,7 @@ do
 	end
 end
 
-UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, 0, function(value)
+UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, UI.WindowTransparency, function(value)
 	UI.WindowTransparency = value
 
 	mainFrame.BackgroundTransparency = value
@@ -4755,6 +4474,7 @@ end)
 local Window = {
 	Dragging = false,
 	Resizing = false,
+	DidDragWindow = false,
 	Minimized = false,
 	DragStart = nil,
 	ResizeStart = nil,
@@ -4763,6 +4483,10 @@ local Window = {
 	ResizeHandle = nil,
 	Launcher = nil,
 	LauncherScale = nil,
+	LauncherDragging = false,
+	LauncherDragStart = nil,
+	LauncherStartPosition = nil,
+	DidDragLauncher = false,
 	LauncherSize = isTouchDevice and 58 or 62,
 	DefaultReopenKey = Enum.KeyCode.T,
 	ReopenKey = Enum.KeyCode.T,
@@ -4791,6 +4515,7 @@ function Window.StartDrag(inputObject)
 	end
 
 	Window.Dragging = true
+	Window.DidDragWindow = false
 	Window.DragStart = inputObject.Position
 	Window.StartPosition = mainFrame.Position
 end
@@ -4824,12 +4549,27 @@ function Window.HandleInputChanged(inputObject)
 
 	if Window.Dragging and Window.DragStart and Window.StartPosition then
 		local delta = inputObject.Position - Window.DragStart
+		if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
+			Window.DidDragWindow = true
+		end
 
 		mainFrame.Position = UDim2.new(
 			Window.StartPosition.X.Scale,
 			Window.StartPosition.X.Offset + delta.X,
 			Window.StartPosition.Y.Scale,
 			Window.StartPosition.Y.Offset + delta.Y
+		)
+	end
+
+	if Window.LauncherDragging and Window.Launcher and Window.LauncherDragStart and Window.LauncherStartPosition then
+		local delta = inputObject.Position - Window.LauncherDragStart
+		if math.abs(delta.X) > 5 or math.abs(delta.Y) > 5 then
+			Window.DidDragLauncher = true
+		end
+
+		Window.Launcher.Position = UDim2.fromOffset(
+			Window.LauncherStartPosition.X.Offset + delta.X,
+			Window.LauncherStartPosition.Y.Offset + delta.Y
 		)
 	end
 
@@ -4844,6 +4584,23 @@ function Window.HandleInputChanged(inputObject)
 		local newHeight = math.clamp(Window.StartSize.Y.Offset + delta.Y, minHeight, maxHeight)
 
 		mainFrame.Size = UDim2.fromOffset(newWidth, newHeight)
+	end
+end
+
+function Window.StartLauncherDrag(inputObject)
+	if not isPointerBegin(inputObject) or not Window.Launcher then
+		return
+	end
+
+	Window.LauncherDragging = true
+	Window.DidDragLauncher = false
+	Window.LauncherDragStart = inputObject.Position
+	Window.LauncherStartPosition = Window.Launcher.Position
+end
+
+function Window.StopLauncherDrag(inputObject)
+	if isPointerEnd(inputObject) then
+		Window.LauncherDragging = false
 	end
 end
 
@@ -4930,8 +4687,13 @@ function Window.CreateLauncher()
 		themeObject(hint, "TextColor3", "SubText")
 	end
 
+	Window.Launcher.InputBegan:Connect(Window.StartLauncherDrag)
+	Window.Launcher.InputEnded:Connect(Window.StopLauncherDrag)
+
 	Window.Launcher.MouseButton1Click:Connect(function()
-		Window.Open()
+		if not Window.DidDragLauncher then
+			Window.Open()
+		end
 	end)
 end
 
@@ -5084,13 +4846,19 @@ styleButton(Window.ResizeHandle)
 
 topBar.InputBegan:Connect(Window.StartDrag)
 topBar.InputEnded:Connect(Window.StopDrag)
+minimizeButton.InputBegan:Connect(Window.StartDrag)
+minimizeButton.InputEnded:Connect(Window.StopDrag)
 
 Window.ResizeHandle.InputBegan:Connect(Window.StartResize)
 Window.ResizeHandle.InputEnded:Connect(Window.StopResize)
 
 UserInputService.InputChanged:Connect(Window.HandleInputChanged)
 
-minimizeButton.MouseButton1Click:Connect(Window.ToggleMinimized)
+minimizeButton.MouseButton1Click:Connect(function()
+	if not Window.DidDragWindow then
+		Window.ToggleMinimized()
+	end
+end)
 
 UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
 	if gameProcessed or UserInputService:GetFocusedTextBox() then
@@ -5115,48 +4883,6 @@ end)
 closeButton.MouseButton1Click:Connect(function()
 	gui:Destroy()
 end)
-
-local menuControlsDropdown = createDropdown(settingsList, "Menu Controls", updateSettingsCanvas)
-
-createToggleButton(menuControlsDropdown, "Custom Keybinds", false, function(state)
-	Window.CustomKeybindsEnabled = state
-	Window.WaitingForKeybind = false
-
-	createNotification(
-		"Keybind",
-		state and ("Custom menu key enabled: " .. Window.ReopenKey.Name .. ".") or "Default menu key restored: T.",
-		state and "Success" or "Info"
-	)
-end, "Uses your saved menu key instead of the default T key.")
-
-createSmallButton(menuControlsDropdown, "Set Menu Keybind", function()
-	Window.WaitingForKeybind = true
-	createNotification("Keybind", "Press any keyboard key to use for opening the menu.", "Info")
-end)
-
-createSmallButton(menuControlsDropdown, "Reset Window Position", function()
-	Window.ResetPosition()
-	createNotification("Menu", "Window moved back to the top center.", "Success")
-end)
-
-createSmallButton(menuControlsDropdown, "Close Dropdowns", function()
-	UI.CloseAllDropdowns()
-	createNotification("Menu", "Open dropdowns closed.", "Success")
-end)
-
-createSmallButton(menuControlsDropdown, "Minimize Menu", function()
-	Window.Minimize()
-end)
-
-createToggleButton(menuControlsDropdown, "Mute Notifications", false, function(state)
-	if state then
-		createNotification("Notifications", "Notifications muted.")
-		Notify.Muted = true
-	else
-		Notify.Muted = false
-		createNotification("Notifications", "Notifications unmuted.", "Success")
-	end
-end, "Stops popups until you turn this back off.")
 
 local function applyResponsiveWindow()
 	applyMobileMetrics()
@@ -5211,6 +4937,5 @@ updateMainCanvas()
 updateItemsCanvas()
 updateTeleportCanvas()
 updateCombatCanvas()
-updateVisualsCanvas()
 updateSafetyCanvas()
 updateSettingsCanvas()
