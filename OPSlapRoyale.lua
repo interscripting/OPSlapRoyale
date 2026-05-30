@@ -83,13 +83,13 @@ local UI = {
 local Notify = {
 	Order = 0,
 	Active = {},
-	Width = 374,
-	Height = 96,
-	Gap = 10,
-	BottomOffset = 104,
-	RightOffset = 22,
+	Width = 312,
+	Height = 74,
+	Gap = 7,
+	BottomOffset = 72,
+	RightOffset = 12,
 	LifeTime = 4.2,
-	MaxVisible = 5,
+	MaxVisible = 4,
 	Muted = false
 }
 
@@ -115,6 +115,8 @@ Notify.Presets = {
 local gui = Instance.new("ScreenGui")
 gui.Name = "OPSlapRoyaleUI"
 gui.ResetOnSpawn = false
+gui.DisplayOrder = 999999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 gui.Parent = player:WaitForChild("PlayerGui")
 
 function UI.ThemeObject(object, property, key)
@@ -215,6 +217,7 @@ UI.Icons = {
 	["Hitbox Controls"] = "🎯",
 	["Expand Hitbox"] = "📦",
 	["Visualise Hitboxes"] = "✨",
+	["Auto Glove Tap"] = "👊",
 	["Player Stats ESP"] = "📊",
 	["World Safety"] = "🚧",
 	["Anti Acid & Lava"] = "🔥",
@@ -235,6 +238,8 @@ UI.Icons = {
 	["Accent Blue"] = "🔵",
 	["Teleport To Lowest Health"] = "🩹",
 	["Teleport To Nearest"] = "📍",
+	["Kill Players"] = "⚔️",
+	["Start Kill Players"] = "⚔️",
 	["Open Item Teleports"] = "🎁",
 	["Open Player Teleports"] = "👤",
 	["Open Map Locations"] = "🗺️",
@@ -254,6 +259,7 @@ UI.Descriptions = {
 	["Auto Items"] = "Automatic item use and collection controls.",
 	["Hitbox Controls"] = "Adjust size and visibility for player hitboxes.",
 	["World Safety"] = "Invisible protection over danger zones.",
+	["Kill Players"] = "Cycles through players from lowest health upward.",
 	["Themes"] = "Switch the full menu color profile.",
 	["Menu Controls"] = "Quick actions for the menu, popups, and window.",
 	["Theme Creator"] = "Tune the accent color for your current theme.",
@@ -279,12 +285,13 @@ local addStroke = UI.AddStroke
 local styleButton = UI.StyleButton
 
 local mainFrame = Instance.new("Frame")
-mainFrame.Size = UDim2.fromOffset(560, 430)
+mainFrame.Size = UDim2.fromOffset(520, 380)
 mainFrame.Position = UDim2.fromScale(0.5, 0.5)
 mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 mainFrame.BorderSizePixel = 0
 mainFrame.ClipsDescendants = true
 mainFrame.BackgroundTransparency = 0
+mainFrame.ZIndex = 10
 mainFrame.Parent = gui
 themeObject(mainFrame, "BackgroundColor3", "Main")
 addCorner(mainFrame, 14)
@@ -301,31 +308,31 @@ local function getWindowSize()
 
 	if isTouchDevice or viewport.X < 720 then
 		return UDim2.fromOffset(
-			math.clamp(viewport.X - 16, 340, 700),
-			math.clamp(viewport.Y - 36, 360, 560)
+			math.clamp(viewport.X - 28, 292, 520),
+			math.clamp(viewport.Y - 78, 292, 430)
 		)
 	end
 
-	return UDim2.fromOffset(760, 520)
+	return UDim2.fromOffset(620, 430)
 end
 
 local function getMinimizedSize()
 	local viewport = getViewportSize()
 
 	if isTouchDevice or viewport.X < 720 then
-		return UDim2.fromOffset(math.clamp(viewport.X - 24, 300, 560), 58)
+		return UDim2.fromOffset(math.clamp(viewport.X - 30, 260, 480), 46)
 	end
 
-	return UDim2.fromOffset(560, 58)
+	return UDim2.fromOffset(480, 46)
 end
 
 local function applyMobileMetrics()
 	local viewport = getViewportSize()
 
-	Notify.Width = (isTouchDevice or viewport.X < 720) and math.clamp(viewport.X - 24, 280, 374) or 374
-	Notify.RightOffset = (isTouchDevice or viewport.X < 720) and 12 or 22
-	Notify.BottomOffset = (isTouchDevice or viewport.X < 720) and 82 or 104
-	Notify.Height = (isTouchDevice or viewport.X < 720) and 90 or 96
+	Notify.Width = (isTouchDevice or viewport.X < 720) and math.clamp(viewport.X - 30, 230, 292) or 312
+	Notify.RightOffset = (isTouchDevice or viewport.X < 720) and 8 or 12
+	Notify.BottomOffset = (isTouchDevice or viewport.X < 720) and 54 or 72
+	Notify.Height = (isTouchDevice or viewport.X < 720) and 68 or 74
 end
 
 applyMobileMetrics()
@@ -343,7 +350,7 @@ local function getOpenWindowPosition()
 	return UDim2.new(0.5, 0, 0, math.min(centerY, maxCenterY))
 end
 
-mainFrame.Size = UDim2.fromOffset(math.max(normalSize.X.Offset - 48, 300), math.max(normalSize.Y.Offset - 48, 280))
+mainFrame.Size = UDim2.fromOffset(math.max(normalSize.X.Offset - 36, 280), math.max(normalSize.Y.Offset - 36, 260))
 mainFrame.Position = getOpenWindowPosition()
 
 local function tweenWindow(targetSize, targetPosition, duration)
@@ -413,6 +420,7 @@ local topBar = Instance.new("Frame")
 topBar.Size = UDim2.new(1, 0, 0, 60)
 topBar.BackgroundTransparency = 1
 topBar.Active = true
+topBar.ZIndex = 30
 topBar.Parent = mainFrame
 
 do
@@ -455,6 +463,7 @@ minimizeButton.Position = UDim2.new(1, -76, 0, 9)
 minimizeButton.Text = "-"
 minimizeButton.Font = Enum.Font.GothamBold
 minimizeButton.TextSize = 18
+minimizeButton.ZIndex = 40
 minimizeButton.Parent = topBar
 themeObject(minimizeButton, "BackgroundColor3", "ButtonDark")
 styleButton(minimizeButton)
@@ -465,17 +474,18 @@ closeButton.Position = UDim2.new(1, -38, 0, 9)
 closeButton.Text = "X"
 closeButton.Font = Enum.Font.GothamBold
 closeButton.TextSize = 14
+closeButton.ZIndex = 40
 closeButton.Parent = topBar
 themeObject(closeButton, "BackgroundColor3", "ButtonDark")
 styleButton(closeButton)
 
 local viewportSize = getViewportSize()
-local sideTabWidth = viewportSize.X < 420 and 104 or 132
-local contentLeftOffset = sideTabWidth + 26
+local sideTabWidth = viewportSize.X < 420 and 76 or 104
+local contentLeftOffset = sideTabWidth + 18
 
 local tabScroll = Instance.new("ScrollingFrame")
-tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -88)
-tabScroll.Position = UDim2.fromOffset(14, 72)
+tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -70)
+tabScroll.Position = UDim2.fromOffset(9, 60)
 tabScroll.BorderSizePixel = 0
 tabScroll.ScrollBarThickness = 4
 tabScroll.CanvasSize = UDim2.fromOffset(0, 0)
@@ -500,8 +510,8 @@ tabPadding.PaddingRight = UDim.new(0, isTouchDevice and 6 or 10)
 tabPadding.Parent = tabScroll
 
 local contentFrame = Instance.new("Frame")
-contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 14), 1, -88)
-contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 72)
+contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 9), 1, -70)
+contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 60)
 contentFrame.BorderSizePixel = 0
 contentFrame.ClipsDescendants = true
 contentFrame.Parent = mainFrame
@@ -591,7 +601,7 @@ local selectTab = UI.SelectTab
 function UI.CreateTab(name)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
-	button.Size = UDim2.new(1, -4, 0, 58)
+	button.Size = UDim2.new(1, -4, 0, isTouchDevice and 46 or 50)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBlack
 	button.TextSize = 12
@@ -606,12 +616,12 @@ function UI.CreateTab(name)
 
 	local icon = Instance.new("TextLabel")
 	icon.Name = "IconBadge"
-	icon.Size = UDim2.fromOffset(24, 24)
-	icon.Position = UDim2.new(0.5, -13, 0, 7)
+	icon.Size = UDim2.fromOffset(21, 21)
+	icon.Position = UDim2.new(0.5, -11, 0, 6)
 	icon.BackgroundTransparency = 0
 	icon.Text = UI.GetIcon(name)
 	icon.Font = Enum.Font.GothamBlack
-	icon.TextSize = 12
+	icon.TextSize = 10
 	icon.TextXAlignment = Enum.TextXAlignment.Center
 	icon.TextYAlignment = Enum.TextYAlignment.Center
 	icon.Parent = button
@@ -620,11 +630,11 @@ function UI.CreateTab(name)
 	local label = Instance.new("TextLabel")
 	label.Name = "TabLabel"
 	label.Size = UDim2.new(1, -8, 0, 18)
-	label.Position = UDim2.fromOffset(4, 36)
+	label.Position = UDim2.fromOffset(4, isTouchDevice and 30 or 32)
 	label.BackgroundTransparency = 1
 	label.Text = name
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 11
+	label.TextSize = isTouchDevice and 9 or 10
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 	label.TextXAlignment = Enum.TextXAlignment.Center
 	label.Parent = button
@@ -652,8 +662,8 @@ UI.CreateTab("Settings")
 
 function UI.CreatePageTitle(parent, text)
 	local box = Instance.new("Frame")
-	box.Size = UDim2.new(1, -24, 0, 66)
-	box.Position = UDim2.fromOffset(12, 12)
+	box.Size = UDim2.new(1, -18, 0, 54)
+	box.Position = UDim2.fromOffset(9, 9)
 	box.BorderSizePixel = 0
 	box.Parent = parent
 	themeObject(box, "BackgroundColor3", "ButtonDark")
@@ -671,8 +681,8 @@ function UI.CreatePageTitle(parent, text)
 	addCorner(rail, 4)
 
 	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromOffset(34, 34)
-	icon.Position = UDim2.fromOffset(26, 15)
+	icon.Size = UDim2.fromOffset(28, 28)
+	icon.Position = UDim2.fromOffset(22, 13)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
@@ -683,24 +693,24 @@ function UI.CreatePageTitle(parent, text)
 	addCorner(icon, 9)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -80, 0, 26)
-	label.Position = UDim2.fromOffset(70, 10)
+	label.Size = UDim2.new(1, -66, 0, 22)
+	label.Position = UDim2.fromOffset(60, 8)
 	label.BackgroundTransparency = 1
 	label.Text = string.upper(text)
 	label.Font = Enum.Font.GothamBlack
-	label.TextSize = 16
+	label.TextSize = 14
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
 	label.Parent = box
 	themeObject(label, "TextColor3", "Text")
 
 	local description = Instance.new("TextLabel")
-	description.Size = UDim2.new(1, -82, 0, 22)
-	description.Position = UDim2.fromOffset(70, 36)
+	description.Size = UDim2.new(1, -68, 0, 18)
+	description.Position = UDim2.fromOffset(60, 30)
 	description.BackgroundTransparency = 1
 	description.Text = UI.GetDescription(text)
 	description.Font = Enum.Font.GothamMedium
-	description.TextSize = 11
+	description.TextSize = 10
 	description.TextTruncate = Enum.TextTruncate.AtEnd
 	description.TextXAlignment = Enum.TextXAlignment.Left
 	description.TextYAlignment = Enum.TextYAlignment.Center
@@ -718,8 +728,8 @@ UI.CreatePageTitle(UI.Pages.Settings, "Settings")
 
 function UI.CreatePageList(parent)
 	local list = Instance.new("ScrollingFrame")
-	list.Size = UDim2.new(1, -24, 1, -142)
-	list.Position = UDim2.fromOffset(12, 92)
+	list.Size = UDim2.new(1, -18, 1, -118)
+	list.Position = UDim2.fromOffset(9, 76)
 	list.BackgroundTransparency = 1
 	list.BorderSizePixel = 0
 	list.ScrollBarThickness = 6
@@ -727,7 +737,7 @@ function UI.CreatePageList(parent)
 	list.Parent = parent
 
 	local layout = Instance.new("UIListLayout")
-	layout.Padding = UDim.new(0, 14)
+	layout.Padding = UDim.new(0, 9)
 	layout.SortOrder = Enum.SortOrder.LayoutOrder
 	layout.Parent = list
 
@@ -749,7 +759,7 @@ local settingsList, updateSettingsCanvas = UI.CreatePageList(UI.Pages.Settings)
 
 function UI.CreateSmallButton(parent, text, callback)
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -14, 0, 54)
+	button.Size = UDim2.new(1, -10, 0, isTouchDevice and 42 or 46)
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 12
@@ -760,24 +770,24 @@ function UI.CreateSmallButton(parent, text, callback)
 	styleButton(button)
 
 	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromOffset(28, 28)
-	icon.Position = UDim2.fromOffset(12, 13)
+	icon.Size = UDim2.fromOffset(23, 23)
+	icon.Position = UDim2.fromOffset(10, isTouchDevice and 9 or 11)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
-	icon.TextSize = 12
+	icon.TextSize = 10
 	icon.Parent = button
 	themeObject(icon, "BackgroundColor3", "Panel")
 	themeObject(icon, "TextColor3", "Button")
 	addCorner(icon, 9)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -54, 1, 0)
-	label.Position = UDim2.fromOffset(52, 0)
+	label.Size = UDim2.new(1, -44, 1, 0)
+	label.Position = UDim2.fromOffset(42, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
+	label.TextSize = isTouchDevice and 11 or 12
 	label.TextTruncate = Enum.TextTruncate.AtEnd
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
@@ -817,7 +827,7 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 	local value = math.clamp(defaultValue, minValue, maxValue)
 
 	local holder = Instance.new("Frame")
-	holder.Size = UDim2.new(1, -12, 0, isTouchDevice and 64 or 58)
+	holder.Size = UDim2.new(1, -10, 0, isTouchDevice and 50 or 54)
 	holder.BorderSizePixel = 0
 	holder.Parent = parent
 	themeObject(holder, "BackgroundColor3", "ButtonDark")
@@ -829,14 +839,14 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 	label.Position = UDim2.fromOffset(12, 4)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = isTouchDevice and 12 or 13
+	label.TextSize = isTouchDevice and 10 or 12
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = holder
 	themeObject(label, "TextColor3", "Text")
 
 	local bar = Instance.new("TextButton")
-	bar.Size = UDim2.new(1, -28, 0, isTouchDevice and 14 or 8)
-	bar.Position = UDim2.fromOffset(14, isTouchDevice and 40 or 38)
+	bar.Size = UDim2.new(1, -24, 0, isTouchDevice and 10 or 7)
+	bar.Position = UDim2.fromOffset(12, isTouchDevice and 34 or 36)
 	bar.Text = ""
 	bar.BorderSizePixel = 0
 	bar.AutoButtonColor = false
@@ -948,10 +958,12 @@ UI.ToggleDescriptions = {
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
 	["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
 	["Visualise Hitboxes"] = "Toggles the neon hitbox preview on or off.",
+	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Anti Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
-	["Toggle recommended settings?"] = "Turns on ESP, hitbox, hotkeys, and safety."
+	["Bus Catch Platform"] = "Spawns a wide platform below you on your first jump or fall.",
+	["Toggle recommended settings?"] = "Turns on ESP, hitbox, auto tap, hotkeys, and safety."
 }
 
 function UI.CreateToggleButton(parent, text, defaultState, callback, descriptionText)
@@ -959,7 +971,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	local description = descriptionText or UI.ToggleDescriptions[text] or ""
 
 	local button = Instance.new("TextButton")
-	button.Size = UDim2.new(1, -14, 0, description ~= "" and 76 or 54)
+	button.Size = UDim2.new(1, -10, 0, description ~= "" and (isTouchDevice and 62 or 68) or (isTouchDevice and 42 or 46))
 	button.Text = ""
 	button.Font = Enum.Font.GothamBold
 	button.TextSize = 13
@@ -974,23 +986,23 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	styleButton(button)
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, -108, 0, description ~= "" and 26 or 54)
-	label.Position = UDim2.fromOffset(54, description ~= "" and 9 or 0)
+	label.Size = UDim2.new(1, -96, 0, description ~= "" and 22 or 42)
+	label.Position = UDim2.fromOffset(46, description ~= "" and 7 or 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 13
+	label.TextSize = isTouchDevice and 11 or 12
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.Parent = button
 	themeObject(label, "TextColor3", "Text")
 
 	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromOffset(28, 28)
-	icon.Position = UDim2.fromOffset(14, description ~= "" and 14 or 13)
+	icon.Size = UDim2.fromOffset(23, 23)
+	icon.Position = UDim2.fromOffset(11, description ~= "" and 11 or 10)
 	icon.BorderSizePixel = 0
 	icon.Text = UI.GetIcon(text)
 	icon.Font = Enum.Font.GothamBlack
-	icon.TextSize = 12
+	icon.TextSize = 10
 	icon.Parent = button
 	themeObject(icon, "BackgroundColor3", "Panel")
 	themeObject(icon, "TextColor3", "Button")
@@ -1000,12 +1012,12 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 
 	if description ~= "" then
 		descriptionLabel = Instance.new("TextLabel")
-		descriptionLabel.Size = UDim2.new(1, -118, 0, 33)
-        descriptionLabel.Position = UDim2.fromOffset(56, 36)
+		descriptionLabel.Size = UDim2.new(1, -106, 0, 28)
+        descriptionLabel.Position = UDim2.fromOffset(48, 31)
 		descriptionLabel.BackgroundTransparency = 1
 		descriptionLabel.Text = description
 		descriptionLabel.Font = Enum.Font.GothamMedium
-		descriptionLabel.TextSize = 11
+		descriptionLabel.TextSize = isTouchDevice and 9 or 10
 		descriptionLabel.TextWrapped = true
 		descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
 		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
@@ -1014,15 +1026,15 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	end
 
 	local switch = Instance.new("Frame")
-	switch.Size = UDim2.fromOffset(42, 22)
-	switch.Position = UDim2.new(1, -56, 0, description ~= "" and 18 or 16)
+	switch.Size = UDim2.fromOffset(36, 19)
+	switch.Position = UDim2.new(1, -48, 0, description ~= "" and 15 or 12)
 	switch.BorderSizePixel = 0
 	switch.Parent = button
 	addCorner(switch, 11)
 	addStroke(switch, Color3.fromRGB(0, 0, 0), 1)
 
 	local knob = Instance.new("Frame")
-	knob.Size = UDim2.fromOffset(16, 16)
+	knob.Size = UDim2.fromOffset(13, 13)
 	knob.Position = UDim2.fromOffset(3, 3)
 	knob.BorderSizePixel = 0
 	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
@@ -1044,7 +1056,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 		TweenService:Create(
 			knob,
 			TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-			{ Position = state and UDim2.fromOffset(23, 3) or UDim2.fromOffset(3, 3) }
+			{ Position = state and UDim2.fromOffset(20, 3) or UDim2.fromOffset(3, 3) }
 		):Play()
 
 		if runCallback then
@@ -1175,7 +1187,7 @@ function UI.CreateDropdown(list, titleText, updateCanvas)
 
 	local function refreshSize(animated)
 		local bodyHeight = bodyLayout.AbsoluteContentSize.Y + 12
-		local targetHeight = open and (72 + bodyHeight) or 64
+		local targetHeight = open and (58 + bodyHeight) or 52
 
 		body.Size = UDim2.new(1, 0, 0, bodyHeight)
 		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 3)
@@ -1263,11 +1275,11 @@ end
 function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	local description = descriptionText or ""
 	local viewport = getViewportSize()
-	local flyoutWidth = isTouchDevice and math.clamp(viewport.X - 28, 280, 340) or 340
+	local flyoutWidth = isTouchDevice and math.clamp(viewport.X - 36, 230, 300) or 310
 
 	local function refreshFlyoutWidth()
 		local viewportSize = getViewportSize()
-		flyoutWidth = isTouchDevice and math.clamp(viewportSize.X - 28, 280, 340) or 340
+		flyoutWidth = isTouchDevice and math.clamp(viewportSize.X - 36, 230, 300) or 310
 	end
 
 	local wrapper = Instance.new("Frame")
@@ -1332,6 +1344,8 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	flyout.BackgroundTransparency = 0.04
 	flyout.BorderSizePixel = 0
 	flyout.Visible = false
+	flyout.Active = false
+	flyout.ZIndex = 80
 	flyout.ClipsDescendants = true
 	flyout.Parent = gui
 	themeObject(flyout, "BackgroundColor3", "Panel")
@@ -1418,9 +1432,9 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	local function getTargetHeight()
 		local viewportSize = getViewportSize()
 		local targetPosition = getTargetPosition()
-		local maxHeight = math.max(150, math.min(math.max(260, mainFrame.AbsoluteSize.Y - 74), viewportSize.Y - targetPosition.Y.Offset - 12))
+	local maxHeight = math.max(130, math.min(math.max(220, mainFrame.AbsoluteSize.Y - 64), viewportSize.Y - targetPosition.Y.Offset - 10))
 
-		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 66, 150, maxHeight)
+		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 56, 130, maxHeight)
 	end
 
 	local function refreshBody()
@@ -1456,10 +1470,12 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 	local function closeFlyoutAnimated()
 		if not open then
 			flyout.Visible = false
+			flyout.Active = false
 			return
 		end
 
 		open = false
+		flyout.Active = false
 
 		local targetPosition = getTargetPosition()
 		local outTween = tweenFlyout(
@@ -1472,6 +1488,7 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 		outTween.Completed:Connect(function()
 			if not open then
 				flyout.Visible = false
+				flyout.Active = false
 			end
 		end)
 
@@ -1501,6 +1518,7 @@ function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
 		flyout.Size = UDim2.fromOffset(flyoutWidth, 0)
 		flyout.BackgroundTransparency = 0.35
 		flyout.Visible = true
+		flyout.Active = true
 
 		tweenFlyout(UDim2.fromOffset(flyoutWidth, targetHeight), targetPosition, 0.04, 0.28)
 	end
@@ -1573,6 +1591,8 @@ notificationStack.Name = "NotificationStack"
 notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
 notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
 notificationStack.BackgroundTransparency = 1
+notificationStack.Active = false
+notificationStack.ZIndex = 100
 notificationStack.Parent = gui
 
 local notificationLayout = Instance.new("UIListLayout")
@@ -1620,8 +1640,8 @@ function Notify.Clear()
 	Notify.Active = {}
 end
 
-function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
-	if Notify.Muted then
+function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forceShow)
+	if Notify.Muted and not forceShow then
 		return
 	end
 
@@ -1636,6 +1656,8 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
 	slot.BackgroundTransparency = 1
 	slot.LayoutOrder = Notify.Order
 	slot.ClipsDescendants = true
+	slot.Active = false
+	slot.ZIndex = 100
 	slot.Parent = notificationStack
 
 	table.insert(Notify.Active, slot)
@@ -1649,6 +1671,7 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
 	popup.Text = ""
 	popup.AutoButtonColor = false
 	popup.ClipsDescendants = true
+	popup.ZIndex = 101
 	popup.Parent = slot
 	themeObject(popup, "BackgroundColor3", "Panel")
 	addCorner(popup, 12)
@@ -1667,8 +1690,8 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
 	glow.Parent = popup
 
 	local iconBubble = Instance.new("Frame")
-	iconBubble.Size = UDim2.fromOffset(34, 34)
-	iconBubble.Position = UDim2.fromOffset(14, 13)
+	iconBubble.Size = UDim2.fromOffset(28, 28)
+	iconBubble.Position = UDim2.fromOffset(12, 10)
 	iconBubble.BorderSizePixel = 0
 	iconBubble.BackgroundColor3 = preset.Color
 	iconBubble.Parent = popup
@@ -1684,24 +1707,24 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
 	icon.Parent = iconBubble
 
 	local noteTitle = Instance.new("TextLabel")
-	noteTitle.Size = UDim2.new(1, -72, 0, 25)
-	noteTitle.Position = UDim2.fromOffset(58, 12)
+	noteTitle.Size = UDim2.new(1, -58, 0, 21)
+	noteTitle.Position = UDim2.fromOffset(48, 9)
 	noteTitle.BackgroundTransparency = 1
 	noteTitle.Text = tostring(titleText)
 	noteTitle.Font = Enum.Font.GothamBlack
-	noteTitle.TextSize = 15
+	noteTitle.TextSize = 13
 	noteTitle.TextXAlignment = Enum.TextXAlignment.Left
 	noteTitle.TextTruncate = Enum.TextTruncate.AtEnd
 	noteTitle.Parent = popup
 	themeObject(noteTitle, "TextColor3", "Text")
 
 	local message = Instance.new("TextLabel")
-	message.Size = UDim2.new(1, -72, 0, 38)
-	message.Position = UDim2.fromOffset(58, 38)
+	message.Size = UDim2.new(1, -58, 0, 30)
+	message.Position = UDim2.fromOffset(48, 31)
 	message.BackgroundTransparency = 1
 	message.Text = tostring(messageText)
 	message.Font = Enum.Font.GothamMedium
-	message.TextSize = 12
+	message.TextSize = 10
 	message.TextWrapped = true
 	message.TextXAlignment = Enum.TextXAlignment.Center
 	message.TextYAlignment = Enum.TextYAlignment.Top
@@ -1710,7 +1733,7 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime)
 
 	local progressBack = Instance.new("Frame")
 	progressBack.Size = UDim2.new(1, -28, 0, 4)
-	progressBack.Position = UDim2.new(0, 14, 1, -12)
+	progressBack.Position = UDim2.new(0, 14, 1, -9)
 	progressBack.BorderSizePixel = 0
 	progressBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
 	progressBack.BackgroundTransparency = 0.88
@@ -1833,10 +1856,18 @@ Main.CodeKeywords = {
 	"question", "solve", "answer", "number"
 }
 
+Main.BusCatchEnabled = false
+Main.BusCatchSpawned = false
+Main.BusCatchLanded = false
+Main.BusCatchPlatform = nil
+Main.BusCatchConnections = {}
+Main.BusCatchSize = Vector3.new(120, 2, 120)
+Main.BusCatchDrop = 8
+
 Teleport.MaxStrikes = 5
-Teleport.Cooldown = 8
-Teleport.Debounce = 2.5
-Teleport.PostFLock = 1
+Teleport.Cooldown = 5
+Teleport.Debounce = 2
+Teleport.PostFLock = 2
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -1844,6 +1875,7 @@ Teleport.BlockFUntil = 0
 
 Items.SearchRootName = "Items"
 Items.SearchText = ""
+Items.TeleportDebounce = Teleport.Debounce + 0.2
 
 Teleport.Locations = {
 	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
@@ -1885,6 +1917,153 @@ function Utility.GetObjectCFrame(object)
 
 	local part = object:FindFirstChildWhichIsA("BasePart", true)
 	return part and part.CFrame or nil
+end
+
+function Main.ClearBusCatchConnections()
+	for _, connection in ipairs(Main.BusCatchConnections) do
+		if connection and connection.Connected then
+			connection:Disconnect()
+		end
+	end
+
+	Main.BusCatchConnections = {}
+end
+
+function Main.RemoveBusCatchPlatform()
+	if Main.BusCatchPlatform then
+		Main.BusCatchPlatform:Destroy()
+		Main.BusCatchPlatform = nil
+	end
+end
+
+function Main.DeleteAllGliders()
+	local function looksLikeGlider(object)
+		local name = string.lower(object.Name)
+		return string.find(name, "glider")
+			or string.find(name, "parachute")
+			or string.find(name, "paraglider")
+	end
+
+	local deleted = 0
+
+	for _, object in ipairs(game:GetDescendants()) do
+		if looksLikeGlider(object) then
+			pcall(function()
+				object:Destroy()
+				deleted += 1
+			end)
+		end
+	end
+
+	createNotification("Bus Catch", "Deleted " .. tostring(deleted) .. " glider objects.", "Success")
+end
+
+function Main.HandleBusCatchLanding()
+	if Main.BusCatchLanded then
+		return
+	end
+
+	Main.BusCatchLanded = true
+	Main.DeleteAllGliders()
+end
+
+function Main.SpawnBusCatchPlatform(root)
+	if not Main.BusCatchEnabled or Main.BusCatchSpawned or not root then
+		return
+	end
+
+	Main.BusCatchSpawned = true
+	Main.BusCatchLanded = false
+	Main.RemoveBusCatchPlatform()
+
+	local platform = Instance.new("Part")
+	platform.Name = "Part"
+	platform.Size = Main.BusCatchSize
+	platform.Anchored = true
+	platform.CanCollide = true
+	platform.CanTouch = true
+	platform.CanQuery = false
+	platform.Material = Enum.Material.Neon
+	platform.Color = Color3.fromRGB(72, 255, 196)
+	platform.Transparency = 0.25
+	platform.CFrame = CFrame.new(root.Position.X, root.Position.Y - Main.BusCatchDrop, root.Position.Z)
+	platform.Parent = workspace
+	platform.Touched:Connect(function(hit)
+		local character = player.Character
+
+		if character and hit and hit:IsDescendantOf(character) then
+			Main.HandleBusCatchLanding()
+		end
+	end)
+
+	task.spawn(function()
+		for _ = 1, 80 do
+			if not Main.BusCatchEnabled or not platform.Parent then
+				return
+			end
+
+			local character = player.Character
+			local liveRoot = character and character:FindFirstChild("HumanoidRootPart")
+
+			if liveRoot and math.abs(liveRoot.Position.Y - platform.Position.Y) <= 7 then
+				Main.HandleBusCatchLanding()
+				return
+			end
+
+			task.wait(0.1)
+		end
+	end)
+
+	Main.BusCatchPlatform = platform
+	createNotification("Bus Catch", "Platform spawned below you.", "Success")
+end
+
+function Main.WatchBusCatchCharacter(character)
+	Main.BusCatchSpawned = false
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid") or character:WaitForChild("Humanoid", 5)
+	local root = character:FindFirstChild("HumanoidRootPart") or character:WaitForChild("HumanoidRootPart", 5)
+
+	if not humanoid or not root then
+		return
+	end
+
+	table.insert(Main.BusCatchConnections, humanoid.StateChanged:Connect(function(_, newState)
+		if newState == Enum.HumanoidStateType.Jumping or newState == Enum.HumanoidStateType.Freefall then
+			Main.SpawnBusCatchPlatform(root)
+		end
+	end))
+
+	local currentState = humanoid:GetState()
+	if currentState == Enum.HumanoidStateType.Jumping or currentState == Enum.HumanoidStateType.Freefall then
+		Main.SpawnBusCatchPlatform(root)
+	end
+end
+
+function Main.SetBusCatchPlatform(state)
+	Main.BusCatchEnabled = state == true
+	Main.ClearBusCatchConnections()
+
+	if not Main.BusCatchEnabled then
+		Main.BusCatchSpawned = false
+		Main.RemoveBusCatchPlatform()
+		createNotification("Bus Catch", "Bus Catch Platform disabled.")
+		return
+	end
+
+	createNotification("Bus Catch", "Bus Catch Platform enabled.", "Success")
+
+	if player.Character then
+		Main.WatchBusCatchCharacter(player.Character)
+	end
+
+	table.insert(Main.BusCatchConnections, player.CharacterAdded:Connect(function(character)
+		task.wait(0.15)
+
+		if Main.BusCatchEnabled then
+			Main.WatchBusCatchCharacter(character)
+		end
+	end))
 end
 
 function Main.GetPuzzleCode()
@@ -1948,35 +2127,39 @@ function Teleport.IsLocked()
 end
 
 function Teleport.ResetStrikesIfReady()
-	if not Teleport.IsLocked() and Teleport.LockedUntil > 0 then
+	if Teleport.LastClickAt == 0 or os.clock() - Teleport.LastClickAt >= Teleport.Cooldown then
 		Teleport.Strikes = 0
 		Teleport.LockedUntil = 0
 	end
 end
 
 function Teleport.ShowWarning(secondsText)
-	createNotification(
+	Notify.Show(
 		"Cooldown",
 		"Wait " .. secondsText .. " before teleporting again.",
-		"Warning"
+		"Warning",
+		nil,
+		2.2,
+		true
 	)
 end
 
-function Teleport.CanTeleport()
-	Teleport.ResetStrikesIfReady()
-
+function Teleport.CanTeleport(debounceOverride)
 	if Teleport.IsLocked() then
-		Teleport.ShowWarning(Teleport.GetCooldownLeft() .. " seconds")
+		Teleport.ShowWarning(tostring(Teleport.GetCooldownLeft()))
 		return false
 	end
 
-	local debounceLeft = Teleport.Debounce - (os.clock() - Teleport.LastClickAt)
+	local now = os.clock()
+	local debounce = debounceOverride or Teleport.Debounce
+	local debounceLeft = debounce - (now - Teleport.LastClickAt)
 
-	if debounceLeft > 0 then
-		Teleport.ShowWarning(string.format("%.1f seconds", debounceLeft))
+	if Teleport.LastClickAt ~= 0 and debounceLeft > 0 then
+		Teleport.ShowWarning(tostring(math.max(1, math.ceil(debounceLeft))))
 		return false
 	end
 
+	Teleport.ResetStrikesIfReady()
 	return true
 end
 
@@ -1986,6 +2169,7 @@ function Teleport.AddStrike()
 
 	if Teleport.Strikes >= Teleport.MaxStrikes then
 		Teleport.LockedUntil = os.clock() + Teleport.Cooldown
+		Teleport.Strikes = 0
 	end
 end
 
@@ -1994,12 +2178,15 @@ function Teleport.StartFBlock()
 end
 
 function Teleport.ShowFBlockedWarning()
-	local secondsLeft = math.max(1, math.ceil(Teleport.BlockFUntil - os.clock()))
+	local secondsLeft = math.max(0.1, Teleport.BlockFUntil - os.clock())
 
-	createNotification(
+	Notify.Show(
 		"Cooldown",
-		"Wait " .. secondsLeft .. " seconds before pressing F again.",
-		"Warning"
+		"Wait " .. string.format("%.1f", secondsLeft) .. " seconds before pressing F again.",
+		"Warning",
+		nil,
+		1.4,
+		true
 	)
 end
 
@@ -2104,7 +2291,7 @@ end
 Items.SearchCache = {}
 Items.SearchCacheBusy = false
 Items.LastSearchCacheAt = 0
-Items.SearchCacheCooldown = 3
+Items.SearchCacheCooldown = 0.35
 
 function Items.GetSearchRoot()
 	return workspace:FindFirstChild(Items.SearchRootName)
@@ -2203,7 +2390,7 @@ function Items.FindManualItem(itemName)
 end
 
 function Items.TeleportTo(itemName)
-	if not Teleport.CanTeleport() then
+	if not Teleport.CanTeleport(Items.TeleportDebounce) then
 		return
 	end
 
@@ -2354,6 +2541,10 @@ createSmallButton(mainList, "Get Code + Go Barn", function()
 		local code = Main.GetPuzzleCode()
 		createNotification("Code Found", code ~= "" and code or "No code found.", code ~= "" and "Success" or "Info")
 	end)
+end)
+
+createToggleButton(mainList, "Bus Catch Platform", false, function(state)
+	Main.SetBusCatchPlatform(state)
 end)
 
 do
@@ -2757,13 +2948,7 @@ end
 
 local function waitForTeleportReady()
 	while autoCollectEnabled do
-		if Teleport.LockedUntil and os.clock() < Teleport.LockedUntil then
-			task.wait(0.25)
-		elseif Teleport.LastClickAt and os.clock() - Teleport.LastClickAt < Teleport.Debounce then
-			task.wait(0.05)
-		else
-			return true
-		end
+		return true
 	end
 
 	return false
@@ -2872,8 +3057,6 @@ autoCollectToggle.Button.LayoutOrder = 1
 local autoHealEnabled = false
 local autoHealThread = nil
 local autoHealConnection = nil
-local lastAutoHealAt = 0
-local AUTO_HEAL_DELAY = 2.25
 
 local healingItems = {
 	"Healing Potion",
@@ -3055,10 +3238,6 @@ local function tryAutoHeal()
 		return
 	end
 
-	if os.clock() - lastAutoHealAt < AUTO_HEAL_DELAY then
-		return
-	end
-
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
@@ -3066,7 +3245,6 @@ local function tryAutoHeal()
 		local tool = findMatchingTool(healingItems)
 
 		if tool then
-			lastAutoHealAt = os.clock()
 			useTool(tool)
 		end
 	end
@@ -3347,7 +3525,17 @@ local Combat = {
 	HitboxExpanded = false,
 	HitboxVisible = true,
 	SavedHitboxes = {},
-	HitboxConnection = nil
+	HitboxConnection = nil,
+	AutoGloveTapEnabled = false,
+	AutoGloveTapConnection = nil,
+	AutoGloveTapDebounce = 0.08,
+	LastAutoGloveTap = 0,
+	KillPlayersBusy = false,
+	KillPlayersCooldown = 10,
+	KillPlayersNextAt = 0,
+	KillPlayersStayTime = 1,
+	KillPlatform = nil,
+	KillPlatformLifetime = 1.4
 }
 
 function Combat.GetEnemyRoot(otherPlayer)
@@ -3380,6 +3568,12 @@ end
 function Combat.ApplyHitbox(otherPlayer)
 	local root = Combat.GetEnemyRoot(otherPlayer)
 	if not root then
+		return
+	end
+
+	local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
+	if not humanoid or humanoid.Health <= 0 then
+		Combat.ResetHitbox(otherPlayer)
 		return
 	end
 
@@ -3418,7 +3612,13 @@ function Combat.StartHitboxLoop()
 		end
 
 		for _, otherPlayer in ipairs(Players:GetPlayers()) do
-			Combat.ApplyHitbox(otherPlayer)
+			local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
+
+			if humanoid and humanoid.Health > 0 then
+				Combat.ApplyHitbox(otherPlayer)
+			else
+				Combat.ResetHitbox(otherPlayer)
+			end
 		end
 	end)
 end
@@ -3439,10 +3639,221 @@ function Combat.RefreshHitboxes()
 		Combat.StartHitboxLoop()
 
 		for _, otherPlayer in ipairs(Players:GetPlayers()) do
-			Combat.ApplyHitbox(otherPlayer)
+			local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
+
+			if humanoid and humanoid.Health > 0 then
+				Combat.ApplyHitbox(otherPlayer)
+			else
+				Combat.ResetHitbox(otherPlayer)
+			end
 		end
 	else
 		Combat.StopHitboxLoop()
+	end
+end
+
+function Combat.GetEquippedTool()
+	local character = player.Character
+
+	if not character then
+		return nil
+	end
+
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") then
+			return child
+		end
+	end
+
+	return nil
+end
+
+function Combat.HasTruthyStatus(object, statusNames)
+	if not object then
+		return false
+	end
+
+	for _, statusName in ipairs(statusNames) do
+		if object:GetAttribute(statusName) == true then
+			return true
+		end
+
+		local statusObject = object:FindFirstChild(statusName)
+		if statusObject then
+			if statusObject:IsA("BoolValue") then
+				if statusObject.Value == true then
+					return true
+				end
+			else
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+function Combat.IsRagdolledTarget(character, humanoid)
+	local ragdollStatuses = {
+		"Ragdoll",
+		"Ragdolled",
+		"IsRagdolled",
+		"Knocked",
+		"KnockedDown",
+		"Downed"
+	}
+
+	if Combat.HasTruthyStatus(character, ragdollStatuses) or Combat.HasTruthyStatus(humanoid, ragdollStatuses) then
+		return true
+	end
+
+	if humanoid.PlatformStand or humanoid:GetState() == Enum.HumanoidStateType.Ragdoll then
+		return true
+	end
+
+	local state = humanoid:GetState()
+	return state == Enum.HumanoidStateType.FallingDown
+		or state == Enum.HumanoidStateType.Physics
+		or state == Enum.HumanoidStateType.GettingUp
+end
+
+function Combat.IsValidAutoTapTarget(targetPlayer)
+	if targetPlayer == player then
+		return nil, nil, nil
+	end
+
+	local character = targetPlayer.Character
+	if not character then
+		return nil, nil, nil
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if not humanoid or not root or humanoid.Health <= 0 then
+		return nil, nil, nil
+	end
+
+	if Combat.IsRagdolledTarget(character, humanoid) then
+		return nil, nil, nil
+	end
+
+	return character, humanoid, root
+end
+
+function Combat.IsGlovePart(object)
+	if not object:IsA("BasePart") then
+		return false
+	end
+
+	local name = normalizeName(object.Name)
+	return string.find(name, "glove")
+		or string.find(name, "hand")
+		or string.find(name, "handle")
+end
+
+function Combat.GetAutoGloveTapRadius()
+	return math.max((Combat.HitboxSize / 2) + 4, 8)
+end
+
+function Combat.IsEnemyGloveInHitbox()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return false
+	end
+
+	local radius = Combat.GetAutoGloveTapRadius()
+	local radiusSquared = radius * radius
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local targetCharacter, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
+
+		if targetCharacter then
+			local rootDelta = root.Position - targetRoot.Position
+			if rootDelta:Dot(rootDelta) <= radiusSquared then
+				return true
+			end
+
+			for _, object in ipairs(targetCharacter:GetDescendants()) do
+				if Combat.IsGlovePart(object) then
+					local gloveDelta = root.Position - object.Position
+					if gloveDelta:Dot(gloveDelta) <= radiusSquared then
+						return true
+					end
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+function Combat.TapEquippedGlove()
+	local now = os.clock()
+
+	if now - Combat.LastAutoGloveTap < Combat.AutoGloveTapDebounce then
+		return
+	end
+
+	Combat.LastAutoGloveTap = now
+
+	local tool = Combat.GetEquippedTool()
+	if tool then
+		pcall(function()
+			tool:Activate()
+		end)
+	end
+
+	local VirtualInputManager = game:GetService("VirtualInputManager")
+	local viewport = getViewportSize()
+	local x = math.floor(viewport.X / 2)
+	local y = math.floor(viewport.Y / 2)
+
+	pcall(function()
+		VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+		task.wait(0.03)
+		VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+	end)
+
+	if isTouchDevice then
+		pcall(function()
+			VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.Begin, x, y)
+			task.wait(0.03)
+			VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.End, x, y)
+		end)
+	end
+end
+
+function Combat.StartAutoGloveTap()
+	if Combat.AutoGloveTapConnection then
+		return
+	end
+
+	Combat.AutoGloveTapConnection = RunService.Heartbeat:Connect(function()
+		if Combat.AutoGloveTapEnabled and Combat.IsEnemyGloveInHitbox() then
+			Combat.TapEquippedGlove()
+		end
+	end)
+end
+
+function Combat.StopAutoGloveTap()
+	if Combat.AutoGloveTapConnection then
+		Combat.AutoGloveTapConnection:Disconnect()
+		Combat.AutoGloveTapConnection = nil
+	end
+end
+
+function Combat.SetAutoGloveTap(state)
+	Combat.AutoGloveTapEnabled = state == true
+
+	if Combat.AutoGloveTapEnabled then
+		Combat.StartAutoGloveTap()
+		createNotification("Auto Glove Tap", "Auto Glove Tap enabled.", "Success")
+	else
+		Combat.StopAutoGloveTap()
+		createNotification("Auto Glove Tap", "Auto Glove Tap disabled.")
 	end
 end
 
@@ -3468,10 +3879,173 @@ function Combat.GetPlayerHumanoid(targetPlayer)
 	return character:FindFirstChildOfClass("Humanoid")
 end
 
+function Combat.GetValidPlayerTarget(targetPlayer)
+	if not targetPlayer or targetPlayer == player then
+		return nil, nil, nil
+	end
+
+	local character = targetPlayer.Character
+	if not character then
+		return nil, nil, nil
+	end
+
+	local humanoid = character:FindFirstChildOfClass("Humanoid")
+	local root = character:FindFirstChild("HumanoidRootPart")
+
+	if not humanoid or not root or humanoid.Health <= 0 then
+		return nil, nil, nil
+	end
+
+	if Combat.IsRagdolledTarget(character, humanoid) then
+		return nil, nil, nil
+	end
+
+	return character, humanoid, root
+end
+
+function Combat.StabilizeCharacter(character, root)
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	if humanoid then
+		humanoid.PlatformStand = false
+		humanoid.Sit = false
+		humanoid:ChangeState(Enum.HumanoidStateType.Running)
+	end
+end
+
+function Combat.FindStormPosition()
+	local bestPosition = nil
+	local bestDistance = math.huge
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local origin = root and root.Position or Vector3.zero
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+		local name = normalizeName(object.Name)
+
+		if string.find(name, "storm") or string.find(name, "zone") or string.find(name, "circle") then
+			local cframe = nil
+
+			if object:IsA("BasePart") then
+				cframe = object.CFrame
+			elseif object:IsA("Model") then
+				cframe = object:GetPivot()
+			end
+
+			if cframe then
+				local distance = (origin - cframe.Position).Magnitude
+
+				if distance < bestDistance then
+					bestDistance = distance
+					bestPosition = cframe.Position
+				end
+			end
+		end
+	end
+
+	return bestPosition
+end
+
+function Combat.AimRootAtPosition(root, lookPosition)
+	if not root or not lookPosition then
+		return
+	end
+
+	local flatTarget = Vector3.new(lookPosition.X, root.Position.Y, lookPosition.Z)
+	if (flatTarget - root.Position).Magnitude < 1 then
+		return
+	end
+
+	root.CFrame = CFrame.lookAt(root.Position, flatTarget)
+	root.AssemblyAngularVelocity = Vector3.zero
+end
+
+function Combat.AimAtStorm(root)
+	Combat.AimRootAtPosition(root, Combat.FindStormPosition())
+end
+
+function Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
+	local excludeInstances = { character }
+
+	if targetCharacter then
+		table.insert(excludeInstances, targetCharacter)
+	end
+
+	local lookVector = targetRoot.CFrame.LookVector
+	local rightVector = targetRoot.CFrame.RightVector
+	local candidatePositions = {
+		targetRoot.Position - (lookVector * 4),
+		targetRoot.Position + (rightVector * 4),
+		targetRoot.Position - (rightVector * 4),
+		targetRoot.Position + (lookVector * 4),
+		targetRoot.Position - (lookVector * 5) + (rightVector * 3),
+		targetRoot.Position - (lookVector * 5) - (rightVector * 3),
+		targetRoot.Position
+	}
+
+	for _, candidatePosition in ipairs(candidatePositions) do
+		local groundCFrame = Teleport.GetGroundCFrame(candidatePosition, excludeInstances, true)
+
+		if (groundCFrame.Position - targetRoot.Position).Magnitude <= 10 then
+			return groundCFrame
+		end
+	end
+
+	return Teleport.GetGroundCFrame(targetRoot.Position, excludeInstances, true)
+end
+
+function Combat.ClearKillPlatform()
+	if Combat.KillPlatform and Combat.KillPlatform.Parent then
+		Combat.KillPlatform:Destroy()
+	end
+
+	Combat.KillPlatform = nil
+end
+
+function Combat.SpawnKillPlatform(root)
+	if not root then
+		return
+	end
+
+	Combat.ClearKillPlatform()
+
+	local platform = Instance.new("Part")
+	platform.Name = "OPSlapKillPlayersPlatform"
+	platform.Size = Vector3.new(12, 1, 12)
+	platform.Anchored = true
+	platform.CanCollide = true
+	platform.CanQuery = false
+	platform.CanTouch = false
+	platform.Transparency = 0.18
+	platform.Material = Enum.Material.Neon
+	platform.Color = Color3.fromRGB(255, 80, 105)
+	platform.CFrame = CFrame.new(root.Position.X, root.Position.Y - 3.4, root.Position.Z)
+	platform.Parent = workspace
+
+	Combat.KillPlatform = platform
+
+	task.delay(Combat.KillPlatformLifetime, function()
+		if Combat.KillPlatform == platform then
+			Combat.ClearKillPlatform()
+		elseif platform.Parent then
+			platform:Destroy()
+		end
+	end)
+end
+
 function Combat.TeleportToPlayer(targetPlayer)
+	if not Teleport.CanTeleport() then
+		return
+	end
+
 	local character = player.Character or player.CharacterAdded:Wait()
 	local root = character:WaitForChild("HumanoidRootPart", 5)
-	local targetRoot = Combat.GetPlayerRoot(targetPlayer)
+	local targetCharacter, _, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
 
 	if not root then
 		createNotification("Players", "Could not find your character.", "Error")
@@ -3479,21 +4053,22 @@ function Combat.TeleportToPlayer(targetPlayer)
 	end
 
 	if not targetRoot then
-		createNotification("Players", "Could not find target player.", "Error")
+		createNotification("Players", "Target player is unavailable or ragdolled.", "Warning")
 		return
 	end
 
-	local rayOrigin = targetRoot.Position + Vector3.new(0, 8, 4)
-	local rayDirection = Vector3.new(0, -90, 0)
+	local targetCFrame = Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
 
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = { character, targetPlayer.Character }
-
-	local result = workspace:Raycast(rayOrigin, rayDirection, params)
-	local targetPosition = result and (result.Position + Vector3.new(0, 4, 0)) or (targetRoot.Position + Vector3.new(0, 4, 4))
-
-	Teleport.MoveRoot(root, CFrame.new(targetPosition))
+	Combat.StabilizeCharacter(character, root)
+	Teleport.MoveRoot(root, targetCFrame)
+	Combat.StabilizeCharacter(character, root)
+	task.delay(0.15, function()
+		if character.Parent and root.Parent then
+			Combat.StabilizeCharacter(character, root)
+		end
+	end)
+	Teleport.AddStrike()
+	Teleport.StartFBlock()
 	createNotification("Players", "Teleported to " .. targetPlayer.Name)
 end
 
@@ -3502,14 +4077,11 @@ function Combat.TeleportToLowestHealthPlayer()
 	local lowestHealth = math.huge
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= player then
-			local humanoid = Combat.GetPlayerHumanoid(targetPlayer)
-			local targetRoot = Combat.GetPlayerRoot(targetPlayer)
+		local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
 
-			if humanoid and targetRoot and humanoid.Health > 0 and humanoid.Health < lowestHealth then
-				lowestHealth = humanoid.Health
-				lowestPlayer = targetPlayer
-			end
+		if humanoid and targetRoot and humanoid.Health < lowestHealth then
+			lowestHealth = humanoid.Health
+			lowestPlayer = targetPlayer
 		end
 	end
 
@@ -3533,17 +4105,14 @@ function Combat.TeleportToNearestPlayer()
 	local nearestDistance = math.huge
 
 	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		if targetPlayer ~= player then
-			local humanoid = Combat.GetPlayerHumanoid(targetPlayer)
-			local targetRoot = Combat.GetPlayerRoot(targetPlayer)
+		local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
 
-			if humanoid and targetRoot and humanoid.Health > 0 then
-				local distance = (root.Position - targetRoot.Position).Magnitude
+		if humanoid and targetRoot then
+			local distance = (root.Position - targetRoot.Position).Magnitude
 
-				if distance < nearestDistance then
-					nearestDistance = distance
-					nearestPlayer = targetPlayer
-				end
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestPlayer = targetPlayer
 			end
 		end
 	end
@@ -3553,6 +4122,98 @@ function Combat.TeleportToNearestPlayer()
 	else
 		createNotification("Players", "No valid nearest player found.")
 	end
+end
+
+function Combat.GetKillPlayerTargets()
+	local targets = {}
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+
+		if humanoid and targetRoot then
+			table.insert(targets, {
+				Player = targetPlayer,
+				Health = humanoid.Health
+			})
+		end
+	end
+
+	table.sort(targets, function(left, right)
+		if left.Health == right.Health then
+			return left.Player.Name < right.Player.Name
+		end
+
+		return left.Health < right.Health
+	end)
+
+	return targets
+end
+
+function Combat.MoveToPlayerForKill(targetPlayer)
+	local character = player.Character or player.CharacterAdded:Wait()
+	local root = character:WaitForChild("HumanoidRootPart", 5)
+	local targetCharacter, _, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+
+	if not root or not targetRoot then
+		return false
+	end
+
+	local targetCFrame = Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
+
+	Combat.StabilizeCharacter(character, root)
+	Teleport.MoveRoot(root, targetCFrame)
+	Combat.StabilizeCharacter(character, root)
+	Combat.SpawnKillPlatform(root)
+	Combat.AimAtStorm(root)
+	task.delay(0.15, function()
+		if character.Parent and root.Parent then
+			Combat.StabilizeCharacter(character, root)
+			Combat.AimAtStorm(root)
+		end
+	end)
+	Teleport.StartFBlock()
+	return true
+end
+
+function Combat.StartKillPlayers()
+	if Combat.KillPlayersBusy then
+		createNotification("Kill Players", "Already running.", "Warning")
+		return
+	end
+
+	local now = os.clock()
+	if now < Combat.KillPlayersNextAt then
+		local secondsLeft = math.ceil(Combat.KillPlayersNextAt - now)
+		createNotification("Kill Players", "Wait " .. tostring(secondsLeft) .. " seconds before using this again.", "Warning")
+		return
+	end
+
+	local targets = Combat.GetKillPlayerTargets()
+	if #targets == 0 then
+		createNotification("Kill Players", "No valid players found.", "Warning")
+		return
+	end
+
+	Combat.KillPlayersBusy = true
+	createNotification("Kill Players", "Cycling through " .. tostring(#targets) .. " players.", "Success")
+
+	task.spawn(function()
+		for _, target in ipairs(targets) do
+			local targetPlayer = target.Player
+			local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+
+			if humanoid and targetRoot then
+				if Combat.MoveToPlayerForKill(targetPlayer) then
+					createNotification("Kill Players", "Teleported to " .. targetPlayer.Name)
+					task.wait(Combat.KillPlayersStayTime)
+				end
+			end
+		end
+
+		Combat.KillPlayersBusy = false
+		Combat.KillPlayersNextAt = os.clock() + Combat.KillPlayersCooldown
+		createNotification("Kill Players", "Finished. Ready again in " .. tostring(Combat.KillPlayersCooldown) .. " seconds.", "Success")
+	end)
 end
 
 function Combat.SetHitboxSize(newSize)
@@ -3659,40 +4320,34 @@ if isTouchDevice then
 end
 
 local expandHitboxToggle
+local autoGloveTapToggle
 
 do
-	local menu = createDropdown(combatList, "Hitbox Controls", updateCombatCanvas)
-
-	Combat.HitboxSizeLabel = Instance.new("TextLabel")
-	Combat.HitboxSizeLabel.Size = UDim2.new(1, -12, 0, 30)
-	Combat.HitboxSizeLabel.BackgroundTransparency = 1
-	Combat.HitboxSizeLabel.Font = Enum.Font.GothamBold
-	Combat.HitboxSizeLabel.TextSize = 13
-	Combat.HitboxSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
-	Combat.HitboxSizeLabel.Parent = menu
-	themeObject(Combat.HitboxSizeLabel, "TextColor3", "Text")
-
-	createSmallButton(menu, "+ Bigger Hitbox", function()
-		Combat.SetHitboxSize(Combat.HitboxSize + 1)
-	end)
-
-	createSmallButton(menu, "- Smaller Hitbox", function()
-		Combat.SetHitboxSize(Combat.HitboxSize - 1)
-	end)
-
 	Combat.SetHitboxSize(Combat.HitboxSize)
 
-	expandHitboxToggle = createToggleButton(menu, "Expand Hitbox", false, function(state)
+	expandHitboxToggle = createToggleButton(combatList, "Expand Hitbox", false, function(state)
 		Combat.HitboxExpanded = state
 		Combat.RefreshHitboxes()
 	end)
 
-	createToggleButton(menu, "Visualise Hitboxes", true, function(state)
+	createToggleButton(combatList, "Visualise Hitboxes", true, function(state)
 		Combat.HitboxVisible = state
 
 		if Combat.HitboxExpanded then
 			Combat.RefreshHitboxes()
 		end
+	end)
+
+	autoGloveTapToggle = createToggleButton(combatList, "Auto Glove Tap", false, function(state)
+		Combat.SetAutoGloveTap(state)
+	end)
+end
+
+do
+	local dropdown = createDropdown(combatList, "Kill Players", updateCombatCanvas)
+
+	createSmallButton(dropdown, "Start Kill Players", function()
+		Combat.StartKillPlayers()
 	end)
 end
 
@@ -3798,8 +4453,10 @@ function ESP.Create(targetPlayer)
 
 	local character = targetPlayer.Character
 	local head = character and character:FindFirstChild("Head")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-	if not character or not head then
+	if not character or not head or not humanoid or humanoid.Health <= 0 then
+		ESP.Remove(targetPlayer)
 		return
 	end
 
@@ -3836,12 +4493,15 @@ function ESP.Create(targetPlayer)
 	task.spawn(function()
 		while ESP.Enabled and billboard.Parent do
 			local liveCharacter = targetPlayer.Character
-			local humanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
+			local liveHumanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
+
+			if not liveHumanoid or liveHumanoid.Health <= 0 then
+				ESP.Remove(targetPlayer)
+				break
+			end
 
 			local health = "?"
-			if humanoid then
-				health = math.floor(humanoid.Health) .. "/" .. math.floor(humanoid.MaxHealth)
-			end
+			health = math.floor(liveHumanoid.Health) .. "/" .. math.floor(liveHumanoid.MaxHealth)
 
 			local kills = ESP.GetStatValue(targetPlayer, { "Kills", "Kill", "KOs" })
 			local power = ESP.GetStatValue(targetPlayer, { "Power", "Strength", "Slaps" })
@@ -4008,6 +4668,10 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		expandHitboxToggle.Set(state, true)
 	end
 
+	if autoGloveTapToggle then
+		autoGloveTapToggle.Set(state, true)
+	end
+
 	if quickMenuHotkeysToggle then
 		quickMenuHotkeysToggle.Set(state, true)
 	end
@@ -4021,7 +4685,7 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on ESP, hitbox, teleport hotkeys, and anti acid/lava.")
+end, "Turns on ESP, hitbox, auto tap, teleport hotkeys, and anti acid/lava.")
 
 do
 	local creator = createDropdown(settingsList, "Theme Creator", updateSettingsCanvas)
@@ -4099,7 +4763,7 @@ local Window = {
 	ResizeHandle = nil,
 	Launcher = nil,
 	LauncherScale = nil,
-	LauncherSize = isTouchDevice and 78 or 74,
+	LauncherSize = isTouchDevice and 58 or 62,
 	DefaultReopenKey = Enum.KeyCode.T,
 	ReopenKey = Enum.KeyCode.T,
 	CustomKeybindsEnabled = false,
@@ -4172,10 +4836,10 @@ function Window.HandleInputChanged(inputObject)
 	if Window.Resizing and Window.ResizeStart and Window.StartSize then
 		local delta = inputObject.Position - Window.ResizeStart
 		local viewport = getViewportSize()
-		local minWidth = isTouchDevice and 320 or 500
-		local minHeight = isTouchDevice and 300 or 320
-		local maxWidth = math.max(minWidth, math.min(900, viewport.X - 16))
-		local maxHeight = math.max(minHeight, math.min(650, viewport.Y - 24))
+		local minWidth = isTouchDevice and 292 or 460
+		local minHeight = isTouchDevice and 270 or 300
+		local maxWidth = math.max(minWidth, math.min(760, viewport.X - 16))
+		local maxHeight = math.max(minHeight, math.min(560, viewport.Y - 28))
 		local newWidth = math.clamp(Window.StartSize.X.Offset + delta.X, minWidth, maxWidth)
 		local newHeight = math.clamp(Window.StartSize.Y.Offset + delta.Y, minHeight, maxHeight)
 
@@ -4186,7 +4850,7 @@ end
 function Window.GetLauncherPosition()
 	local viewport = getViewportSize()
 	local size = Window.LauncherSize
-	local topPadding = isTouchDevice and 26 or 32
+	local topPadding = isTouchDevice and 18 or 24
 
 	return UDim2.fromOffset(
 		math.max(14, math.floor((viewport.X - size) / 2)),
@@ -4241,12 +4905,12 @@ function Window.CreateLauncher()
 	do
 		local logo = Instance.new("TextLabel")
 		logo.Name = "Logo"
-		logo.Size = UDim2.fromOffset(Window.LauncherSize - 22, Window.LauncherSize - 22)
-		logo.Position = UDim2.fromOffset(11, 7)
+		logo.Size = UDim2.fromOffset(Window.LauncherSize - 16, Window.LauncherSize - 16)
+		logo.Position = UDim2.fromOffset(8, 5)
 		logo.BackgroundTransparency = 1
 		logo.Text = "OP"
 		logo.Font = Enum.Font.GothamBlack
-		logo.TextSize = isTouchDevice and 22 or 21
+		logo.TextSize = isTouchDevice and 16 or 18
 		logo.TextXAlignment = Enum.TextXAlignment.Center
 		logo.TextYAlignment = Enum.TextYAlignment.Center
 		logo.Parent = Window.Launcher
@@ -4513,14 +5177,14 @@ local function applyResponsiveWindow()
 	end
 
 	local viewport = getViewportSize()
-	sideTabWidth = viewport.X < 420 and 104 or 132
-	contentLeftOffset = sideTabWidth + 26
+	sideTabWidth = viewport.X < 420 and 76 or 104
+	contentLeftOffset = sideTabWidth + 18
 	normalSize = getWindowSize()
 	mainFrame.Size = normalSize
 	mainFrame.Position = getOpenWindowPosition()
-	tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -88)
-	contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 14), 1, -88)
-	contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 72)
+	tabScroll.Size = UDim2.new(0, sideTabWidth, 1, -70)
+	contentFrame.Size = UDim2.new(1, -(contentLeftOffset + 9), 1, -70)
+	contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 60)
 
 	if Notify.RefreshLayout then
 		Notify.RefreshLayout()
