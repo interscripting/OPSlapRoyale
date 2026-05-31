@@ -5,7 +5,8 @@ local Services = {
 	UserInputService = game:GetService("UserInputService"),
 	MarketplaceService = game:GetService("MarketplaceService"),
 	ContextActionService = game:GetService("ContextActionService"),
-	CollectionService = game:GetService("CollectionService")
+	CollectionService = game:GetService("CollectionService"),
+	HttpService = game:GetService("HttpService")
 }
 
 local Players = Services.Players
@@ -14,8 +15,10 @@ local TweenService = Services.TweenService
 local UserInputService = Services.UserInputService
 local MarketplaceService = Services.MarketplaceService
 local ContextActionService = Services.ContextActionService
+local HttpService = Services.HttpService
 local player = Players.LocalPlayer
 
+local Settings = nil
 local Config = {}
 
 Config.Themes = {
@@ -585,6 +588,7 @@ function UI.ApplyTheme(themeName)
 	end
 
 	currentTheme = themes[themeName]
+	UI.CurrentThemeName = themeName
 
 	for _, item in ipairs(UI.ThemedObjects) do
 		if item.Object and item.Object.Parent then
@@ -915,19 +919,29 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 			or inputObject.UserInputType == Enum.UserInputType.Touch
 	end
 
+	local function setValue(newValue, runCallback)
+		value = math.clamp(newValue, minValue, maxValue)
+		local percent = (value - minValue) / (maxValue - minValue)
+		fill.Size = UDim2.fromScale(math.clamp(percent, 0, 1), 1)
+		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+
+		if runCallback then
+			callback(value)
+
+			if Settings and Settings.OnControlChanged then
+				Settings.OnControlChanged()
+			end
+		end
+	end
+
 	local function setValueFromX(x)
 		local percent = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
 		value = minValue + ((maxValue - minValue) * percent)
-		fill.Size = UDim2.fromScale(percent, 1)
-		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
-		callback(value)
+		setValue(value, true)
 	end
 
 	local function refresh()
-		local percent = (value - minValue) / (maxValue - minValue)
-		fill.Size = UDim2.fromScale(percent, 1)
-		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
-		callback(value)
+		setValue(value, true)
 	end
 
 	bar.InputBegan:Connect(function(inputObject)
@@ -950,7 +964,19 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 	end)
 
 	refresh()
-	return holder
+	local control = {
+		Holder = holder,
+		Set = setValue,
+		Get = function()
+			return value
+		end
+	}
+
+	if Settings and Settings.RegisterSlider then
+		Settings.RegisterSlider(text, control)
+	end
+
+	return control
 end
 
 function UI.CreateSearchBox(parent, placeholderText, callback)
@@ -1106,6 +1132,10 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 		if runCallback then
 			callback(state)
 		end
+
+		if runCallback and Settings and Settings.OnControlChanged then
+			Settings.OnControlChanged()
+		end
 	end
 
 	button.MouseButton1Click:Connect(function()
@@ -1114,7 +1144,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 
 	setState(state, false)
 
-	return {
+	local control = {
 		Button = button,
 		Label = label,
 		Description = descriptionLabel,
@@ -1123,6 +1153,12 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 			return state
 		end
 	}
+
+	if Settings and Settings.RegisterToggle and text ~= "Toggle recommended settings?" then
+		Settings.RegisterToggle(text, control)
+	end
+
+	return control
 end
 
 function UI.CreateDropdown(list, titleText, updateCanvas)
@@ -1911,6 +1947,183 @@ function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forc
 end
 
 local createNotification = Notify.Show
+local Combat = nil
+
+Settings = {
+	Folder = "OPSlapRoyale",
+	FileName = "OPSlapRoyale/settings.json",
+	Version = 1,
+	Controls = {},
+	Ready = false,
+	Loading = false,
+	SaveQueued = false
+}
+
+function Settings.HasFileSupport()
+	return type(readfile) == "function" and type(writefile) == "function"
+end
+
+function Settings.EnsureFolder()
+	if type(makefolder) == "function" and type(isfolder) == "function" then
+		local ok, exists = pcall(function()
+			return isfolder(Settings.Folder)
+		end)
+
+		if ok and not exists then
+			pcall(function()
+				makefolder(Settings.Folder)
+			end)
+		end
+	end
+end
+
+function Settings.Read()
+	if not Settings.HasFileSupport() or (type(isfile) == "function" and not isfile(Settings.FileName)) then
+		return {}
+	end
+
+	local success, contents = pcall(function()
+		return readfile(Settings.FileName)
+	end)
+
+	if not success or type(contents) ~= "string" or contents == "" then
+		return {}
+	end
+
+	local decodeSuccess, data = pcall(function()
+		return HttpService:JSONDecode(contents)
+	end)
+
+	if decodeSuccess and type(data) == "table" then
+		return data
+	end
+
+	return {}
+end
+
+function Settings.Write(data)
+	if not Settings.HasFileSupport() then
+		return false
+	end
+
+	Settings.EnsureFolder()
+
+	local encodeSuccess, encoded = pcall(function()
+		return HttpService:JSONEncode(data)
+	end)
+
+	if not encodeSuccess then
+		return false
+	end
+
+	return pcall(function()
+		writefile(Settings.FileName, encoded)
+	end)
+end
+
+function Settings.RegisterToggle(name, control)
+	if name and control then
+		Settings.Controls[name] = control
+	end
+
+	return control
+end
+
+function Settings.RegisterSlider(name, control)
+	return Settings.RegisterToggle(name, control)
+end
+
+function Settings.Capture()
+	local toggles = {}
+
+	for name, control in pairs(Settings.Controls) do
+		if control and control.Get then
+			local success, value = pcall(control.Get)
+
+			if success then
+				toggles[name] = value
+			end
+		end
+	end
+
+	return {
+		Version = Settings.Version,
+		Theme = UI.CurrentThemeName or "Neon Orchid",
+		Toggles = toggles,
+		HitboxSize = Combat and Combat.HitboxSize or nil,
+		GloveSizeScale = Combat and Combat.GloveSizeScale or nil,
+		WindowTransparency = UI.WindowTransparency
+	}
+end
+
+function Settings.SaveNow()
+	if Settings.Loading or not Settings.Ready then
+		return
+	end
+
+	Settings.Write(Settings.Capture())
+end
+
+function Settings.OnControlChanged()
+	if Settings.Loading or not Settings.Ready or Settings.SaveQueued then
+		return
+	end
+
+	Settings.SaveQueued = true
+
+	task.delay(0.35, function()
+		Settings.SaveQueued = false
+		Settings.SaveNow()
+	end)
+end
+
+function Settings.Apply(data)
+	if type(data) ~= "table" then
+		return
+	end
+
+	Settings.Loading = true
+
+	if type(data.Theme) == "string" and themes[data.Theme] then
+		applyTheme(data.Theme)
+	end
+
+	if type(data.HitboxSize) == "number" and Combat then
+		Combat.SetHitboxSize(data.HitboxSize)
+	end
+
+	if type(data.GloveSizeScale) == "number" and Combat then
+		Combat.SetGloveSizeScale(data.GloveSizeScale, false)
+	end
+
+	local toggles = type(data.Toggles) == "table" and data.Toggles or {}
+	for name, value in pairs(toggles) do
+		local control = Settings.Controls[name]
+
+		if control and control.Set then
+			pcall(function()
+				control.Set(value, true)
+			end)
+		end
+	end
+
+	local transparencyControl = Settings.Controls["Window Transparency"]
+	if transparencyControl and transparencyControl.Set and type(data.WindowTransparency) == "number" then
+		pcall(function()
+			transparencyControl.Set(data.WindowTransparency, true)
+		end)
+	end
+
+	Settings.Loading = false
+end
+
+function Settings.LoadAll()
+	local data = Settings.Read()
+
+	Settings.Apply(data)
+	Settings.Ready = true
+	Settings.SaveNow()
+end
 
 local Utility = {}
 local Main = {}
@@ -1923,8 +2136,8 @@ Main.CodeKeywords = {
 }
 
 Teleport.MaxStrikes = 5
-Teleport.Cooldown = 1
-Teleport.Debounce = 1
+Teleport.Cooldown = 6
+Teleport.Debounce = 0
 Teleport.PostFLock = 0.5
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
@@ -3781,7 +3994,7 @@ end)
 
 end
 
-local Combat = {
+Combat = {
 	HitboxSize = 10,
 	HitboxMinSize = 10,
 	HitboxMaxSize = 20,
@@ -3801,6 +4014,9 @@ local Combat = {
 	GloveTpSlapCharacterAddedConnection = nil,
 	LastGloveTpSlap = 0,
 	LastGloveTpSlapWarning = 0,
+	GloveTpSlapBusy = false,
+	GloveTpSlapInternalActivate = false,
+	GloveTpSlapHoldTime = 0.18,
 	GloveSizeScale = 1,
 	GloveSizeMin = 1,
 	GloveSizeMax = 8,
@@ -4167,14 +4383,161 @@ function Combat.GetNearestGloveTpSlapRoot(originPosition)
 	return nearestRoot
 end
 
+function Combat.DetachGloveTpSlapJoints(character, tool)
+	local records = {}
+
+	if not character or not tool then
+		return records
+	end
+
+	for _, object in ipairs(character:GetDescendants()) do
+		if object:IsA("JointInstance") or object:IsA("WeldConstraint") then
+			local okPart0, part0 = pcall(function()
+				return object.Part0
+			end)
+			local okPart1, part1 = pcall(function()
+				return object.Part1
+			end)
+
+			part0 = okPart0 and part0 or nil
+			part1 = okPart1 and part1 or nil
+
+			local part0InTool = part0 and part0:IsDescendantOf(tool)
+			local part1InTool = part1 and part1:IsDescendantOf(tool)
+
+			if part0InTool ~= part1InTool then
+				local record = {
+					Joint = object,
+					Part0 = part0,
+					Part1 = part1,
+					Enabled = nil,
+					UsedEnabled = false
+				}
+
+				local okEnabled, enabled = pcall(function()
+					return object.Enabled
+				end)
+
+				if okEnabled then
+					record.Enabled = enabled
+					record.UsedEnabled = pcall(function()
+						object.Enabled = false
+					end)
+				end
+
+				if not record.UsedEnabled then
+					pcall(function()
+						object.Part0 = nil
+					end)
+					pcall(function()
+						object.Part1 = nil
+					end)
+				end
+
+				table.insert(records, record)
+			end
+		end
+	end
+
+	return records
+end
+
+function Combat.RestoreGloveTpSlapJoints(records)
+	for _, record in ipairs(records) do
+		local joint = record.Joint
+
+		if joint and joint.Parent then
+			if record.UsedEnabled then
+				pcall(function()
+					joint.Enabled = record.Enabled
+				end)
+			else
+				pcall(function()
+					joint.Part0 = record.Part0
+				end)
+				pcall(function()
+					joint.Part1 = record.Part1
+				end)
+			end
+		end
+	end
+
+	if Settings and Settings.OnControlChanged then
+		Settings.OnControlChanged()
+	end
+end
+
+function Combat.PrepareGloveTpSlapParts(parts, root)
+	local partStates = {}
+	local rootCFrame = root and root.CFrame or nil
+
+	for _, part in ipairs(parts) do
+		if part:IsA("BasePart") then
+			table.insert(partStates, {
+				Part = part,
+				CFrame = part.CFrame,
+				RootOffset = rootCFrame and rootCFrame:ToObjectSpace(part.CFrame) or nil,
+				Anchored = part.Anchored,
+				CanCollide = part.CanCollide
+			})
+
+			part.Anchored = true
+			part.CanCollide = false
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+
+	return partStates
+end
+
+function Combat.RestoreGloveTpSlapParts(partStates, root)
+	for _, state in ipairs(partStates) do
+		local part = state.Part
+
+		if part and part.Parent then
+			if root and root.Parent and state.RootOffset then
+				part.CFrame = root.CFrame * state.RootOffset
+			else
+				part.CFrame = state.CFrame
+			end
+
+			part.Anchored = state.Anchored
+			part.CanCollide = state.CanCollide
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+function Combat.GetGloveTpSlapCenterCFrame(parts)
+	local totalPosition = Vector3.zero
+	local count = 0
+
+	for _, part in ipairs(parts) do
+		if part:IsA("BasePart") then
+			totalPosition += part.Position
+			count += 1
+		end
+	end
+
+	if count == 0 then
+		return nil
+	end
+
+	return CFrame.new(totalPosition / count)
+end
+
 function Combat.TeleportGloveToNearestPlayer(tool)
-	if os.clock() - Combat.LastGloveTpSlap < 0.08 then
+	if Combat.GloveTpSlapBusy or os.clock() - Combat.LastGloveTpSlap < Combat.GloveTpSlapHoldTime then
 		return
 	end
 
+	Combat.GloveTpSlapBusy = true
 	Combat.LastGloveTpSlap = os.clock()
 
 	if not Combat.IsEquippedGloveTool(tool) then
+		Combat.GloveTpSlapBusy = false
 		Combat.ShowGloveTpSlapWarning("Equip a glove before using Glove TP Slap.")
 		return
 	end
@@ -4184,28 +4547,59 @@ function Combat.TeleportGloveToNearestPlayer(tool)
 	local parts = Combat.GetGloveParts(tool)
 
 	if not root then
+		Combat.GloveTpSlapBusy = false
 		Combat.ShowGloveTpSlapWarning("Could not find your character.")
 		return
 	end
 
 	if #parts == 0 then
+		Combat.GloveTpSlapBusy = false
 		Combat.ShowGloveTpSlapWarning("No glove parts were found on the equipped glove.")
 		return
 	end
 
 	local targetRoot = Combat.GetNearestGloveTpSlapRoot(root.Position)
 	if not targetRoot then
+		Combat.GloveTpSlapBusy = false
 		Combat.ShowGloveTpSlapWarning("No valid nearest player found.")
 		return
 	end
 
+	local basePart = tool:FindFirstChild("Handle")
+	if not basePart or not basePart:IsA("BasePart") then
+		basePart = parts[1]
+	end
+
+	local gloveCenterCFrame = Combat.GetGloveTpSlapCenterCFrame(parts) or basePart.CFrame
+	local rootCFrame = root.CFrame
+	local jointRecords = Combat.DetachGloveTpSlapJoints(character, tool)
+	local partStates = Combat.PrepareGloveTpSlapParts(parts, root)
+
 	for _, part in ipairs(parts) do
 		if part:IsA("BasePart") and part:IsDescendantOf(tool) then
-			part.CFrame = targetRoot.CFrame
+			part.CFrame = targetRoot.CFrame * gloveCenterCFrame:ToObjectSpace(part.CFrame)
 			part.AssemblyLinearVelocity = Vector3.zero
 			part.AssemblyAngularVelocity = Vector3.zero
 		end
 	end
+
+	if (root.Position - rootCFrame.Position).Magnitude > 0.25 then
+		root.CFrame = rootCFrame
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	Combat.GloveTpSlapInternalActivate = true
+	pcall(function()
+		tool:Activate()
+	end)
+	Combat.GloveTpSlapInternalActivate = false
+
+	task.delay(Combat.GloveTpSlapHoldTime, function()
+		Combat.RestoreGloveTpSlapParts(partStates, root)
+		Combat.RestoreGloveTpSlapJoints(jointRecords)
+		Combat.GloveTpSlapBusy = false
+	end)
 end
 
 function Combat.ClearGloveTpSlapHooks()
@@ -4230,7 +4624,7 @@ function Combat.HookGloveTpSlapTool(tool)
 	end
 
 	Combat.GloveTpSlapConnections[tool] = tool.Activated:Connect(function()
-		if Combat.GloveTpSlapEnabled then
+		if Combat.GloveTpSlapEnabled and not Combat.GloveTpSlapInternalActivate then
 			Combat.TeleportGloveToNearestPlayer(tool)
 		end
 	end)
@@ -4671,6 +5065,10 @@ function Combat.SetHitboxSize(newSize)
 	if Combat.HitboxExpanded then
 		Combat.RefreshHitboxes()
 	end
+
+	if Settings and Settings.OnControlChanged then
+		Settings.OnControlChanged()
+	end
 end
 
 function Combat.GetGloveParts(tool)
@@ -4756,6 +5154,10 @@ function Combat.SetGloveSizeScale(newScale, showNotification)
 		if showNotification then
 			createNotification("Glove Size", "Equip your glove first, then adjust the size.", "Warning")
 		end
+	end
+
+	if Settings and Settings.OnControlChanged then
+		Settings.OnControlChanged()
 	end
 end
 
@@ -5899,6 +6301,7 @@ end
 
 selectTab("Main")
 applyTheme("Neon Orchid")
+Settings.LoadAll()
 Items.StartCrateWatcher()
 
 tabScroll.CanvasSize = UDim2.fromOffset(tabLayout.AbsoluteContentSize.X + 20, 0)
