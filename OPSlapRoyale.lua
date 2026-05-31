@@ -73,6 +73,7 @@ local UI = {
 	SideDropdowns = {},
 	DropdownClosers = {},
 	WindowTransparency = 0.45,
+	UserScaleMultiplier = 1,
 	ThemedObjects = {},
 	TabButtons = {},
 	Pages = {},
@@ -216,14 +217,22 @@ UI.Icons = {
 	["Auto Heal"] = "❤️",
 	["Auto Sort"] = "🎒",
 	["Meteor Crate"] = "📦",
-	["Hitbox Controls"] = "🎯",
+	Hitboxes = "🎯",
+	["Hitbox Size"] = "📏",
 	["Expand Hitbox"] = "📦",
-	["Visualise Hitboxes"] = "✨",
+	["Visualize Hitboxes"] = "✨",
+	["Increase Glove Size"] = "🧤",
 	["Auto Glove Tap"] = "👊",
+	["Glove TP Slap"] = "🎯",
 	["Player Stats ESP"] = "📊",
+	["Item ESP"] = "💎",
 	["World Safety"] = "🚧",
 	["Anti Acid & Lava"] = "🔥",
 	["Themes"] = "🎨",
+	["Cycle Theme"] = "🔁",
+	["Compact UI"] = "📐",
+	["Lock UI"] = "🔒",
+	["Quick Minimize"] = "🫧",
 	["Disable Notifications"] = "🔕",
 	["Window Transparency"] = "🪟",
 	["Quick Menu Hotkeys"] = "⌨️",
@@ -249,11 +258,14 @@ UI.Descriptions = {
 	["Quick Teleports"] = "Pinned locations for fast map movement.",
 	["Mobile Quick Menus"] = "Touch shortcuts for menus that use hotkeys on PC.",
 	["Auto Items"] = "Automatic item use and collection controls.",
-	["Hitbox Controls"] = "Adjust size and visibility for player hitboxes.",
+	Hitboxes = "Adjust hitbox size, visibility, and expansion from one panel.",
+	["Increase Glove Size"] = "Adjusts the size of your equipped glove.",
 	["World Safety"] = "Invisible protection over danger zones.",
 	["Kill Players"] = "Cycles through players from lowest health upward.",
 	["Themes"] = "Switch the full menu color profile.",
 	["Theme Creator"] = "Tune the accent color for your current theme.",
+	["Compact UI"] = "Shrinks the full interface for smaller screens or cleaner visibility.",
+	["Lock UI"] = "Prevents accidental dragging or resizing while playing.",
 	["Get Code + Go Barn"] = "Moves to barn, scans puzzle assets, and reports the code.",
 	["Toggle recommended settings?"] = "Turns on the useful defaults without enabling auto heal."
 }
@@ -317,7 +329,7 @@ local function px(value)
 end
 
 local rootScale = Instance.new("UIScale")
-rootScale.Scale = getUIScale()
+rootScale.Scale = getUIScale() * UI.UserScaleMultiplier
 rootScale.Parent = mainFrame
 
 local function getWindowSize()
@@ -986,12 +998,17 @@ UI.ToggleDescriptions = {
 	["Auto Collect"] = "Moves to the closest available item and collects it.",
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
 	["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
-	["Visualise Hitboxes"] = "Toggles the neon hitbox preview on or off.",
+	["Visualize Hitboxes"] = "Toggles the neon hitbox preview on or off.",
+	["Increase Glove Size"] = "Changes the size of your currently equipped glove.",
 	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
+	["Glove TP Slap"] = "When your equipped glove slaps, moves only that glove to the nearest player.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
+	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
 	["Anti Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
 	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
+	["Compact UI"] = "Shrinks the menu even more without changing the layout.",
+	["Lock UI"] = "Stops accidental dragging and hides the resize handle.",
 	["Toggle recommended settings?"] = "Turns on ESP, hitbox, auto tap, hotkeys, and safety."
 }
 
@@ -2567,6 +2584,8 @@ ContextActionService:BindActionAtPriority(
 
 local normalizeName = Utility.NormalizeName
 
+local ItemESP = nil
+
 createSmallButton(mainList, "Get Code + Go Barn", function()
 	Teleport.ToLocation("Barn", Vector3.new(477, 87, 318))
 	createNotification("Code", "Searching...")
@@ -3526,6 +3545,205 @@ do
 	end)
 end
 
+ItemESP = {
+	Enabled = false,
+	Folder = nil,
+	Rows = {},
+	Thread = nil,
+	RefreshDelay = 0.7
+}
+
+ItemESP.Colors = {
+	Default = Color3.fromRGB(235, 245, 255),
+	TruePower = Color3.fromRGB(255, 255, 255),
+	Power = Color3.fromRGB(255, 72, 86),
+	Speed = Color3.fromRGB(255, 226, 82),
+	Jump = Color3.fromRGB(92, 170, 255),
+	Heal = Color3.fromRGB(98, 255, 142),
+	Defense = Color3.fromRGB(96, 245, 255),
+	Utility = Color3.fromRGB(190, 116, 255),
+	Danger = Color3.fromRGB(255, 145, 72)
+}
+
+ItemESP.ColorLookup = {
+	[normalizeName("True Power")] = ItemESP.Colors.TruePower,
+	[normalizeName("Potion of Strength")] = ItemESP.Colors.Power,
+	[normalizeName("Bull's Essence")] = ItemESP.Colors.Power,
+	[normalizeName("Sphere of Fury")] = ItemESP.Colors.Power,
+	[normalizeName("Speed Potion")] = ItemESP.Colors.Speed,
+	[normalizeName("Boba")] = ItemESP.Colors.Speed,
+	[normalizeName("Frog Potion")] = ItemESP.Colors.Jump,
+	[normalizeName("Healing Potion")] = ItemESP.Colors.Heal,
+	[normalizeName("First Aid Kit")] = ItemESP.Colors.Heal,
+	[normalizeName("Apple")] = ItemESP.Colors.Heal,
+	[normalizeName("Bandage")] = ItemESP.Colors.Heal,
+	[normalizeName("Forcefield Crystal")] = ItemESP.Colors.Defense,
+	[normalizeName("Cube of Ice")] = ItemESP.Colors.Defense,
+	[normalizeName("Gravitation Shard")] = ItemESP.Colors.Utility,
+	[normalizeName("Lightning Potion")] = ItemESP.Colors.Utility,
+	[normalizeName("Bomb")] = ItemESP.Colors.Danger,
+	[normalizeName("Tomahawk")] = ItemESP.Colors.Danger
+}
+
+function ItemESP.GetColor(itemName)
+	return ItemESP.ColorLookup[normalizeName(itemName)] or ItemESP.Colors.Default
+end
+
+function ItemESP.GetKnownName(object)
+	local normalized = normalizeName(getItemDisplayName(object))
+
+	for _, itemName in ipairs(itemNames) do
+		if normalized == normalizeName(itemName) then
+			return itemName
+		end
+	end
+
+	return nil
+end
+
+function ItemESP.GetSearchPool()
+	local taggedItems = CollectionService:GetTagged(COLLECTIBLE_TAG)
+
+	if #taggedItems > 0 then
+		return taggedItems
+	end
+
+	local root = Items.GetSearchRoot and Items.GetSearchRoot() or workspace
+	return root:GetDescendants()
+end
+
+function ItemESP.ClearObject(object)
+	local row = ItemESP.Rows[object]
+
+	if not row then
+		return
+	end
+
+	if row.Highlight then
+		row.Highlight:Destroy()
+	end
+
+	if row.Billboard then
+		row.Billboard:Destroy()
+	end
+
+	ItemESP.Rows[object] = nil
+end
+
+function ItemESP.Clear()
+	for object in pairs(ItemESP.Rows) do
+		ItemESP.ClearObject(object)
+	end
+
+	if ItemESP.Folder then
+		ItemESP.Folder:Destroy()
+		ItemESP.Folder = nil
+	end
+end
+
+function ItemESP.EnsureFolder()
+	if ItemESP.Folder and ItemESP.Folder.Parent then
+		return
+	end
+
+	ItemESP.Folder = Instance.new("Folder")
+	ItemESP.Folder.Name = "ItemESP"
+	ItemESP.Folder.Parent = gui
+end
+
+function ItemESP.CreateOrUpdate(object, itemName, part)
+	ItemESP.EnsureFolder()
+
+	local color = ItemESP.GetColor(itemName)
+	local row = ItemESP.Rows[object]
+
+	if not row then
+		row = {}
+		ItemESP.Rows[object] = row
+
+		row.Highlight = Instance.new("Highlight")
+		row.Highlight.Name = "OPItemESPHighlight"
+		row.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		row.Highlight.FillTransparency = 0.72
+		row.Highlight.OutlineTransparency = 0
+		row.Highlight.Parent = ItemESP.Folder
+
+		row.Billboard = Instance.new("BillboardGui")
+		row.Billboard.Name = "OPItemESPName"
+		row.Billboard.Size = UDim2.fromOffset(240, 48)
+		row.Billboard.StudsOffset = Vector3.new(0, 3.2, 0)
+		row.Billboard.AlwaysOnTop = true
+		row.Billboard.MaxDistance = 1200
+		row.Billboard.Parent = ItemESP.Folder
+
+		row.Label = Instance.new("TextLabel")
+		row.Label.Size = UDim2.fromScale(1, 1)
+		row.Label.BackgroundTransparency = 1
+		row.Label.Font = Enum.Font.GothamBlack
+		row.Label.TextSize = 20
+		row.Label.TextStrokeTransparency = 0.12
+		row.Label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		row.Label.TextWrapped = true
+		row.Label.Parent = row.Billboard
+	end
+
+	row.Highlight.Adornee = object:IsA("Model") and object or part
+	row.Highlight.FillColor = color
+	row.Highlight.OutlineColor = color
+	row.Billboard.Adornee = part
+	row.Label.Text = itemName
+	row.Label.TextColor3 = color
+end
+
+function ItemESP.Refresh()
+	local seen = {}
+
+	for _, object in ipairs(ItemESP.GetSearchPool()) do
+		local itemName = ItemESP.GetKnownName(object)
+
+		if itemName then
+			local part = getLiveItemPart(object)
+
+			if part then
+				seen[object] = true
+				ItemESP.CreateOrUpdate(object, itemName, part)
+			end
+		end
+	end
+
+	for object in pairs(ItemESP.Rows) do
+		if not seen[object] then
+			ItemESP.ClearObject(object)
+		end
+	end
+end
+
+function ItemESP.Start()
+	if ItemESP.Thread then
+		return
+	end
+
+	ItemESP.Thread = task.spawn(function()
+		while ItemESP.Enabled do
+			ItemESP.Refresh()
+			task.wait(ItemESP.RefreshDelay)
+		end
+
+		ItemESP.Thread = nil
+	end)
+end
+
+function ItemESP.SetEnabled(state)
+	ItemESP.Enabled = state
+
+	if state then
+		ItemESP.Start()
+		ItemESP.Refresh()
+	else
+		ItemESP.Clear()
+	end
+end
+
 do
 	local toggle = createToggleButton(autoUseDropdown, "Auto Heal", false, function(state)
 		autoHealEnabled = state
@@ -3566,7 +3784,7 @@ end
 local Combat = {
 	HitboxSize = 10,
 	HitboxMinSize = 10,
-	HitboxMaxSize = 25,
+	HitboxMaxSize = 20,
 	HitboxTransparency = 0.7,
 	HitboxColor = Color3.fromRGB(0, 170, 255),
 	HitboxExpanded = false,
@@ -3577,6 +3795,18 @@ local Combat = {
 	AutoGloveTapConnection = nil,
 	AutoGloveTapDebounce = 0.08,
 	LastAutoGloveTap = 0,
+	GloveTpSlapEnabled = false,
+	GloveTpSlapConnections = {},
+	GloveTpSlapCharacterConnections = {},
+	GloveTpSlapCharacterAddedConnection = nil,
+	LastGloveTpSlap = 0,
+	LastGloveTpSlapWarning = 0,
+	GloveSizeScale = 1,
+	GloveSizeMin = 1,
+	GloveSizeMax = 8,
+	GloveSizeStep = 0.25,
+	GloveSizeOriginals = {},
+	GloveSizeLabel = nil,
 	KillPlayersBusy = false,
 	KillPlayersCooldown = 10,
 	KillPlayersNextAt = 0,
@@ -3616,9 +3846,8 @@ function Combat.ApplyHitbox(otherPlayer)
 		return
 	end
 
-	local character = otherPlayer.Character
 	local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
-	if not humanoid or humanoid.Health <= 0 or Combat.IsRagdolledTarget(character, humanoid) then
+	if not humanoid or humanoid.Health <= 0 then
 		Combat.ResetHitbox(otherPlayer)
 		return
 	end
@@ -3881,6 +4110,194 @@ function Combat.SetAutoGloveTap(state)
 	else
 		Combat.StopAutoGloveTap()
 		createNotification("Auto Glove Tap", "Auto Glove Tap disabled.")
+	end
+end
+
+function Combat.ShowGloveTpSlapWarning(message)
+	local now = os.clock()
+
+	if now - Combat.LastGloveTpSlapWarning < 1.5 then
+		return
+	end
+
+	Combat.LastGloveTpSlapWarning = now
+	createNotification("Glove TP Slap", message, "Warning")
+end
+
+function Combat.IsEquippedGloveTool(tool)
+	local character = player.Character
+
+	if not character or not tool or not tool:IsA("Tool") or tool.Parent ~= character then
+		return false
+	end
+
+	local toolName = normalizeName(tool.Name)
+	if string.find(toolName, "glove") or string.find(toolName, "slap") then
+		return true
+	end
+
+	for _, object in ipairs(tool:GetDescendants()) do
+		local objectName = normalizeName(object.Name)
+
+		if string.find(objectName, "glove") or string.find(objectName, "slap") then
+			return true
+		end
+	end
+
+	return false
+end
+
+function Combat.GetNearestGloveTpSlapRoot(originPosition)
+	local nearestRoot = nil
+	local nearestDistance = math.huge
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+
+		if humanoid and targetRoot then
+			local distance = (originPosition - targetRoot.Position).Magnitude
+
+			if distance < nearestDistance then
+				nearestDistance = distance
+				nearestRoot = targetRoot
+			end
+		end
+	end
+
+	return nearestRoot
+end
+
+function Combat.TeleportGloveToNearestPlayer(tool)
+	if os.clock() - Combat.LastGloveTpSlap < 0.08 then
+		return
+	end
+
+	Combat.LastGloveTpSlap = os.clock()
+
+	if not Combat.IsEquippedGloveTool(tool) then
+		Combat.ShowGloveTpSlapWarning("Equip a glove before using Glove TP Slap.")
+		return
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local parts = Combat.GetGloveParts(tool)
+
+	if not root then
+		Combat.ShowGloveTpSlapWarning("Could not find your character.")
+		return
+	end
+
+	if #parts == 0 then
+		Combat.ShowGloveTpSlapWarning("No glove parts were found on the equipped glove.")
+		return
+	end
+
+	local targetRoot = Combat.GetNearestGloveTpSlapRoot(root.Position)
+	if not targetRoot then
+		Combat.ShowGloveTpSlapWarning("No valid nearest player found.")
+		return
+	end
+
+	for _, part in ipairs(parts) do
+		if part:IsA("BasePart") and part:IsDescendantOf(tool) then
+			part.CFrame = targetRoot.CFrame
+			part.AssemblyLinearVelocity = Vector3.zero
+			part.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+end
+
+function Combat.ClearGloveTpSlapHooks()
+	for tool, connection in pairs(Combat.GloveTpSlapConnections) do
+		if connection then
+			connection:Disconnect()
+		end
+
+		Combat.GloveTpSlapConnections[tool] = nil
+	end
+
+	for _, connection in ipairs(Combat.GloveTpSlapCharacterConnections) do
+		connection:Disconnect()
+	end
+
+	Combat.GloveTpSlapCharacterConnections = {}
+end
+
+function Combat.HookGloveTpSlapTool(tool)
+	if not Combat.IsEquippedGloveTool(tool) or Combat.GloveTpSlapConnections[tool] then
+		return
+	end
+
+	Combat.GloveTpSlapConnections[tool] = tool.Activated:Connect(function()
+		if Combat.GloveTpSlapEnabled then
+			Combat.TeleportGloveToNearestPlayer(tool)
+		end
+	end)
+end
+
+function Combat.RefreshGloveTpSlapHooks()
+	Combat.ClearGloveTpSlapHooks()
+
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	for _, child in ipairs(character:GetChildren()) do
+		Combat.HookGloveTpSlapTool(child)
+	end
+
+	table.insert(Combat.GloveTpSlapCharacterConnections, character.ChildAdded:Connect(function(child)
+		task.defer(function()
+			if Combat.GloveTpSlapEnabled then
+				Combat.HookGloveTpSlapTool(child)
+			end
+		end)
+	end))
+
+	table.insert(Combat.GloveTpSlapCharacterConnections, character.ChildRemoved:Connect(function(child)
+		local connection = Combat.GloveTpSlapConnections[child]
+
+		if connection then
+			connection:Disconnect()
+			Combat.GloveTpSlapConnections[child] = nil
+		end
+	end))
+end
+
+function Combat.StartGloveTpSlap()
+	if not Combat.GloveTpSlapCharacterAddedConnection then
+		Combat.GloveTpSlapCharacterAddedConnection = player.CharacterAdded:Connect(function()
+			task.wait(0.25)
+
+			if Combat.GloveTpSlapEnabled then
+				Combat.RefreshGloveTpSlapHooks()
+			end
+		end)
+	end
+
+	Combat.RefreshGloveTpSlapHooks()
+end
+
+function Combat.StopGloveTpSlap()
+	if Combat.GloveTpSlapCharacterAddedConnection then
+		Combat.GloveTpSlapCharacterAddedConnection:Disconnect()
+		Combat.GloveTpSlapCharacterAddedConnection = nil
+	end
+
+	Combat.ClearGloveTpSlapHooks()
+end
+
+function Combat.SetGloveTpSlap(state)
+	Combat.GloveTpSlapEnabled = state == true
+
+	if Combat.GloveTpSlapEnabled then
+		Combat.StartGloveTpSlap()
+		createNotification("Glove TP Slap", "Glove TP Slap enabled.", "Success")
+	else
+		Combat.StopGloveTpSlap()
+		createNotification("Glove TP Slap", "Glove TP Slap disabled.")
 	end
 end
 
@@ -4248,11 +4665,97 @@ function Combat.SetHitboxSize(newSize)
 	Combat.HitboxSize = math.clamp(newSize, Combat.HitboxMinSize, Combat.HitboxMaxSize)
 
 	if Combat.HitboxSizeLabel then
-		Combat.HitboxSizeLabel.Text = "Hitbox Size: " .. tostring(math.floor(Combat.HitboxSize + 0.5))
+		Combat.HitboxSizeLabel.Text = "Hitbox Size: " .. tostring(math.floor(Combat.HitboxSize + 0.5)) .. " / " .. tostring(Combat.HitboxMaxSize)
 	end
 
 	if Combat.HitboxExpanded then
 		Combat.RefreshHitboxes()
+	end
+end
+
+function Combat.GetGloveParts(tool)
+	local parts = {}
+
+	if not tool then
+		return parts
+	end
+
+	local handle = tool:FindFirstChild("Handle")
+	if handle and handle:IsA("BasePart") then
+		table.insert(parts, handle)
+	end
+
+	for _, object in ipairs(tool:GetDescendants()) do
+		if object:IsA("BasePart") and object ~= handle then
+			table.insert(parts, object)
+		end
+	end
+
+	return parts
+end
+
+function Combat.SaveGloveOriginal(part)
+	if Combat.GloveSizeOriginals[part] then
+		return
+	end
+
+	local meshes = {}
+	for _, child in ipairs(part:GetChildren()) do
+		if child:IsA("SpecialMesh") then
+			meshes[child] = child.Scale
+		end
+	end
+
+	Combat.GloveSizeOriginals[part] = {
+		Size = part.Size,
+		Meshes = meshes
+	}
+end
+
+function Combat.ApplyGloveSize()
+	local tool = Combat.GetEquippedTool()
+	local parts = Combat.GetGloveParts(tool)
+
+	if #parts == 0 then
+		if Combat.GloveSizeLabel then
+			Combat.GloveSizeLabel.Text = "Glove Size: " .. string.format("%.2fx", Combat.GloveSizeScale) .. " (equip glove)"
+		end
+		return false
+	end
+
+	for _, part in ipairs(parts) do
+		Combat.SaveGloveOriginal(part)
+
+		local original = Combat.GloveSizeOriginals[part]
+		if original then
+			part.Size = original.Size * Combat.GloveSizeScale
+
+			for mesh, originalScale in pairs(original.Meshes) do
+				if mesh and mesh.Parent then
+					mesh.Scale = originalScale * Combat.GloveSizeScale
+				end
+			end
+		end
+	end
+
+	if Combat.GloveSizeLabel then
+		Combat.GloveSizeLabel.Text = "Glove Size: " .. string.format("%.2fx", Combat.GloveSizeScale)
+	end
+
+	return true
+end
+
+function Combat.SetGloveSizeScale(newScale, showNotification)
+	Combat.GloveSizeScale = math.clamp(newScale, Combat.GloveSizeMin, Combat.GloveSizeMax)
+
+	if Combat.ApplyGloveSize() then
+		if showNotification then
+			createNotification("Glove Size", "Glove size set to " .. string.format("%.2fx", Combat.GloveSizeScale) .. ".", "Success")
+		end
+	else
+		if showNotification then
+			createNotification("Glove Size", "Equip your glove first, then adjust the size.", "Warning")
+		end
 	end
 end
 
@@ -4355,14 +4858,54 @@ local expandHitboxToggle
 local autoGloveTapToggle
 
 do
+	local hitboxDropdown = createDropdown(combatList, "Hitboxes", updateCombatCanvas)
+
+	Combat.HitboxSizeLabel = Instance.new("TextLabel")
+	Combat.HitboxSizeLabel.Size = UDim2.new(1, -10, 0, isTouchDevice and 28 or 30)
+	Combat.HitboxSizeLabel.BackgroundTransparency = 1
+	Combat.HitboxSizeLabel.Font = Enum.Font.GothamBlack
+	Combat.HitboxSizeLabel.TextSize = isTouchDevice and 11 or 13
+	Combat.HitboxSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	Combat.HitboxSizeLabel.TextYAlignment = Enum.TextYAlignment.Center
+	Combat.HitboxSizeLabel.Parent = hitboxDropdown
+	themeObject(Combat.HitboxSizeLabel, "TextColor3", "Text")
+
+	local adjustRow = Instance.new("Frame")
+	adjustRow.Size = UDim2.new(1, -8, 0, isTouchDevice and 36 or 40)
+	adjustRow.BackgroundTransparency = 1
+	adjustRow.Parent = hitboxDropdown
+
+	local function createAdjustButton(text, xScale, callback)
+		local button = Instance.new("TextButton")
+		button.Size = UDim2.new(0.5, -5, 1, 0)
+		button.Position = UDim2.new(xScale, xScale == 0 and 0 or 5, 0, 0)
+		button.Text = text
+		button.Font = Enum.Font.GothamBlack
+		button.TextSize = isTouchDevice and 15 or 17
+		button.Parent = adjustRow
+		themeObject(button, "BackgroundColor3", "ButtonDark")
+		styleButton(button)
+
+		button.MouseButton1Click:Connect(callback)
+		return button
+	end
+
+	createAdjustButton("-", 0, function()
+		Combat.SetHitboxSize(Combat.HitboxSize - 1)
+	end)
+
+	createAdjustButton("+", 0.5, function()
+		Combat.SetHitboxSize(Combat.HitboxSize + 1)
+	end)
+
 	Combat.SetHitboxSize(Combat.HitboxSize)
 
-	expandHitboxToggle = createToggleButton(combatList, "Expand Hitbox", false, function(state)
+	expandHitboxToggle = createToggleButton(hitboxDropdown, "Expand Hitbox", false, function(state)
 		Combat.HitboxExpanded = state
 		Combat.RefreshHitboxes()
 	end)
 
-	createToggleButton(combatList, "Visualise Hitboxes", true, function(state)
+	createToggleButton(hitboxDropdown, "Visualize Hitboxes", true, function(state)
 		Combat.HitboxVisible = state
 
 		if Combat.HitboxExpanded then
@@ -4373,6 +4916,83 @@ do
 	autoGloveTapToggle = createToggleButton(combatList, "Auto Glove Tap", false, function(state)
 		Combat.SetAutoGloveTap(state)
 	end)
+
+	createToggleButton(combatList, "Glove TP Slap", false, function(state)
+		Combat.SetGloveTpSlap(state)
+	end)
+end
+
+do
+	local gloveDropdown = createDropdown(combatList, "Increase Glove Size", updateCombatCanvas)
+
+	Combat.GloveSizeLabel = Instance.new("TextLabel")
+	Combat.GloveSizeLabel.Size = UDim2.new(1, -10, 0, isTouchDevice and 28 or 30)
+	Combat.GloveSizeLabel.BackgroundTransparency = 1
+	Combat.GloveSizeLabel.Font = Enum.Font.GothamBlack
+	Combat.GloveSizeLabel.TextSize = isTouchDevice and 11 or 13
+	Combat.GloveSizeLabel.TextXAlignment = Enum.TextXAlignment.Center
+	Combat.GloveSizeLabel.TextYAlignment = Enum.TextYAlignment.Center
+	Combat.GloveSizeLabel.Text = "Glove Size: 1.00x"
+	Combat.GloveSizeLabel.Parent = gloveDropdown
+	themeObject(Combat.GloveSizeLabel, "TextColor3", "Text")
+
+	local slider = Instance.new("TextButton")
+	slider.Size = UDim2.new(1, -12, 0, isTouchDevice and 34 or 30)
+	slider.Position = UDim2.fromOffset(2, 0)
+	slider.Text = ""
+	slider.BorderSizePixel = 0
+	slider.AutoButtonColor = false
+	slider.Active = true
+	slider.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	slider.Parent = gloveDropdown
+	addCorner(slider, 8)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BorderSizePixel = 0
+	fill.Parent = slider
+	themeObject(fill, "BackgroundColor3", "Button")
+	addCorner(fill, 8)
+
+	local dragging = false
+
+	local function refreshSlider()
+		local percent = (Combat.GloveSizeScale - Combat.GloveSizeMin) / (Combat.GloveSizeMax - Combat.GloveSizeMin)
+		fill.Size = UDim2.fromScale(math.clamp(percent, 0, 1), 1)
+	end
+
+	local function setFromX(x)
+		local percent = math.clamp((x - slider.AbsolutePosition.X) / math.max(slider.AbsoluteSize.X, 1), 0, 1)
+		local value = Combat.GloveSizeMin + ((Combat.GloveSizeMax - Combat.GloveSizeMin) * percent)
+		value = math.floor((value / Combat.GloveSizeStep) + 0.5) * Combat.GloveSizeStep
+
+		Combat.SetGloveSizeScale(value, false)
+		refreshSlider()
+	end
+
+	slider.InputBegan:Connect(function(inputObject)
+		if inputObject.UserInputType == Enum.UserInputType.MouseButton1 or inputObject.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			setFromX(inputObject.Position.X)
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(inputObject)
+		if dragging and (inputObject.UserInputType == Enum.UserInputType.MouseMovement or inputObject.UserInputType == Enum.UserInputType.Touch) then
+			setFromX(inputObject.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(inputObject)
+		if inputObject.UserInputType == Enum.UserInputType.MouseButton1 or inputObject.UserInputType == Enum.UserInputType.Touch then
+			if dragging then
+				dragging = false
+				Combat.SetGloveSizeScale(Combat.GloveSizeScale, true)
+			end
+		end
+	end)
+
+	refreshSlider()
 end
 
 do
@@ -4621,6 +5241,11 @@ local playerEspToggle = createToggleButton(mainList, "Player Stats ESP", false, 
 	end
 end)
 
+local itemEspToggle = createToggleButton(itemsList, "Item ESP", false, function(state)
+	ItemESP.SetEnabled(state)
+	createNotification("Item ESP", state and "Item ESP enabled." or "Item ESP disabled.", state and "Success" or "Info")
+end)
+
 local Anti = {
 	Folder = nil
 }
@@ -4721,13 +5346,43 @@ end, "Turns on ESP, hitbox, auto tap, teleport hotkeys, and anti acid/lava.")
 
 do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
+	local themeOrder = {}
 
 	for themeName in pairs(themes) do
+		table.insert(themeOrder, themeName)
+	end
+
+	table.sort(themeOrder)
+
+	createSmallButton(dropdown, "Cycle Theme", function()
+		local currentIndex = 0
+
+		for index, themeName in ipairs(themeOrder) do
+			if themes[themeName] == currentTheme then
+				currentIndex = index
+				break
+			end
+		end
+
+		local nextTheme = themeOrder[(currentIndex % #themeOrder) + 1]
+		applyTheme(nextTheme)
+		createNotification("Theme", "Switched to " .. nextTheme .. ".", "Success")
+	end)
+
+	for _, themeName in ipairs(themeOrder) do
 		createSmallButton(dropdown, themeName, function()
 			applyTheme(themeName)
 		end)
 	end
 end
+
+createToggleButton(settingsList, "Compact UI", false, function(state)
+	UI.UserScaleMultiplier = state and 0.86 or 1
+	rootScale.Scale = getUIScale() * UI.UserScaleMultiplier
+	applyMobileMetrics()
+	Notify.RefreshLayout()
+	createNotification("UI Scale", state and "Compact UI enabled." or "Compact UI disabled.", state and "Success" or "Info")
+end)
 
 createToggleButton(settingsList, "Disable Notifications", Notify.Muted, function(state)
 	Notify.Muted = state
@@ -4755,12 +5410,14 @@ for _, otherPlayer in ipairs(Players:GetPlayers()) do
 end
 
 Players.PlayerRemoving:Connect(function(otherPlayer)
+	Combat.ResetHitbox(otherPlayer)
 	Combat.SavedHitboxes[otherPlayer] = nil
 end)
 
 local Window = {
 	Dragging = false,
 	Resizing = false,
+	Locked = false,
 	DidDragWindow = false,
 	Minimized = false,
 	DragStart = nil,
@@ -4797,7 +5454,7 @@ local function isPointerEnd(inputObject)
 end
 
 function Window.StartDrag(inputObject)
-	if not isPointerBegin(inputObject) then
+	if Window.Locked or not isPointerBegin(inputObject) then
 		return
 	end
 
@@ -4814,7 +5471,7 @@ function Window.StopDrag(inputObject)
 end
 
 function Window.StartResize(inputObject)
-	if not isPointerBegin(inputObject) then
+	if Window.Locked or not isPointerBegin(inputObject) then
 		return
 	end
 
@@ -5086,7 +5743,7 @@ function Window.Open()
 		if not Window.Minimized then
 			tabScroll.Visible = true
 			contentFrame.Visible = true
-			Window.ResizeHandle.Visible = not isTouchDevice
+			Window.ResizeHandle.Visible = (not Window.Locked) and (not isTouchDevice)
 		end
 	end)
 end
@@ -5116,9 +5773,25 @@ function Window.ResetPosition()
 	contentFrame.Visible = true
 
 	if Window.ResizeHandle then
-		Window.ResizeHandle.Visible = not isTouchDevice
+		Window.ResizeHandle.Visible = (not Window.Locked) and (not isTouchDevice)
 	end
 end
+
+createToggleButton(settingsList, "Lock UI", false, function(state)
+	Window.Locked = state
+	Window.Dragging = false
+	Window.Resizing = false
+
+	if Window.ResizeHandle then
+		Window.ResizeHandle.Visible = (not state) and (not isTouchDevice)
+	end
+
+	createNotification("UI Lock", state and "UI position locked." or "UI position unlocked.", state and "Success" or "Info")
+end)
+
+createSmallButton(settingsList, "Quick Minimize", function()
+	Window.Minimize()
+end)
 
 Window.ResizeHandle = Instance.new("TextButton")
 Window.ResizeHandle.Size = isTouchDevice and UDim2.fromOffset(32, 32) or UDim2.fromOffset(28, 28)
@@ -5127,7 +5800,7 @@ Window.ResizeHandle.Text = "+"
 Window.ResizeHandle.Font = Enum.Font.GothamBlack
 Window.ResizeHandle.TextSize = 17
 Window.ResizeHandle.Active = true
-Window.ResizeHandle.Visible = not isTouchDevice
+Window.ResizeHandle.Visible = (not Window.Locked) and (not isTouchDevice)
 Window.ResizeHandle.Parent = mainFrame
 themeObject(Window.ResizeHandle, "BackgroundColor3", "Button")
 styleButton(Window.ResizeHandle)
@@ -5178,7 +5851,7 @@ end)
 
 local function applyResponsiveWindow()
 	applyMobileMetrics()
-	rootScale.Scale = getUIScale()
+	rootScale.Scale = getUIScale() * UI.UserScaleMultiplier
 	Window.LauncherSize = isTouchDevice and px(52) or px(58)
 
 	if Window.Minimized then
