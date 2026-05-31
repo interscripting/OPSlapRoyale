@@ -224,6 +224,7 @@ UI.Icons = {
 	["World Safety"] = "🚧",
 	["Anti Acid & Lava"] = "🔥",
 	["Themes"] = "🎨",
+	["Disable Notifications"] = "🔕",
 	["Window Transparency"] = "🪟",
 	["Quick Menu Hotkeys"] = "⌨️",
 	["Toggle recommended settings?"] = "⭐",
@@ -990,6 +991,7 @@ UI.ToggleDescriptions = {
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Anti Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
+	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
 	["Toggle recommended settings?"] = "Turns on ESP, hitbox, auto tap, hotkeys, and safety."
 }
 
@@ -4727,6 +4729,16 @@ do
 	end
 end
 
+createToggleButton(settingsList, "Disable Notifications", Notify.Muted, function(state)
+	Notify.Muted = state
+
+	if state then
+		Notify.Show("Notifications", "Regular notifications are now muted.", "Info", nil, 2.4, true)
+	else
+		createNotification("Notifications", "Notifications are back on.", "Success")
+	end
+end)
+
 UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, UI.WindowTransparency, function(value)
 	UI.WindowTransparency = value
 
@@ -5223,3 +5235,15 @@ updateTeleportCanvas()
 updateCombatCanvas()
 updateSafetyCanvas()
 updateSettingsCanvas()
+
+task.defer(function()
+	applyResponsiveWindow()
+	updateMainCanvas()
+	updateItemsCanvas()
+	updateTeleportCanvas()
+	updateCombatCanvas()
+	updateSafetyCanvas()
+	updateSettingsCanvas()
+end)
+
+-- End of OP Slap Royale UI.
