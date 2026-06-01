@@ -219,6 +219,7 @@ UI.Icons = {
 	["Auto Collect"] = "🧲",
 	["Auto Heal"] = "❤️",
 	["Auto Sort"] = "🎒",
+	["Auto Use Permanent Items"] = "⚡",
 	["Meteor Crate"] = "📦",
 	Hitboxes = "🎯",
 	["Hitbox Size"] = "📏",
@@ -227,10 +228,12 @@ UI.Icons = {
 	["Increase Glove Size"] = "🧤",
 	["Auto Glove Tap"] = "👊",
 	["Glove TP Slap"] = "🎯",
+	["Anti Slap"] = "🧱",
 	["Player Stats ESP"] = "📊",
 	["Item ESP"] = "💎",
 	["World Safety"] = "🚧",
 	["Anti Acid & Lava"] = "🔥",
+	["Anti Staff"] = "🕵️",
 	["Themes"] = "🎨",
 	["Cycle Theme"] = "🔁",
 	["Compact UI"] = "📐",
@@ -1023,14 +1026,18 @@ end
 UI.ToggleDescriptions = {
 	["Auto Collect"] = "Moves to the closest available item and collects it.",
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
+	["Auto Sort"] = "Keeps your glove first, priority items next, and healing items grouped.",
+	["Auto Use Permanent Items"] = "Uses permanent boost items shortly after they enter your inventory.",
 	["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
 	["Visualize Hitboxes"] = "Toggles the neon hitbox preview on or off.",
 	["Increase Glove Size"] = "Changes the size of your currently equipped glove.",
 	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
-	["Glove TP Slap"] = "When your equipped glove slaps, moves only that glove to the nearest player.",
+	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
+	["Anti Slap"] = "Briefly boxes your character in when a slap knockback is detected.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
 	["Anti Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
+	["Anti Staff"] = "Leaves the server when chat suggests recording, proof, or staff attention.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
 	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
 	["Compact UI"] = "Shrinks the menu even more without changing the layout.",
@@ -2135,10 +2142,10 @@ Main.CodeKeywords = {
 	"question", "solve", "answer", "number"
 }
 
-Teleport.MaxStrikes = 5
-Teleport.Cooldown = 6
-Teleport.Debounce = 0
-Teleport.PostFLock = 0.5
+Teleport.MaxStrikes = 3
+Teleport.Cooldown = 4
+Teleport.Debounce = 0.5
+Teleport.PostFLock = 0.2
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -2399,7 +2406,7 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 	overlapParams.FilterDescendantsInstances = excludeInstances or {}
 
 	local function hasRoom(candidatePosition)
-		local touching = workspace:GetPartBoundsInBox(CFrame.new(candidatePosition + Vector3.new(0, 2, 0)), Vector3.new(4, 5, 4), overlapParams)
+		local touching = workspace:GetPartBoundsInBox(CFrame.new(candidatePosition + Vector3.new(0, 1.8, 0)), Vector3.new(2.8, 4.4, 2.8), overlapParams)
 
 		for _, part in ipairs(touching) do
 			if part ~= itemPart and part.CanCollide and part.Transparency < 0.95 then
@@ -2423,8 +2430,16 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 	}
 
 	for _, offset in ipairs(offsets) do
-		local rayOrigin = position + offset + Vector3.new(0, 5, 0)
-		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -18, 0), params)
+		local candidatePosition = position + offset + Vector3.new(0, 3, 0)
+
+		if hasRoom(candidatePosition) then
+			return CFrame.new(candidatePosition)
+		end
+	end
+
+	for _, offset in ipairs(offsets) do
+		local rayOrigin = position + offset + Vector3.new(0, 1.5, 0)
+		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -20, 0), params)
 
 		if result and math.abs(result.Position.Y - position.Y) <= 12 then
 			local candidatePosition = result.Position + Vector3.new(0, 4, 0)
@@ -2855,6 +2870,14 @@ local autoCollectCount = 0
 local autoCollectWindowStartedAt = 0
 local visitedCollectPositions = {}
 local movementSave = nil
+local autoSortEnabled = false
+local autoSortConnections = {}
+local autoSortBusy = false
+local autoPermanentEnabled = false
+local autoPermanentThread = nil
+local lastAutoPermanentUseAt = 0
+local autoPermanentSeenAt = {}
+local AUTO_PERMANENT_USE_DEBOUNCE = 0.5
 
 local itemNames = {
 	"Apple",
@@ -3302,6 +3325,8 @@ end)
 local autoHealEnabled = false
 local autoHealThread = nil
 local autoHealConnection = nil
+local lastAutoHealUseAt = 0
+local AUTO_HEAL_USE_DEBOUNCE = 0.5
 
 local healingItems = {
 	"Healing Potion",
@@ -3317,6 +3342,20 @@ local priorityHotbarItems = {
 	"Forcefield Crystal",
 	"Sphere of Fury",
 	"Tomahawk"
+}
+
+local permanentUseItems = {
+	"True Power",
+	"Potion of Strength",
+	"Bull's Essence",
+	"Boba",
+	"Speed Potion",
+	"Frog Potion",
+	"Sphere of Fury",
+	"Forcefield Crystal",
+	"Cube of Ice",
+	"Gravitation Shard",
+	"Lightning Potion"
 }
 
 local function getInventoryTools()
@@ -3387,14 +3426,21 @@ local function getToolSortRank(tool)
 	return 80
 end
 
-local function sortInventory()
-	local backpack = player:FindFirstChild("Backpack")
-
-	if not backpack then
-		createNotification("Inventory", "Backpack not found.", "Error")
+local function sortInventory(showNotification)
+	if autoSortBusy then
 		return
 	end
 
+	local backpack = player:FindFirstChild("Backpack")
+
+	if not backpack then
+		if showNotification ~= false then
+			createNotification("Inventory", "Backpack not found.", "Error")
+		end
+		return
+	end
+
+	autoSortBusy = true
 	local tools = getInventoryTools()
 	local holdingFolder = Instance.new("Folder")
 
@@ -3419,16 +3465,66 @@ local function sortInventory()
 	end
 
 	holdingFolder:Destroy()
+	autoSortBusy = false
 
-	createNotification("Auto Sort", "Glove first, priority items next, healing grouped in backpack.", "Success")
+	if showNotification ~= false then
+		createNotification("Auto Sort", "Glove first, priority items next, healing grouped in backpack.", "Success")
+	end
+end
+
+local function queueAutoSort()
+	if not autoSortEnabled then
+		return
+	end
+
+	task.delay(0.15, function()
+		if autoSortEnabled then
+			sortInventory(false)
+		end
+	end)
+end
+
+local function clearAutoSortConnections()
+	for _, connection in ipairs(autoSortConnections) do
+		connection:Disconnect()
+	end
+
+	autoSortConnections = {}
+end
+
+local function hookAutoSort()
+	clearAutoSortConnections()
+
+	local backpack = player:FindFirstChild("Backpack")
+	if backpack then
+		table.insert(autoSortConnections, backpack.ChildAdded:Connect(queueAutoSort))
+	end
+
+	local character = player.Character
+	if character then
+		table.insert(autoSortConnections, character.ChildAdded:Connect(queueAutoSort))
+	end
+end
+
+local function setAutoSort(state)
+	autoSortEnabled = state == true
+
+	if autoSortEnabled then
+		hookAutoSort()
+		sortInventory(false)
+		createNotification("Auto Sort", "Auto Sort enabled.", "Success")
+	else
+		clearAutoSortConnections()
+		createNotification("Auto Sort", "Auto Sort disabled.")
+	end
 end
 
 do
-	local button = createSmallButton(itemsList, "Auto Sort", function()
-		sortInventory()
+	local autoSortToggle = createToggleButton(autoUseDropdown, "Auto Sort", false, function(state)
+		setAutoSort(state)
 	end)
 
-	button.LayoutOrder = -9500
+	autoSortToggle.Button.LayoutOrder = -9500
 end
 
 do
@@ -3521,12 +3617,53 @@ local function tryAutoHeal()
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
-	if humanoid and humanoid.Health > 0 and humanoid.Health <= 30 then
+	local now = os.clock()
+	local threshold = humanoid and math.max(30, humanoid.MaxHealth * 0.45) or 30
+
+	if humanoid and humanoid.Health > 0 and humanoid.Health <= threshold and now - lastAutoHealUseAt >= AUTO_HEAL_USE_DEBOUNCE then
 		local tool = findMatchingTool(healingItems)
 
 		if tool then
-			useTool(tool)
+			lastAutoHealUseAt = now
+			if not useTool(tool) then
+				lastAutoHealUseAt = 0
+			end
 		end
+	end
+end
+
+local function tryAutoUsePermanentItem()
+	if not autoPermanentEnabled or os.clock() - lastAutoPermanentUseAt < AUTO_PERMANENT_USE_DEBOUNCE then
+		return false
+	end
+
+	local tool = nil
+	local now = os.clock()
+
+	for _, candidate in ipairs(getInventoryTools()) do
+		if candidate:IsA("Tool") and matchesItem(candidate.Name, permanentUseItems) then
+			autoPermanentSeenAt[candidate] = autoPermanentSeenAt[candidate] or now
+
+			if now - autoPermanentSeenAt[candidate] >= AUTO_PERMANENT_USE_DEBOUNCE then
+				tool = candidate
+				break
+			end
+		end
+	end
+
+	if not tool then
+		return false
+	end
+
+	lastAutoPermanentUseAt = now
+	autoPermanentSeenAt[tool] = nil
+	return useTool(tool)
+end
+
+local function runAutoUsePermanentItems()
+	while autoPermanentEnabled do
+		tryAutoUsePermanentItem()
+		task.wait(0.12)
 	end
 end
 
@@ -3984,11 +4121,34 @@ do
 
 end
 
+createToggleButton(autoUseDropdown, "Auto Use Permanent Items", false, function(state)
+	autoPermanentEnabled = state == true
+
+	if autoPermanentEnabled then
+		autoPermanentSeenAt = {}
+		createNotification("Auto Use", "Auto Use Permanent Items enabled.", "Success")
+
+		if not autoPermanentThread then
+			autoPermanentThread = task.spawn(function()
+				runAutoUsePermanentItems()
+				autoPermanentThread = nil
+			end)
+		end
+	else
+		createNotification("Auto Use", "Auto Use Permanent Items disabled.")
+	end
+end)
+
 player.CharacterAdded:Connect(function()
 	task.wait(0.25)
 
 	if autoHealEnabled then
 		hookAutoHealCharacter()
+	end
+
+	if autoSortEnabled then
+		hookAutoSort()
+		queueAutoSort()
 	end
 end)
 
@@ -4016,7 +4176,15 @@ Combat = {
 	LastGloveTpSlapWarning = 0,
 	GloveTpSlapBusy = false,
 	GloveTpSlapInternalActivate = false,
-	GloveTpSlapHoldTime = 0.18,
+	GloveTpSlapHoldTime = 0.5,
+	AntiSlapEnabled = false,
+	AntiSlapConnections = {},
+	AntiSlapBoxFolder = nil,
+	AntiSlapWasRagdolled = false,
+	AntiSlapEnabledAt = 0,
+	AntiSlapActiveUntil = 0,
+	LastAntiSlapBoxAt = 0,
+	AntiSlapBoxDuration = 1,
 	GloveSizeScale = 1,
 	GloveSizeMin = 1,
 	GloveSizeMax = 8,
@@ -4177,6 +4345,42 @@ function Combat.HasTruthyStatus(object, statusNames)
 				end
 			else
 				return true
+			end
+		end
+	end
+
+	return false
+end
+
+function Combat.HasStrictTruthyStatus(object, statusNames)
+	if not object then
+		return false
+	end
+
+	for _, statusName in ipairs(statusNames) do
+		local attribute = object:GetAttribute(statusName)
+		if attribute == true or attribute == 1 or attribute == "true" then
+			return true
+		end
+		if typeof(attribute) == "string" and string.lower(attribute) == "true" then
+			return true
+		end
+
+		local statusObject = object:FindFirstChild(statusName, true)
+		if statusObject then
+			if statusObject:IsA("BoolValue") then
+				if statusObject.Value == true then
+					return true
+				end
+			elseif statusObject:IsA("NumberValue") or statusObject:IsA("IntValue") then
+				if statusObject.Value ~= 0 then
+					return true
+				end
+			elseif statusObject:IsA("StringValue") then
+				local value = string.lower(statusObject.Value)
+				if value == "true" or value == "ragdoll" or value == "ragdolled" then
+					return true
+				end
 			end
 		end
 	end
@@ -4528,7 +4732,7 @@ function Combat.GetGloveTpSlapCenterCFrame(parts)
 	return CFrame.new(totalPosition / count)
 end
 
-function Combat.TeleportGloveToNearestPlayer(tool)
+function Combat.TeleportToNearestPlayerOnGloveSlap(tool)
 	if Combat.GloveTpSlapBusy or os.clock() - Combat.LastGloveTpSlap < Combat.GloveTpSlapHoldTime then
 		return
 	end
@@ -4542,62 +4746,9 @@ function Combat.TeleportGloveToNearestPlayer(tool)
 		return
 	end
 
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-	local parts = Combat.GetGloveParts(tool)
-
-	if not root then
-		Combat.GloveTpSlapBusy = false
-		Combat.ShowGloveTpSlapWarning("Could not find your character.")
-		return
-	end
-
-	if #parts == 0 then
-		Combat.GloveTpSlapBusy = false
-		Combat.ShowGloveTpSlapWarning("No glove parts were found on the equipped glove.")
-		return
-	end
-
-	local targetRoot = Combat.GetNearestGloveTpSlapRoot(root.Position)
-	if not targetRoot then
-		Combat.GloveTpSlapBusy = false
-		Combat.ShowGloveTpSlapWarning("No valid nearest player found.")
-		return
-	end
-
-	local basePart = tool:FindFirstChild("Handle")
-	if not basePart or not basePart:IsA("BasePart") then
-		basePart = parts[1]
-	end
-
-	local gloveCenterCFrame = Combat.GetGloveTpSlapCenterCFrame(parts) or basePart.CFrame
-	local rootCFrame = root.CFrame
-	local jointRecords = Combat.DetachGloveTpSlapJoints(character, tool)
-	local partStates = Combat.PrepareGloveTpSlapParts(parts, root)
-
-	for _, part in ipairs(parts) do
-		if part:IsA("BasePart") and part:IsDescendantOf(tool) then
-			part.CFrame = targetRoot.CFrame * gloveCenterCFrame:ToObjectSpace(part.CFrame)
-			part.AssemblyLinearVelocity = Vector3.zero
-			part.AssemblyAngularVelocity = Vector3.zero
-		end
-	end
-
-	if (root.Position - rootCFrame.Position).Magnitude > 0.25 then
-		root.CFrame = rootCFrame
-		root.AssemblyLinearVelocity = Vector3.zero
-		root.AssemblyAngularVelocity = Vector3.zero
-	end
-
-	Combat.GloveTpSlapInternalActivate = true
-	pcall(function()
-		tool:Activate()
-	end)
-	Combat.GloveTpSlapInternalActivate = false
+	Combat.TeleportToNearestPlayer()
 
 	task.delay(Combat.GloveTpSlapHoldTime, function()
-		Combat.RestoreGloveTpSlapParts(partStates, root)
-		Combat.RestoreGloveTpSlapJoints(jointRecords)
 		Combat.GloveTpSlapBusy = false
 	end)
 end
@@ -4625,7 +4776,7 @@ function Combat.HookGloveTpSlapTool(tool)
 
 	Combat.GloveTpSlapConnections[tool] = tool.Activated:Connect(function()
 		if Combat.GloveTpSlapEnabled and not Combat.GloveTpSlapInternalActivate then
-			Combat.TeleportGloveToNearestPlayer(tool)
+			Combat.TeleportToNearestPlayerOnGloveSlap(tool)
 		end
 	end)
 end
@@ -4693,6 +4844,253 @@ function Combat.SetGloveTpSlap(state)
 		Combat.StopGloveTpSlap()
 		createNotification("Glove TP Slap", "Glove TP Slap disabled.")
 	end
+end
+
+function Combat.CreateAntiSlapPart(folder, cframe, size)
+	local part = Instance.new("Part")
+	part.Name = "Part"
+	part.Size = size
+	part.CFrame = cframe
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanTouch = false
+	part.CanQuery = false
+	part.Transparency = 1
+	part.Parent = folder
+	return part
+end
+
+function Combat.SpawnAntiSlapBox()
+    if Combat.AntiSlapBoxFolder and not Combat.AntiSlapBoxFolder.Parent then
+        Combat.AntiSlapBoxFolder = nil
+    end
+
+    if not Combat.AntiSlapEnabled or Combat.AntiSlapBoxFolder or os.clock() - Combat.LastAntiSlapBoxAt < 0.2 then
+        return
+    end
+
+    local character = player.Character
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return
+	end
+
+	Combat.LastAntiSlapBoxAt = os.clock()
+
+    local folder = Instance.new("Folder")
+    folder.Name = "AntiSlapBox"
+    folder.Parent = workspace
+    Combat.AntiSlapBoxFolder = folder
+
+    local center = root.CFrame
+    local innerWidth = 8
+    local innerHeight = 8
+    local innerDepth = 8
+	local thickness = 40
+    local outerWidth = innerWidth + thickness * 2
+    local outerHeight = innerHeight + thickness * 2
+    local outerDepth = innerDepth + thickness * 2
+
+	Combat.CreateAntiSlapPart(folder, center * CFrame.new(0, -(innerHeight / 2 + thickness / 2), 0), Vector3.new(outerWidth, thickness, outerDepth))
+	Combat.CreateAntiSlapPart(folder, center * CFrame.new(0, innerHeight / 2 + thickness / 2, 0), Vector3.new(outerWidth, thickness, outerDepth))
+    Combat.CreateAntiSlapPart(folder, center * CFrame.new(innerWidth / 2 + thickness / 2, 0, 0), Vector3.new(thickness, outerHeight, outerDepth))
+    Combat.CreateAntiSlapPart(folder, center * CFrame.new(-(innerWidth / 2 + thickness / 2), 0, 0), Vector3.new(thickness, outerHeight, outerDepth))
+    Combat.CreateAntiSlapPart(folder, center * CFrame.new(0, 0, innerDepth / 2 + thickness / 2), Vector3.new(outerWidth, outerHeight, thickness))
+    Combat.CreateAntiSlapPart(folder, center * CFrame.new(0, 0, -(innerDepth / 2 + thickness / 2)), Vector3.new(outerWidth, outerHeight, thickness))
+end
+
+function Combat.ClearAntiSlapBox()
+    if Combat.AntiSlapBoxFolder then
+        Combat.AntiSlapBoxFolder:Destroy()
+        Combat.AntiSlapBoxFolder = nil
+    end
+end
+
+function Combat.IsLocalAntiSlapRagdolled(character, humanoid)
+    if not character or not humanoid or humanoid.Health <= 0 then
+        return false
+    end
+
+    local state = humanoid:GetState()
+    if state == Enum.HumanoidStateType.Running
+        or state == Enum.HumanoidStateType.RunningNoPhysics
+        or state == Enum.HumanoidStateType.Landed
+        or state == Enum.HumanoidStateType.Climbing
+        or state == Enum.HumanoidStateType.Swimming
+        or state == Enum.HumanoidStateType.Seated
+    then
+        return false
+    end
+
+    local ragdollStatuses = {
+        "Ragdoll",
+        "Ragdolled",
+        "IsRagdolled",
+        "IsInRagdoll",
+        "Ragdolling",
+    }
+
+    if Combat.HasStrictTruthyStatus(player, ragdollStatuses)
+        or Combat.HasStrictTruthyStatus(character, ragdollStatuses)
+        or Combat.HasStrictTruthyStatus(humanoid, ragdollStatuses)
+    then
+        return true
+    end
+
+    if state == Enum.HumanoidStateType.Ragdoll then
+        return true
+    end
+
+    if state == Enum.HumanoidStateType.Physics or state == Enum.HumanoidStateType.FallingDown then
+        for _, object in ipairs(character:GetDescendants()) do
+            local objectName = string.lower(object.Name)
+            if string.find(objectName, "ragdoll", 1, true) then
+                return true
+            end
+
+        end
+    end
+
+    return false
+end
+
+function Combat.IsLocalAntiSlapKnockbacked(character, humanoid, root)
+    if not character or not humanoid or not root or humanoid.Health <= 0 then
+        return false
+    end
+
+    if os.clock() - Combat.AntiSlapEnabledAt < 0.75 then
+        return false
+    end
+
+    local state = humanoid:GetState()
+    local slapState = humanoid.PlatformStand
+        or state == Enum.HumanoidStateType.Ragdoll
+        or state == Enum.HumanoidStateType.Physics
+        or state == Enum.HumanoidStateType.FallingDown
+        or state == Enum.HumanoidStateType.GettingUp
+
+    if not slapState then
+        return false
+    end
+
+    local velocity = root.AssemblyLinearVelocity or Vector3.zero
+    local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+
+    return horizontalVelocity >= 38 or math.abs(velocity.Y) >= 50
+end
+
+function Combat.UpdateAntiSlapBox(character, humanoid)
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    local isRagdolled = Combat.AntiSlapEnabled and Combat.IsLocalAntiSlapRagdolled(character, humanoid)
+    local isKnockbacked = Combat.AntiSlapEnabled and Combat.IsLocalAntiSlapKnockbacked(character, humanoid, root)
+    local now = os.clock()
+    local state = humanoid and humanoid:GetState()
+    local recovered = state == Enum.HumanoidStateType.Running
+        or state == Enum.HumanoidStateType.RunningNoPhysics
+        or state == Enum.HumanoidStateType.Landed
+        or state == Enum.HumanoidStateType.Climbing
+        or state == Enum.HumanoidStateType.Swimming
+        or state == Enum.HumanoidStateType.Seated
+
+    if recovered then
+        Combat.AntiSlapActiveUntil = 0
+    end
+
+    if not recovered and (isRagdolled or isKnockbacked) then
+        Combat.AntiSlapActiveUntil = math.max(Combat.AntiSlapActiveUntil, now + 1)
+    end
+
+    local shouldBox = not recovered and (isRagdolled or isKnockbacked or now < Combat.AntiSlapActiveUntil)
+
+    if shouldBox and (not Combat.AntiSlapWasRagdolled or (isKnockbacked and not Combat.AntiSlapBoxFolder)) then
+        Combat.SpawnAntiSlapBox()
+    elseif not shouldBox then
+        Combat.ClearAntiSlapBox()
+        Combat.AntiSlapActiveUntil = 0
+    end
+
+    Combat.AntiSlapWasRagdolled = shouldBox
+end
+
+function Combat.ClearAntiSlapConnections()
+    for _, connection in ipairs(Combat.AntiSlapConnections) do
+        connection:Disconnect()
+	end
+
+	Combat.AntiSlapConnections = {}
+end
+
+function Combat.HookAntiSlapCharacter()
+	Combat.ClearAntiSlapConnections()
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+    if not character or not humanoid or not root then
+        return
+    end
+
+    Combat.ClearAntiSlapBox()
+    Combat.AntiSlapWasRagdolled = Combat.IsLocalAntiSlapRagdolled(character, humanoid)
+    Combat.AntiSlapActiveUntil = 0
+
+    table.insert(Combat.AntiSlapConnections, humanoid.StateChanged:Connect(function()
+        Combat.UpdateAntiSlapBox(character, humanoid)
+    end))
+
+    for _, statusName in ipairs({ "Ragdoll", "Ragdolled", "IsRagdolled", "IsInRagdoll", "Ragdolling" }) do
+        table.insert(Combat.AntiSlapConnections, character:GetAttributeChangedSignal(statusName):Connect(function()
+            Combat.UpdateAntiSlapBox(character, humanoid)
+        end))
+
+        table.insert(Combat.AntiSlapConnections, humanoid:GetAttributeChangedSignal(statusName):Connect(function()
+            Combat.UpdateAntiSlapBox(character, humanoid)
+        end))
+
+        table.insert(Combat.AntiSlapConnections, player:GetAttributeChangedSignal(statusName):Connect(function()
+            Combat.UpdateAntiSlapBox(character, humanoid)
+        end))
+    end
+
+    table.insert(Combat.AntiSlapConnections, character.DescendantAdded:Connect(function()
+        Combat.UpdateAntiSlapBox(character, humanoid)
+    end))
+
+    table.insert(Combat.AntiSlapConnections, character.DescendantRemoving:Connect(function()
+        task.defer(function()
+            Combat.UpdateAntiSlapBox(character, humanoid)
+        end)
+    end))
+
+    table.insert(Combat.AntiSlapConnections, RunService.Heartbeat:Connect(function()
+        if not Combat.AntiSlapEnabled or not root.Parent then
+            Combat.ClearAntiSlapBox()
+            return
+        end
+
+        Combat.UpdateAntiSlapBox(character, humanoid)
+    end))
+end
+
+function Combat.SetAntiSlap(state)
+	Combat.AntiSlapEnabled = state == true
+
+    if Combat.AntiSlapEnabled then
+        Combat.AntiSlapWasRagdolled = false
+        Combat.AntiSlapEnabledAt = os.clock()
+        Combat.AntiSlapActiveUntil = 0
+        Combat.HookAntiSlapCharacter()
+        createNotification("Anti Slap", "Anti Slap enabled.", "Success")
+    else
+        Combat.ClearAntiSlapConnections()
+        Combat.ClearAntiSlapBox()
+        Combat.AntiSlapWasRagdolled = false
+        Combat.AntiSlapActiveUntil = 0
+        createNotification("Anti Slap", "Anti Slap disabled.")
+    end
 end
 
 function Combat.GetPlayerRoot(targetPlayer)
@@ -5322,6 +5720,10 @@ do
 	createToggleButton(combatList, "Glove TP Slap", false, function(state)
 		Combat.SetGloveTpSlap(state)
 	end)
+
+	createToggleButton(combatList, "Anti Slap", false, function(state)
+		Combat.SetAntiSlap(state)
+	end)
 end
 
 do
@@ -5649,7 +6051,17 @@ local itemEspToggle = createToggleButton(itemsList, "Item ESP", false, function(
 end)
 
 local Anti = {
-	Folder = nil
+	Folder = nil,
+	StaffEnabled = false,
+	StaffConnections = {},
+	StaffKeywords = {
+		"record", "recording", "rec", "clip", "proof", "evidence", "caught", "exposed",
+		"screen record", "screenrec", "screenshot", "screen shot", "ss", "video", "vid",
+		"obs", "shadowplay", "geforce", "nvidia", "stream", "streaming", "live",
+		"staff", "admin", "mod", "moderator", "report", "reported", "ticket", "discord",
+		"grava", "gravando", "prova", "video", "print", "aufnahme", "beweis",
+		"enregistrer", "preuve", "filmer", "registrare", "prova", "录制", "录像", "録画", "証拠"
+	}
 }
 
 function Anti.ClearParts()
@@ -5702,7 +6114,73 @@ function Anti.EnableAcidLava()
 	)
 end
 
+function Anti.ClearStaffConnections()
+	for _, connection in ipairs(Anti.StaffConnections) do
+		connection:Disconnect()
+	end
+
+	Anti.StaffConnections = {}
+end
+
+function Anti.GetStaffKeyword(message)
+	local lowerMessage = string.lower(tostring(message or ""))
+
+	for _, keyword in ipairs(Anti.StaffKeywords) do
+		local lowerKeyword = string.lower(tostring(keyword))
+
+		if string.find(lowerMessage, lowerKeyword, 1, true) then
+			return keyword
+		end
+	end
+
+	return nil
+end
+
+function Anti.HandleStaffChat(speaker, message)
+	if not Anti.StaffEnabled or speaker == player then
+		return
+	end
+
+	local keyword = Anti.GetStaffKeyword(message)
+	if not keyword then
+		return
+	end
+
+	local speakerName = speaker and speaker.Name or "Unknown"
+	player:Kick("Anti Staff detected chat from " .. speakerName .. ": " .. tostring(message) .. " [" .. tostring(keyword) .. "]")
+end
+
+function Anti.HookStaffPlayer(targetPlayer)
+	if not targetPlayer or targetPlayer == player then
+		return
+	end
+
+	table.insert(Anti.StaffConnections, targetPlayer.Chatted:Connect(function(message)
+		Anti.HandleStaffChat(targetPlayer, message)
+	end))
+end
+
+function Anti.SetStaffEnabled(state)
+	Anti.StaffEnabled = state == true
+	Anti.ClearStaffConnections()
+
+	if Anti.StaffEnabled then
+		for _, targetPlayer in ipairs(Players:GetPlayers()) do
+			Anti.HookStaffPlayer(targetPlayer)
+		end
+
+		table.insert(Anti.StaffConnections, Players.PlayerAdded:Connect(function(targetPlayer)
+			Anti.HookStaffPlayer(targetPlayer)
+		end))
+
+		createNotification("Anti Staff", "Anti Staff enabled.", "Success")
+	else
+		createNotification("Anti Staff", "Anti Staff disabled.")
+	end
+end
+
 local antiAcidLavaToggle
+local antiStaffToggle
 
 do
 	local dropdown = createDropdown(safetyList, "World Safety", updateSafetyCanvas)
@@ -5715,6 +6193,10 @@ do
 			Anti.ClearParts()
 			createNotification("Anti", "Anti Acid & Lava disabled.")
 		end
+	end)
+
+	antiStaffToggle = createToggleButton(dropdown, "Anti Staff", false, function(state)
+		Anti.SetStaffEnabled(state)
 	end)
 end
 
@@ -5805,6 +6287,14 @@ UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, UI.WindowTranspare
 end)
 
 Players.PlayerAdded:Connect(Combat.SetupPlayerHitboxRefresh)
+
+player.CharacterAdded:Connect(function()
+	task.wait(0.35)
+
+	if Combat.AntiSlapEnabled then
+		Combat.HookAntiSlapCharacter()
+	end
+end)
 
 for _, otherPlayer in ipairs(Players:GetPlayers()) do
 	Combat.SetupPlayerHitboxRefresh(otherPlayer)
