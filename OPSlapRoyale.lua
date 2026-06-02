@@ -209,6 +209,7 @@ UI.Icons = {
 	Visuals = "👁️",
 	Safety = "🛡️",
 	Settings = "⚙️",
+	BETA = "🧪",
 	["Get Code + Go Barn"] = "🔢",
 	["Quick Teleports"] = "⚡",
 	["Mobile Quick Menus"] = "📱",
@@ -228,6 +229,7 @@ UI.Icons = {
 	["Increase Glove Size"] = "🧤",
 	["Auto Glove Tap"] = "👊",
 	["Glove TP Slap"] = "🎯",
+	["Collect Crates"] = "📦",
 	["Anti Slap"] = "🧱",
 	["Player Stats ESP"] = "📊",
 	["Item ESP"] = "💎",
@@ -245,8 +247,6 @@ UI.Icons = {
 	["Toggle recommended settings?"] = "⭐",
 	["Teleport To Lowest Health"] = "🩹",
 	["Teleport To Nearest"] = "📍",
-	["Kill Players"] = "⚔️",
-	["Start Kill Players"] = "⚔️",
 	["Open Item Teleports"] = "🎁",
 	["Open Player Teleports"] = "👤",
 	["Open Map Locations"] = "🗺️",
@@ -261,13 +261,13 @@ UI.Descriptions = {
 	Visuals = "On-screen overlays and player information.",
 	Safety = "World hazard protection and safety toggles.",
 	Settings = "Theme, hotkey, and window controls.",
+	BETA = "Experimental combat tools.",
 	["Quick Teleports"] = "Pinned locations for fast map movement.",
 	["Mobile Quick Menus"] = "Touch shortcuts for menus that use hotkeys on PC.",
 	["Auto Items"] = "Automatic item use and collection controls.",
 	Hitboxes = "Adjust hitbox size, visibility, and expansion from one panel.",
 	["Increase Glove Size"] = "Adjusts the size of your equipped glove.",
 	["World Safety"] = "Invisible protection over danger zones.",
-	["Kill Players"] = "Cycles through players from lowest health upward.",
 	["Themes"] = "Switch the full menu color profile.",
 	["Theme Creator"] = "Tune the accent color for your current theme.",
 	["Compact UI"] = "Shrinks the full interface for smaller screens or cleaner visibility.",
@@ -582,6 +582,7 @@ UI.CreatePage("Main")
 UI.CreatePage("Items")
 UI.CreatePage("Teleports")
 UI.CreatePage("Combat")
+UI.CreatePage("BETA")
 UI.CreatePage("Safety")
 UI.CreatePage("Settings")
 
@@ -702,6 +703,7 @@ UI.CreateTab("Main")
 UI.CreateTab("Teleports")
 UI.CreateTab("Items")
 UI.CreateTab("Combat")
+UI.CreateTab("BETA")
 UI.CreateTab("Safety")
 UI.CreateTab("Settings")
 
@@ -772,6 +774,7 @@ UI.CreatePageTitle(UI.Pages.Main, "Main")
 UI.CreatePageTitle(UI.Pages.Items, "Items")
 UI.CreatePageTitle(UI.Pages.Teleports, "Teleports")
 UI.CreatePageTitle(UI.Pages.Combat, "Combat")
+UI.CreatePageTitle(UI.Pages.BETA, "BETA")
 UI.CreatePageTitle(UI.Pages.Safety, "Safety")
 UI.CreatePageTitle(UI.Pages.Settings, "Settings")
 
@@ -802,6 +805,7 @@ local mainList, updateMainCanvas = UI.CreatePageList(UI.Pages.Main)
 local itemsList, updateItemsCanvas = UI.CreatePageList(UI.Pages.Items)
 local teleportList, updateTeleportCanvas = UI.CreatePageList(UI.Pages.Teleports)
 local combatList, updateCombatCanvas = UI.CreatePageList(UI.Pages.Combat)
+local betaList, updateBetaCanvas = UI.CreatePageList(UI.Pages.BETA)
 local safetyList, updateSafetyCanvas = UI.CreatePageList(UI.Pages.Safety)
 local settingsList, updateSettingsCanvas = UI.CreatePageList(UI.Pages.Settings)
 
@@ -1033,6 +1037,7 @@ UI.ToggleDescriptions = {
 	["Increase Glove Size"] = "Changes the size of your currently equipped glove.",
 	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
 	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
+	["Collect Crates"] = "When your equipped glove slaps, sends only the glove to a spawned meteor crate.",
 	["Anti Slap"] = "Briefly boxes your character in when a slap knockback is detected.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
@@ -2143,7 +2148,7 @@ Main.CodeKeywords = {
 }
 
 Teleport.MaxStrikes = 3
-Teleport.Cooldown = 4
+Teleport.Cooldown = 3
 Teleport.Debounce = 0.5
 Teleport.PostFLock = 0.2
 Teleport.Strikes = 0
@@ -2418,6 +2423,11 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 	end
 
 	local offsets = {
+		Vector3.zero,
+		Vector3.new(1.5, 0, 0),
+		Vector3.new(-1.5, 0, 0),
+		Vector3.new(0, 0, 1.5),
+		Vector3.new(0, 0, -1.5),
 		Vector3.new(2.5, 0, 0),
 		Vector3.new(-2.5, 0, 0),
 		Vector3.new(0, 0, 2.5),
@@ -2425,15 +2435,20 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 		Vector3.new(3.5, 0, 3.5),
 		Vector3.new(-3.5, 0, 3.5),
 		Vector3.new(3.5, 0, -3.5),
-		Vector3.new(-3.5, 0, -3.5),
-		Vector3.zero
+		Vector3.new(-3.5, 0, -3.5)
 	}
 
 	for _, offset in ipairs(offsets) do
-		local candidatePosition = position + offset + Vector3.new(0, 3, 0)
+		local rayStartHeight = math.min((itemPart.Size.Y / 2) + 1.5, 4)
+		local rayOrigin = position + offset + Vector3.new(0, rayStartHeight, 0)
+		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -35, 0), params)
 
-		if hasRoom(candidatePosition) then
-			return CFrame.new(candidatePosition)
+		if result and result.Position.Y <= position.Y + 1.5 and position.Y - result.Position.Y <= 18 then
+			local candidatePosition = result.Position + Vector3.new(0, 4, 0)
+
+			if hasRoom(candidatePosition) then
+				return CFrame.new(candidatePosition)
+			end
 		end
 	end
 
@@ -2451,7 +2466,7 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 	end
 
 	for _, offset in ipairs(offsets) do
-		local candidatePosition = position + offset + Vector3.new(0, 3, 0)
+		local candidatePosition = position + offset + Vector3.new(0, 4, 0)
 
 		if hasRoom(candidatePosition) then
 			return CFrame.new(candidatePosition)
@@ -2546,6 +2561,29 @@ function Items.GetSearchDescendants()
 	return Items.SearchCache
 end
 
+local itemNameAliases = {
+	["Bull's Essence"] = {
+		"Bull's essence"
+	}
+}
+
+local function strictItemNameMatches(candidateName, wantedName)
+	if candidateName == wantedName then
+		return true
+	end
+
+	local aliases = itemNameAliases[wantedName]
+	if aliases then
+		for _, alias in ipairs(aliases) do
+			if candidateName == alias then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 function Items.FindManualItem(itemName)
 	local character = player.Character
 	local root = character and character:FindFirstChild("HumanoidRootPart")
@@ -2561,7 +2599,7 @@ function Items.FindManualItem(itemName)
 	for _, object in ipairs(Items.GetSearchDescendants()) do
 		local displayName = object.Name
 
-		if Utility.NormalizeName(displayName) == Utility.NormalizeName(itemName) then
+		if strictItemNameMatches(displayName, itemName) then
 			local itemCFrame = Utility.GetObjectCFrame(object)
 
 			if itemCFrame then
@@ -2861,9 +2899,9 @@ local autoCollectToggle = nil
 local COLLECTIBLE_TAG = "CollectibleItem"
 
 local AUTO_COLLECT_TELEPORT_DELAY = 2
-local AUTO_COLLECT_F_DELAY = 1
+local AUTO_COLLECT_F_DELAY = 0.25
 local AUTO_COLLECT_SAFE_LIMIT = 4
-local AUTO_COLLECT_SAFE_WAIT = 8
+local AUTO_COLLECT_SAFE_WAIT = 4
 local AUTO_COLLECT_POSITION_RADIUS = 8
 
 local autoCollectCount = 0
@@ -2873,11 +2911,17 @@ local movementSave = nil
 local autoSortEnabled = false
 local autoSortConnections = {}
 local autoSortBusy = false
+local autoSortSuppressUntil = 0
+local autoSortKnownTools = {}
+local autoSortQueued = false
 local autoPermanentEnabled = false
 local autoPermanentThread = nil
 local lastAutoPermanentUseAt = 0
 local autoPermanentSeenAt = {}
-local AUTO_PERMANENT_USE_DEBOUNCE = 0.5
+local toolUseBusy = false
+local lastToolUseAt = 0
+local TOOL_USE_SPACING = 0.1
+local AUTO_PERMANENT_USE_DEBOUNCE = 0.1
 
 local itemNames = {
 	"Apple",
@@ -2896,7 +2940,8 @@ local itemNames = {
 	"Speed Potion",
 	"Sphere of Fury",
 	"Tomahawk",
-	"True Power"
+	"True Power",
+	"Bombs"
 }
 
 local autoCollectPriority = {
@@ -2906,17 +2951,18 @@ local autoCollectPriority = {
 	"Boba",
 	"Speed Potion",
 	"Frog Potion",
-	"Healing Potion",
-	"Cube of Ice",
 	"Sphere of Fury",
 	"Tomahawk",
 	"Gravitation Shard",
-	"Bomb",
-	"Lightning Potion",
+	"Healing Potion",
 	"First Aid Kit",
-	"Apple",
+	"Cube of Ice",
+	"Bomb",
+	"Bombs",
 	"Bandage",
-	"Forcefield Crystal"
+	"Apple",
+	"Forcefield Crystal",
+	"Lightning Potion"
 }
 
 local function matchesItem(toolName, itemList)
@@ -2939,8 +2985,22 @@ local function getItemDisplayName(object)
 	return object.Name
 end
 
+local function getStrictItemMatchObject(object, wantedName)
+	local current = object
+
+	while current and current ~= workspace do
+		if strictItemNameMatches(current.Name, wantedName) then
+			return current
+		end
+
+		current = current.Parent
+	end
+
+	return nil
+end
+
 local function itemNameMatches(object, wantedName)
-	return normalizeName(getItemDisplayName(object)) == normalizeName(wantedName)
+	return getStrictItemMatchObject(object, wantedName) ~= nil
 end
 
 local function isItemMarkedGone(object)
@@ -3028,7 +3088,7 @@ local function getCollectibleSearchPool()
 	return Items.GetSearchDescendants()
 end
 
-local pinnedItemOrder = {
+local primaryCollectOrder = {
 	"True Power",
 	"Potion of Strength",
 	"Bull's Essence",
@@ -3036,6 +3096,23 @@ local pinnedItemOrder = {
 	"Speed Potion",
 	"Frog Potion"
 }
+
+local secondaryCollectOrder = {
+	"Sphere of Fury",
+	"Tomahawk",
+	"Gravitation Shard",
+	"Healing Potion",
+	"First Aid Kit",
+	"Cube of Ice",
+	"Bomb",
+	"Bombs",
+	"Bandage",
+	"Apple",
+	"Forcefield Crystal",
+	"Lightning Potion"
+}
+
+local pinnedItemOrder = primaryCollectOrder
 
 local PINNED_COLLECTION_SWITCH_PERCENT = 1
 local searchAllItemsUnlocked = false
@@ -3046,6 +3123,13 @@ local function setItemSearchTargets(itemList)
 
 	for _, itemName in ipairs(itemList) do
 		Items.SearchNameLookup[normalizeName(itemName)] = true
+
+		local aliases = itemNameAliases[itemName]
+		if aliases then
+			for _, alias in ipairs(aliases) do
+				Items.SearchNameLookup[normalizeName(alias)] = true
+			end
+		end
 	end
 
 	Items.SearchCache = {}
@@ -3080,7 +3164,11 @@ local function getPinnedCollectionProgress()
 	end
 
 	if totalPinned <= 0 then
-		return pinnedItemsEverSeen and 1 or 0
+		if Items.SearchCacheBusy and Items.LastSearchCacheAt == 0 then
+			return 0
+		end
+
+		return 1
 	end
 
 	return (totalPinned - leftPinned) / totalPinned
@@ -3136,38 +3224,23 @@ local function findLiveItemByName(wantedName)
 end
 
 local function findNextCollectTarget()
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
+	updateItemSearchMode()
 
-	if not root then
-		return nil, nil, nil, nil, nil
-	end
+	local collectOrder = searchAllItemsUnlocked and autoCollectPriority or primaryCollectOrder
 
-	local closestName = nil
-	local closestPart = nil
-	local closestObject = nil
-	local closestDistance = math.huge
-
-	for _, wantedName in ipairs(autoCollectPriority) do
+	for _, wantedName in ipairs(collectOrder) do
 		local itemName, _, _, itemObject, itemPart = findLiveItemByName(wantedName)
 
 		if itemName and itemObject and itemPart then
-			local distance = (root.Position - itemPart.Position).Magnitude
-
-			if distance < closestDistance then
-				closestDistance = distance
-				closestName = itemName
-				closestObject = itemObject
-				closestPart = itemPart
-			end
+			return itemName, itemPart.CFrame, itemPart.Position, itemObject, itemPart
 		end
 	end
 
-	if closestName and closestObject and closestPart then
-		return closestName, closestPart.CFrame, closestPart.Position, closestObject, closestPart
-	end
-
 	return nil, nil, nil, nil, nil
+end
+
+local function isItemScanLoading()
+	return Items.SearchCacheBusy or Items.LastSearchCacheAt == 0
 end
 
 local function isSameItemStillThere(itemObject, itemPart, wantedName)
@@ -3186,6 +3259,10 @@ local function pressF()
 	local VirtualInputManager = game:GetService("VirtualInputManager")
 
 	pcall(function()
+		while autoCollectEnabled and os.clock() < Teleport.BlockFUntil do
+			task.wait(0.03)
+		end
+
 		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
 		task.wait(0.05)
 		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
@@ -3193,7 +3270,10 @@ local function pressF()
 end
 
 local function resetAutoCollectWindowIfReady()
-	if autoCollectWindowStartedAt ~= 0 and os.clock() - autoCollectWindowStartedAt >= AUTO_COLLECT_SAFE_WAIT then
+	if autoCollectCount >= AUTO_COLLECT_SAFE_LIMIT
+		and autoCollectWindowStartedAt ~= 0
+		and os.clock() - autoCollectWindowStartedAt >= AUTO_COLLECT_SAFE_WAIT
+	then
 		autoCollectCount = 0
 		autoCollectWindowStartedAt = 0
 	end
@@ -3225,11 +3305,11 @@ local function waitForTeleportReady()
 end
 
 local function recordAutoCollectTeleport()
-	if autoCollectCount == 0 then
+	autoCollectCount += 1
+
+	if autoCollectCount >= AUTO_COLLECT_SAFE_LIMIT then
 		autoCollectWindowStartedAt = os.clock()
 	end
-
-	autoCollectCount += 1
 end
 
 local function stopAutoCollect(message)
@@ -3258,11 +3338,16 @@ local function runAutoCollect()
 		local itemName, itemCFrame, itemPosition, itemObject, itemPart = findNextCollectTarget()
 
 		if not itemName then
-			stopAutoCollect("Every item has been collected.")
+			if isItemScanLoading() then
+				task.wait(0.25)
+				continue
+			end
+
+			stopAutoCollect("Every priority item has been collected.")
 			break
 		end
 
-		if not waitForTeleportReady() or not Teleport.CanTeleport() then
+		if not waitForTeleportReady() or not Teleport.CanTeleport(Items.TeleportDebounce) then
 			task.wait(0.25)
 			continue
 		end
@@ -3299,9 +3384,7 @@ local function runAutoCollect()
 	setMovementPaused(false)
 end
 
-local autoUseDropdown = createDropdown(itemsList, "Auto Items", updateItemsCanvas)
-
-autoCollectToggle = createToggleButton(autoUseDropdown, "Auto Collect", false, function(state)
+autoCollectToggle = createToggleButton(itemsList, "Auto Collect", false, function(state)
 	autoCollectEnabled = state
 
 	if autoCollectEnabled then
@@ -3326,13 +3409,13 @@ local autoHealEnabled = false
 local autoHealThread = nil
 local autoHealConnection = nil
 local lastAutoHealUseAt = 0
-local AUTO_HEAL_USE_DEBOUNCE = 0.5
+local AUTO_HEAL_USE_DEBOUNCE = 0.1
 
 local healingItems = {
-	"Healing Potion",
-	"Bandage",
 	"First Aid Kit",
-	"Apple"
+	"Healing Potion",
+	"Apple",
+	"Bandage",
 }
 
 local priorityHotbarItems = {
@@ -3340,22 +3423,26 @@ local priorityHotbarItems = {
 	"Gravitation Shard",
 	"Lightning Potion",
 	"Forcefield Crystal",
-	"Sphere of Fury",
 	"Tomahawk"
 }
 
 local permanentUseItems = {
-	"True Power",
 	"Potion of Strength",
 	"Bull's Essence",
 	"Boba",
 	"Speed Potion",
 	"Frog Potion",
+}
+
+local backpackSortItems = {
+	"First Aid Kit",
+	"Healing Potion",
+	"Apple",
+	"Bandage",
 	"Sphere of Fury",
-	"Forcefield Crystal",
 	"Cube of Ice",
-	"Gravitation Shard",
-	"Lightning Potion"
+	"Bomb",
+	"Bombs",
 }
 
 local function getInventoryTools()
@@ -3404,26 +3491,66 @@ end
 
 local function getToolSortRank(tool)
 	if isLikelyGloveTool(tool) then
-		return 1
+		return math.huge
+	end
+
+	if normalizeName(tool.Name) == normalizeName("True Power") then
+		return 20
+	end
+
+	if normalizeName(tool.Name) == normalizeName("Tomahawk") then
+		return 21
+	end
+
+	if normalizeName(tool.Name) == normalizeName("Gravitation Shard") then
+		return 22
+	end
+
+	local permanentRank = getItemOrderRank(tool.Name, permanentUseItems)
+	if permanentRank then
+		return 30 + permanentRank
 	end
 
 	local priorityRank = getItemOrderRank(tool.Name, priorityHotbarItems)
 	if priorityRank then
-		return 10 + priorityRank
+		return 50 + priorityRank
 	end
 
-	local healingRank = getItemOrderRank(tool.Name, healingItems)
-	if healingRank then
-		return 100 + healingRank
+	local backpackRank = getItemOrderRank(tool.Name, backpackSortItems)
+	if backpackRank then
+		return 120 + backpackRank
 	end
 
 	for index, itemName in ipairs(itemNames) do
 		if normalizeName(tool.Name) == normalizeName(itemName) then
-			return 50 + index
+			return 60 + index
 		end
 	end
 
 	return 80
+end
+
+local function hasInventoryItemNamed(toolName)
+	local backpack = player:FindFirstChild("Backpack")
+	local character = player.Character
+
+	if backpack then
+		for _, child in ipairs(backpack:GetChildren()) do
+			if child:IsA("Tool") and normalizeName(child.Name) == normalizeName(toolName) then
+				return true
+			end
+		end
+	end
+
+	if character then
+		for _, child in ipairs(character:GetChildren()) do
+			if child:IsA("Tool") and normalizeName(child.Name) == normalizeName(toolName) then
+				return true
+			end
+		end
+	end
+
+	return false
 end
 
 local function sortInventory(showNotification)
@@ -3441,11 +3568,15 @@ local function sortInventory(showNotification)
 	end
 
 	autoSortBusy = true
-	local tools = getInventoryTools()
+	autoSortSuppressUntil = os.clock() + 2
+	local tools = {}
 	local holdingFolder = Instance.new("Folder")
 
-	for _, tool in ipairs(tools) do
-		tool.Parent = holdingFolder
+	for _, tool in ipairs(backpack:GetChildren()) do
+		if tool:IsA("Tool") and not isLikelyGloveTool(tool) then
+			table.insert(tools, tool)
+			tool.Parent = holdingFolder
+		end
 	end
 
 	table.sort(tools, function(left, right)
@@ -3466,22 +3597,75 @@ local function sortInventory(showNotification)
 
 	holdingFolder:Destroy()
 	autoSortBusy = false
+	autoSortSuppressUntil = os.clock() + 2
+
+	for _, tool in ipairs(getInventoryTools()) do
+		autoSortKnownTools[tool] = true
+	end
 
 	if showNotification ~= false then
-		createNotification("Auto Sort", "Glove first, priority items next, healing grouped in backpack.", "Success")
+		createNotification("Auto Sort", "Glove first, priority items next, backpack items kept later.", "Success")
 	end
 end
 
-local function queueAutoSort()
-	if not autoSortEnabled then
+local function refreshKnownAutoSortTools()
+	autoSortKnownTools = {}
+
+	for _, tool in ipairs(getInventoryTools()) do
+		autoSortKnownTools[tool] = true
+	end
+end
+
+local function queueAutoSort(child, allowKnownTool)
+	if not autoSortEnabled or autoSortBusy or autoSortQueued or os.clock() < autoSortSuppressUntil then
 		return
 	end
 
-	task.delay(0.15, function()
-		if autoSortEnabled then
+	if child and not child:IsA("Tool") then
+		return
+	end
+
+	if child and autoSortKnownTools[child] and not allowKnownTool then
+		return
+	end
+
+	if child then
+		autoSortKnownTools[child] = true
+	end
+
+	autoSortQueued = true
+	task.delay(0.6, function()
+		autoSortQueued = false
+
+		if autoSortEnabled and not autoSortBusy and os.clock() >= autoSortSuppressUntil then
 			sortInventory(false)
 		end
 	end)
+end
+
+local function queueAutoSortAdded(child)
+	queueAutoSort(child, false)
+end
+
+local function queueAutoSortBackpackRemoved(child)
+	if not child or not child:IsA("Tool") or not matchesItem(child.Name, itemNames) then
+		return
+	end
+
+	local removedName = child.Name
+	task.delay(0.15, function()
+		if autoSortEnabled and not hasInventoryItemNamed(removedName) then
+			queueAutoSort(child, true)
+		end
+	end)
+end
+
+local function queueAutoSortInventoryRemoved(child)
+	if not child or not child:IsA("Tool") or not matchesItem(child.Name, itemNames) then
+		return
+	end
+
+	queueAutoSort(child, true)
 end
 
 local function clearAutoSortConnections()
@@ -3494,15 +3678,17 @@ end
 
 local function hookAutoSort()
 	clearAutoSortConnections()
+	refreshKnownAutoSortTools()
 
 	local backpack = player:FindFirstChild("Backpack")
 	if backpack then
-		table.insert(autoSortConnections, backpack.ChildAdded:Connect(queueAutoSort))
+		table.insert(autoSortConnections, backpack.ChildAdded:Connect(queueAutoSortAdded))
+		table.insert(autoSortConnections, backpack.ChildRemoved:Connect(queueAutoSortBackpackRemoved))
 	end
 
 	local character = player.Character
 	if character then
-		table.insert(autoSortConnections, character.ChildAdded:Connect(queueAutoSort))
+		table.insert(autoSortConnections, character.ChildRemoved:Connect(queueAutoSortInventoryRemoved))
 	end
 end
 
@@ -3510,9 +3696,9 @@ local function setAutoSort(state)
 	autoSortEnabled = state == true
 
 	if autoSortEnabled then
-		hookAutoSort()
 		sortInventory(false)
-		createNotification("Auto Sort", "Auto Sort enabled.", "Success")
+		hookAutoSort()
+		createNotification("Auto Sort", "Auto Sort enabled and sorted.", "Success")
 	else
 		clearAutoSortConnections()
 		createNotification("Auto Sort", "Auto Sort disabled.")
@@ -3520,11 +3706,11 @@ local function setAutoSort(state)
 end
 
 do
-	local autoSortToggle = createToggleButton(autoUseDropdown, "Auto Sort", false, function(state)
+	local autoSortToggle = createToggleButton(itemsList, "Auto Sort", false, function(state)
 		setAutoSort(state)
 	end)
 
-	autoSortToggle.Button.LayoutOrder = -9500
+	autoSortToggle.Button.LayoutOrder = -9990
 end
 
 do
@@ -3538,6 +3724,15 @@ do
 end
 
 local function useTool(tool)
+	if toolUseBusy then
+		return false
+	end
+
+	local now = os.clock()
+	if now - lastToolUseAt < TOOL_USE_SPACING then
+		return false
+	end
+
 	local character = player.Character or player.CharacterAdded:Wait()
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	local root = character:FindFirstChild("HumanoidRootPart")
@@ -3550,28 +3745,38 @@ local function useTool(tool)
 		return false
 	end
 
-	if tool.Parent == player.Backpack then
+	toolUseBusy = true
+	local used = false
+	local backpack = player:FindFirstChild("Backpack")
+
+	humanoid.PlatformStand = false
+	humanoid.Sit = false
+	humanoid.AutoRotate = true
+	humanoid:ChangeState(Enum.HumanoidStateType.Running)
+
+	if root then
+		root.AssemblyAngularVelocity = Vector3.zero
+		root.AssemblyLinearVelocity = Vector3.zero
+	end
+
+	if backpack and tool.Parent == backpack then
 		humanoid:EquipTool(tool)
-		task.wait(0.12)
+		task.wait(0.35)
 	end
 
 	if tool.Parent == character then
-		local wasAnchored = root and root.Anchored or false
-
 		if root then
 			root.AssemblyAngularVelocity = Vector3.zero
 			root.AssemblyLinearVelocity = Vector3.zero
-			root.Anchored = true
 		end
 
-		pcall(function()
+		used = pcall(function()
 			tool:Activate()
 		end)
 
-		task.wait(0.08)
+		task.wait(0.45)
 
 		if root then
-			root.Anchored = wasAnchored
 			root.AssemblyAngularVelocity = Vector3.zero
 			root.AssemblyLinearVelocity = Vector3.zero
 		end
@@ -3580,9 +3785,13 @@ local function useTool(tool)
 		humanoid.Sit = false
 		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
-		return true
+		lastToolUseAt = os.clock()
+		task.wait(0.3)
+		toolUseBusy = false
+		return used
 	end
 
+	toolUseBusy = false
 	return false
 end
 
@@ -3610,7 +3819,7 @@ local function findMatchingTool(itemList)
 end
 
 local function tryAutoHeal()
-	if not autoHealEnabled then
+	if not autoHealEnabled or toolUseBusy or os.clock() - lastToolUseAt < TOOL_USE_SPACING then
 		return
 	end
 
@@ -3626,14 +3835,14 @@ local function tryAutoHeal()
 		if tool then
 			lastAutoHealUseAt = now
 			if not useTool(tool) then
-				lastAutoHealUseAt = 0
+				lastAutoHealUseAt = os.clock()
 			end
 		end
 	end
 end
 
 local function tryAutoUsePermanentItem()
-	if not autoPermanentEnabled or os.clock() - lastAutoPermanentUseAt < AUTO_PERMANENT_USE_DEBOUNCE then
+	if not autoPermanentEnabled or toolUseBusy or os.clock() - lastAutoPermanentUseAt < AUTO_PERMANENT_USE_DEBOUNCE then
 		return false
 	end
 
@@ -3657,13 +3866,18 @@ local function tryAutoUsePermanentItem()
 
 	lastAutoPermanentUseAt = now
 	autoPermanentSeenAt[tool] = nil
-	return useTool(tool)
+	if useTool(tool) then
+		return true
+	end
+
+	lastAutoPermanentUseAt = os.clock()
+	return false
 end
 
 local function runAutoUsePermanentItems()
 	while autoPermanentEnabled do
 		tryAutoUsePermanentItem()
-		task.wait(0.12)
+		task.wait(0.35)
 	end
 end
 
@@ -3692,14 +3906,24 @@ end
 
 local itemChecklistOrder = {}
 local pinnedLookup = {}
+local checklistLookup = {}
 
 for _, itemName in ipairs(pinnedItemOrder) do
 	pinnedLookup[normalizeName(itemName)] = true
+	checklistLookup[normalizeName(itemName)] = true
 	table.insert(itemChecklistOrder, itemName)
 end
 
+for _, itemName in ipairs(secondaryCollectOrder) do
+	if not checklistLookup[normalizeName(itemName)] then
+		checklistLookup[normalizeName(itemName)] = true
+		table.insert(itemChecklistOrder, itemName)
+	end
+end
+
 for _, itemName in ipairs(itemNames) do
-	if not pinnedLookup[normalizeName(itemName)] then
+	if not checklistLookup[normalizeName(itemName)] then
+		checklistLookup[normalizeName(itemName)] = true
 		table.insert(itemChecklistOrder, itemName)
 	end
 end
@@ -4095,7 +4319,7 @@ function ItemESP.SetEnabled(state)
 end
 
 do
-	local toggle = createToggleButton(autoUseDropdown, "Auto Heal", false, function(state)
+	local toggle = createToggleButton(itemsList, "Auto Heal", false, function(state)
 		autoHealEnabled = state
 
 		if autoHealEnabled then
@@ -4119,9 +4343,10 @@ do
 		end
 	end)
 
+	toggle.Button.LayoutOrder = -9980
 end
 
-createToggleButton(autoUseDropdown, "Auto Use Permanent Items", false, function(state)
+local autoPermanentToggle = createToggleButton(itemsList, "Auto Use Permanent Items", false, function(state)
 	autoPermanentEnabled = state == true
 
 	if autoPermanentEnabled then
@@ -4138,6 +4363,7 @@ createToggleButton(autoUseDropdown, "Auto Use Permanent Items", false, function(
 		createNotification("Auto Use", "Auto Use Permanent Items disabled.")
 	end
 end)
+autoPermanentToggle.Button.LayoutOrder = -9970
 
 player.CharacterAdded:Connect(function()
 	task.wait(0.25)
@@ -4148,9 +4374,9 @@ player.CharacterAdded:Connect(function()
 
 	if autoSortEnabled then
 		hookAutoSort()
-		queueAutoSort()
 	end
 end)
+autoCollectToggle.Button.LayoutOrder = -10000
 
 end
 
@@ -4177,6 +4403,13 @@ Combat = {
 	GloveTpSlapBusy = false,
 	GloveTpSlapInternalActivate = false,
 	GloveTpSlapHoldTime = 0.5,
+	CollectCratesEnabled = false,
+	CollectCratesConnections = {},
+	CollectCratesCharacterConnections = {},
+	CollectCratesCharacterAddedConnection = nil,
+	CollectCratesBusy = false,
+	LastCollectCrateSlap = 0,
+	CollectCratesDebounce = 0.35,
 	AntiSlapEnabled = false,
 	AntiSlapConnections = {},
 	AntiSlapBoxFolder = nil,
@@ -4190,11 +4423,7 @@ Combat = {
 	GloveSizeMax = 8,
 	GloveSizeStep = 0.25,
 	GloveSizeOriginals = {},
-	GloveSizeLabel = nil,
-	KillPlayersBusy = false,
-	KillPlayersCooldown = 10,
-	KillPlayersNextAt = 0,
-	KillPlayersStayTime = 1
+	GloveSizeLabel = nil
 }
 
 function Combat.GetEnemyRoot(otherPlayer)
@@ -4485,6 +4714,49 @@ function Combat.IsEnemyGloveInHitbox()
 	return false
 end
 
+function Combat.GetEquippedGloveParts(tool)
+	local parts = {}
+
+	if not Combat.IsEquippedGloveTool(tool) then
+		return parts
+	end
+
+	for _, object in ipairs(tool:GetDescendants()) do
+		if object:IsA("BasePart") then
+			table.insert(parts, object)
+		end
+	end
+
+	return parts
+end
+
+function Combat.IsEquippedGloveInEnemyHitbox()
+	local tool = Combat.GetEquippedTool()
+	local gloveParts = Combat.GetEquippedGloveParts(tool)
+
+	if #gloveParts == 0 then
+		return false
+	end
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local _, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
+
+		if targetRoot then
+			local hitboxRadius = (math.max(targetRoot.Size.X, targetRoot.Size.Y, targetRoot.Size.Z) / 2) + 1.5
+			local hitboxRadiusSquared = hitboxRadius * hitboxRadius
+
+			for _, glovePart in ipairs(gloveParts) do
+				local delta = glovePart.Position - targetRoot.Position
+				if delta:Dot(delta) <= hitboxRadiusSquared then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
 function Combat.TapEquippedGlove()
 	local now = os.clock()
 
@@ -4495,7 +4767,7 @@ function Combat.TapEquippedGlove()
 	Combat.LastAutoGloveTap = now
 
 	local tool = Combat.GetEquippedTool()
-	if tool then
+	if tool and not matchesItem(tool.Name, itemNames) then
 		pcall(function()
 			tool:Activate()
 		end)
@@ -4508,7 +4780,7 @@ function Combat.StartAutoGloveTap()
 	end
 
 	Combat.AutoGloveTapConnection = RunService.Heartbeat:Connect(function()
-		if Combat.AutoGloveTapEnabled and Combat.IsEnemyGloveInHitbox() then
+		if Combat.AutoGloveTapEnabled and Combat.IsEquippedGloveInEnemyHitbox() then
 			Combat.TapEquippedGlove()
 		end
 	end)
@@ -4843,6 +5115,173 @@ function Combat.SetGloveTpSlap(state)
 	else
 		Combat.StopGloveTpSlap()
 		createNotification("Glove TP Slap", "Glove TP Slap disabled.")
+	end
+end
+
+function Combat.TouchCrateWithGlove(gloveParts, cratePart)
+	for _, glovePart in ipairs(gloveParts) do
+		pcall(function()
+			if typeof(firetouchinterest) == "function" then
+				firetouchinterest(glovePart, cratePart, 0)
+				task.wait()
+				firetouchinterest(glovePart, cratePart, 1)
+			end
+		end)
+	end
+end
+
+function Combat.CollectCrateWithGlove(tool)
+	local now = os.clock()
+	if Combat.CollectCratesBusy or now - Combat.LastCollectCrateSlap < Combat.CollectCratesDebounce then
+		return
+	end
+
+	Combat.CollectCratesBusy = true
+	Combat.LastCollectCrateSlap = now
+
+	if not Combat.IsEquippedGloveTool(tool) then
+		Combat.CollectCratesBusy = false
+		createNotification("Collect Crates", "Equip a glove before using Collect Crates.", "Warning")
+		return
+	end
+
+	local crate, cratePart = Items.FindNearestCrate()
+	if not crate or not cratePart then
+		Combat.CollectCratesBusy = false
+		Combat.SetCollectCrates(false)
+		if Combat.CollectCratesToggle then
+			Combat.CollectCratesToggle.Set(false, false)
+		end
+		createNotification("Collect Crates", "No meteor crate is spawned.", "Warning")
+		return
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local gloveParts = Combat.GetEquippedGloveParts(tool)
+
+	if #gloveParts == 0 then
+		Combat.CollectCratesBusy = false
+		createNotification("Collect Crates", "Could not find your glove parts.", "Warning")
+		return
+	end
+
+	local partStates = Combat.PrepareGloveTpSlapParts(gloveParts, root)
+	local targetPosition = cratePart.Position + Vector3.new(0, (cratePart.Size.Y / 2) + 1.25, 0)
+
+	for _, glovePart in ipairs(gloveParts) do
+		if glovePart.Parent then
+			glovePart.CFrame = CFrame.new(targetPosition)
+			glovePart.AssemblyLinearVelocity = Vector3.zero
+			glovePart.AssemblyAngularVelocity = Vector3.zero
+		end
+	end
+
+	Combat.TouchCrateWithGlove(gloveParts, cratePart)
+
+	pcall(function()
+		tool:Activate()
+	end)
+
+	task.wait(0.18)
+	Combat.TouchCrateWithGlove(gloveParts, cratePart)
+	Combat.RestoreGloveTpSlapParts(partStates, root)
+
+	task.delay(Combat.CollectCratesDebounce, function()
+		Combat.CollectCratesBusy = false
+	end)
+end
+
+function Combat.ClearCollectCrateHooks()
+	for tool, connection in pairs(Combat.CollectCratesConnections) do
+		if connection then
+			connection:Disconnect()
+		end
+
+		Combat.CollectCratesConnections[tool] = nil
+	end
+
+	for _, connection in ipairs(Combat.CollectCratesCharacterConnections) do
+		connection:Disconnect()
+	end
+
+	Combat.CollectCratesCharacterConnections = {}
+end
+
+function Combat.HookCollectCrateTool(tool)
+	if not Combat.IsEquippedGloveTool(tool) or Combat.CollectCratesConnections[tool] then
+		return
+	end
+
+	Combat.CollectCratesConnections[tool] = tool.Activated:Connect(function()
+		if Combat.CollectCratesEnabled then
+			Combat.CollectCrateWithGlove(tool)
+		end
+	end)
+end
+
+function Combat.RefreshCollectCrateHooks()
+	Combat.ClearCollectCrateHooks()
+
+	local character = player.Character
+	if not character then
+		return
+	end
+
+	for _, child in ipairs(character:GetChildren()) do
+		Combat.HookCollectCrateTool(child)
+	end
+
+	table.insert(Combat.CollectCratesCharacterConnections, character.ChildAdded:Connect(function(child)
+		task.defer(function()
+			if Combat.CollectCratesEnabled then
+				Combat.HookCollectCrateTool(child)
+			end
+		end)
+	end))
+
+	table.insert(Combat.CollectCratesCharacterConnections, character.ChildRemoved:Connect(function(child)
+		local connection = Combat.CollectCratesConnections[child]
+
+		if connection then
+			connection:Disconnect()
+			Combat.CollectCratesConnections[child] = nil
+		end
+	end))
+end
+
+function Combat.StartCollectCrates()
+	if not Combat.CollectCratesCharacterAddedConnection then
+		Combat.CollectCratesCharacterAddedConnection = player.CharacterAdded:Connect(function()
+			task.wait(0.25)
+
+			if Combat.CollectCratesEnabled then
+				Combat.RefreshCollectCrateHooks()
+			end
+		end)
+	end
+
+	Combat.RefreshCollectCrateHooks()
+end
+
+function Combat.StopCollectCrates()
+	if Combat.CollectCratesCharacterAddedConnection then
+		Combat.CollectCratesCharacterAddedConnection:Disconnect()
+		Combat.CollectCratesCharacterAddedConnection = nil
+	end
+
+	Combat.ClearCollectCrateHooks()
+end
+
+function Combat.SetCollectCrates(state)
+	Combat.CollectCratesEnabled = state == true
+
+	if Combat.CollectCratesEnabled then
+		Combat.StartCollectCrates()
+		createNotification("Collect Crates", "Collect Crates enabled.", "Success")
+	else
+		Combat.StopCollectCrates()
+		createNotification("Collect Crates", "Collect Crates disabled.")
 	end
 end
 
@@ -5244,38 +5683,6 @@ function Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
 	return Teleport.GetGroundCFrame(targetRoot.Position, excludeInstances, true)
 end
 
-function Combat.GetKillPlayerCFrame(targetRoot, character, targetCharacter)
-	local excludeInstances = { character }
-
-	if targetCharacter then
-		table.insert(excludeInstances, targetCharacter)
-	end
-
-	local velocity = targetRoot.AssemblyLinearVelocity or Vector3.zero
-	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z)
-	local walkDirection = horizontalVelocity.Magnitude > 1 and horizontalVelocity.Unit or targetRoot.CFrame.LookVector
-	local rightVector = targetRoot.CFrame.RightVector
-	local leadPosition = targetRoot.Position + (walkDirection * 3.5)
-	local candidatePositions = {
-		leadPosition,
-		leadPosition + (rightVector * 1.8),
-		leadPosition - (rightVector * 1.8),
-		targetRoot.Position + (walkDirection * 2.5),
-		targetRoot.Position + (walkDirection * 4.5)
-	}
-
-	for _, candidatePosition in ipairs(candidatePositions) do
-		local groundCFrame = Teleport.GetGroundCFrame(candidatePosition, excludeInstances, true)
-
-		if (groundCFrame.Position - targetRoot.Position).Magnitude <= 8 then
-			return CFrame.lookAt(groundCFrame.Position, Vector3.new(targetRoot.Position.X, groundCFrame.Position.Y, targetRoot.Position.Z))
-		end
-	end
-
-	local fallback = Teleport.GetGroundCFrame(leadPosition, excludeInstances, true)
-	return CFrame.lookAt(fallback.Position, Vector3.new(targetRoot.Position.X, fallback.Position.Y, targetRoot.Position.Z))
-end
-
 function Combat.TeleportToPlayer(targetPlayer)
 	if not Teleport.CanTeleport() then
 		return
@@ -5360,97 +5767,6 @@ function Combat.TeleportToNearestPlayer()
 	else
 		createNotification("Players", "No valid nearest player found.")
 	end
-end
-
-function Combat.GetKillPlayerTargets()
-	local targets = {}
-
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
-
-		if humanoid and targetRoot then
-			table.insert(targets, {
-				Player = targetPlayer,
-				Health = humanoid.Health
-			})
-		end
-	end
-
-	table.sort(targets, function(left, right)
-		if left.Health == right.Health then
-			return left.Player.Name < right.Player.Name
-		end
-
-		return left.Health < right.Health
-	end)
-
-	return targets
-end
-
-function Combat.MoveToPlayerForKill(targetPlayer)
-	local character = player.Character or player.CharacterAdded:Wait()
-	local root = character:WaitForChild("HumanoidRootPart", 5)
-	local targetCharacter, _, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
-
-	if not root or not targetRoot then
-		return false
-	end
-
-	local targetCFrame = Combat.GetKillPlayerCFrame(targetRoot, character, targetCharacter)
-
-	Combat.StabilizeCharacter(character, root)
-	Teleport.MoveRoot(root, targetCFrame)
-	Combat.AimRootAtPosition(root, targetRoot.Position)
-	Combat.StabilizeCharacter(character, root)
-	task.delay(0.15, function()
-		if character.Parent and root.Parent then
-			Combat.StabilizeCharacter(character, root)
-			Combat.AimRootAtPosition(root, targetRoot.Position)
-		end
-	end)
-	Teleport.StartFBlock()
-	return true
-end
-
-function Combat.StartKillPlayers()
-	if Combat.KillPlayersBusy then
-		createNotification("Kill Players", "Already running.", "Warning")
-		return
-	end
-
-	local now = os.clock()
-	if now < Combat.KillPlayersNextAt then
-		local secondsLeft = math.ceil(Combat.KillPlayersNextAt - now)
-		createNotification("Kill Players", "Wait " .. tostring(secondsLeft) .. " seconds before using this again.", "Warning")
-		return
-	end
-
-	local targets = Combat.GetKillPlayerTargets()
-	if #targets == 0 then
-		createNotification("Kill Players", "No valid players found.", "Warning")
-		return
-	end
-
-	Combat.KillPlayersBusy = true
-	createNotification("Kill Players", "Cycling through " .. tostring(#targets) .. " players.", "Success")
-
-	task.spawn(function()
-		for _, target in ipairs(targets) do
-			local targetPlayer = target.Player
-			local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
-
-			if humanoid and targetRoot then
-				if Combat.MoveToPlayerForKill(targetPlayer) then
-					createNotification("Kill Players", "Teleported to " .. targetPlayer.Name)
-					task.wait(Combat.KillPlayersStayTime)
-				end
-			end
-		end
-
-		Combat.KillPlayersBusy = false
-		Combat.KillPlayersNextAt = os.clock() + Combat.KillPlayersCooldown
-		createNotification("Kill Players", "Finished. Ready again in " .. tostring(Combat.KillPlayersCooldown) .. " seconds.", "Success")
-	end)
 end
 
 function Combat.SetHitboxSize(newSize)
@@ -5717,9 +6033,29 @@ do
 		Combat.SetAutoGloveTap(state)
 	end)
 
-	createToggleButton(combatList, "Glove TP Slap", false, function(state)
+	createToggleButton(betaList, "Glove TP Slap", false, function(state)
 		Combat.SetGloveTpSlap(state)
 	end)
+
+	local collectCratesToggle
+	collectCratesToggle = createToggleButton(betaList, "Collect Crates", false, function(state)
+		if state then
+			local crate, cratePart = Items.FindNearestCrate()
+
+			if not crate or not cratePart then
+				createNotification("Collect Crates", "No meteor crate is spawned.", "Warning")
+				task.defer(function()
+					if collectCratesToggle then
+						collectCratesToggle.Set(false, false)
+					end
+				end)
+				return
+			end
+		end
+
+		Combat.SetCollectCrates(state)
+	end)
+	Combat.CollectCratesToggle = collectCratesToggle
 
 	createToggleButton(combatList, "Anti Slap", false, function(state)
 		Combat.SetAntiSlap(state)
@@ -5797,14 +6133,6 @@ do
 	end)
 
 	refreshSlider()
-end
-
-do
-	local dropdown = createDropdown(combatList, "Kill Players", updateCombatCanvas)
-
-	createSmallButton(dropdown, "Start Kill Players", function()
-		Combat.StartKillPlayers()
-	end)
 end
 
 local ESP = {
@@ -6799,6 +7127,7 @@ updateMainCanvas()
 updateItemsCanvas()
 updateTeleportCanvas()
 updateCombatCanvas()
+updateBetaCanvas()
 updateSafetyCanvas()
 updateSettingsCanvas()
 
@@ -6808,6 +7137,7 @@ task.defer(function()
 	updateItemsCanvas()
 	updateTeleportCanvas()
 	updateCombatCanvas()
+	updateBetaCanvas()
 	updateSafetyCanvas()
 	updateSettingsCanvas()
 end)
