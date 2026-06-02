@@ -18,6 +18,23 @@ local ContextActionService = Services.ContextActionService
 local HttpService = Services.HttpService
 local player = Players.LocalPlayer
 
+local sharedEnvironment = nil
+do
+	local success, environment = pcall(function()
+		return type(getgenv) == "function" and getgenv() or nil
+	end)
+
+	if success and type(environment) == "table" then
+		sharedEnvironment = environment
+
+		if type(sharedEnvironment.OPSlapRoyaleCleanup) == "function" then
+			pcall(sharedEnvironment.OPSlapRoyaleCleanup)
+		end
+
+		sharedEnvironment.OPSlapRoyaleCleanup = nil
+	end
+end
+
 local Settings = nil
 local Config = {}
 
@@ -1124,7 +1141,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 	addCorner(knob, 8)
 
 	local function setState(newState, runCallback)
-		state = newState
+		state = newState == true
 
 		button.BackgroundColor3 = currentTheme.ButtonDark
 		switch.BackgroundColor3 = state and currentTheme.Button or Color3.fromRGB(35, 35, 35)
@@ -1142,11 +1159,22 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 		):Play()
 
 		if runCallback then
-			callback(state)
+			local success, errorMessage = pcall(function()
+				callback(state)
+			end)
+
+			if not success then
+				Notify.Show("Toggle Error", tostring(errorMessage), "Error", nil, 3, true)
+			end
 		end
 
 		if runCallback and Settings and Settings.OnControlChanged then
 			Settings.OnControlChanged()
+
+			if Settings.SaveNow and not Settings.Loading and Settings.Ready then
+				Settings.SaveDirty = false
+				Settings.SaveNow()
+			end
 		end
 	end
 
@@ -1968,7 +1996,8 @@ Settings = {
 	Controls = {},
 	Ready = false,
 	Loading = false,
-	SaveQueued = false
+	SaveQueued = false,
+	SaveDirty = false
 }
 
 function Settings.HasFileSupport()
@@ -2077,7 +2106,13 @@ function Settings.SaveNow()
 end
 
 function Settings.OnControlChanged()
-	if Settings.Loading or not Settings.Ready or Settings.SaveQueued then
+	if Settings.Loading or not Settings.Ready then
+		return
+	end
+
+	Settings.SaveDirty = true
+
+	if Settings.SaveQueued then
 		return
 	end
 
@@ -2085,7 +2120,11 @@ function Settings.OnControlChanged()
 
 	task.delay(0.35, function()
 		Settings.SaveQueued = false
-		Settings.SaveNow()
+
+		if Settings.SaveDirty then
+			Settings.SaveDirty = false
+			Settings.SaveNow()
+		end
 	end)
 end
 
@@ -2147,6 +2186,9 @@ Main.CodeKeywords = {
 	"question", "solve", "answer", "number"
 }
 
+Main.CodeSearchOrigin = Vector3.new(480, 29, 325)
+Main.CodeSearchRadius = 180
+
 Teleport.MaxStrikes = 3
 Teleport.Cooldown = 3
 Teleport.Debounce = 0.5
@@ -2205,6 +2247,75 @@ function Utility.GetObjectCFrame(object)
 	return part and part.CFrame or nil
 end
 
+function Main.IsCodeRelevantName(text)
+	local lower = string.lower(tostring(text))
+
+	for _, word in ipairs(Main.CodeKeywords) do
+		if string.find(lower, word, 1, true) then
+			return true
+		end
+	end
+
+	return string.find(lower, "barn", 1, true) ~= nil
+end
+
+function Main.GetPuzzleSearchRoots()
+	local roots = {}
+	local seen = {}
+
+	local function addRoot(object)
+		if object and not seen[object] then
+			seen[object] = true
+			table.insert(roots, object)
+		end
+	end
+
+	local map = workspace:FindFirstChild("Map")
+	if map then
+		for _, object in ipairs(map:GetChildren()) do
+			if Main.IsCodeRelevantName(object.Name) then
+				addRoot(object)
+			end
+		end
+	end
+
+	local success, parts = pcall(function()
+		return workspace:GetPartBoundsInRadius(Main.CodeSearchOrigin, Main.CodeSearchRadius)
+	end)
+
+	if success and parts then
+		for _, part in ipairs(parts) do
+			local object = part
+			local chosen = nil
+
+			while object and object ~= workspace do
+				if (object:IsA("Folder") or object:IsA("Model")) and Main.IsCodeRelevantName(object.Name) then
+					chosen = object
+					break
+				end
+
+				object = object.Parent
+			end
+
+			addRoot(chosen or part)
+		end
+	end
+
+	return roots
+end
+
+function Main.GetCodePieceFromAssetName(name)
+	local text = tostring(name)
+	local exactNumber = string.match(text, "^%s*(%d+)%s*$")
+
+	if exactNumber and #exactNumber <= 4 then
+		return exactNumber
+	end
+
+	local labeledDigit = string.match(text, "^%s*[Nn]umber%s*(%d)%s*$") or string.match(text, "^%s*[Dd]igit%s*(%d)%s*$")
+	return labeledDigit
+end
+
 function Main.GetPuzzleCode()
 	local found = {}
 	local ids = {}
@@ -2222,21 +2333,23 @@ function Main.GetPuzzleCode()
 		return false
 	end
 
-	for _, object in ipairs(game:GetDescendants()) do
-		local image = nil
+	for _, root in ipairs(Main.GetPuzzleSearchRoots()) do
+		for _, object in ipairs(root:GetDescendants()) do
+			local image = nil
 
-		if object:IsA("ImageLabel") or object:IsA("ImageButton") then
-			image = object.Image
-		elseif object:IsA("Decal") or object:IsA("Texture") then
-			image = object.Texture
-		end
+			if object:IsA("ImageLabel") or object:IsA("ImageButton") then
+				image = object.Image
+			elseif object:IsA("Decal") or object:IsA("Texture") then
+				image = object.Texture
+			end
 
-		if image and image ~= "" and isRelevant(object) then
-			local id = tonumber(string.match(image, "%d+"))
+			if image and image ~= "" and isRelevant(object) then
+				local id = tonumber(string.match(image, "%d+"))
 
-			if id and not found[id] then
-				found[id] = true
-				table.insert(ids, id)
+				if id and not found[id] then
+					found[id] = true
+					table.insert(ids, id)
+				end
 			end
 		end
 	end
@@ -2249,7 +2362,11 @@ function Main.GetPuzzleCode()
 		end)
 
 		if success and info and info.Name then
-			code = code .. tostring(info.Name)
+			local piece = Main.GetCodePieceFromAssetName(info.Name)
+
+			if piece then
+				code = code .. piece
+			end
 		end
 	end
 
@@ -2424,19 +2541,21 @@ function Teleport.GetItemCFrame(itemPart, excludeInstances)
 
 	local offsets = {
 		Vector3.zero,
-		Vector3.new(1.5, 0, 0),
-		Vector3.new(-1.5, 0, 0),
-		Vector3.new(0, 0, 1.5),
-		Vector3.new(0, 0, -1.5),
-		Vector3.new(2.5, 0, 0),
-		Vector3.new(-2.5, 0, 0),
-		Vector3.new(0, 0, 2.5),
-		Vector3.new(0, 0, -2.5),
-		Vector3.new(3.5, 0, 3.5),
-		Vector3.new(-3.5, 0, 3.5),
-		Vector3.new(3.5, 0, -3.5),
-		Vector3.new(-3.5, 0, -3.5)
+		Vector3.new(1, 0, 0),
+		Vector3.new(-1, 0, 0),
+		Vector3.new(0, 0, 1),
+		Vector3.new(0, 0, -1)
 	}
+
+	do
+		local rayStartHeight = math.min((itemPart.Size.Y / 2) + 1.5, 4)
+		local rayOrigin = position + Vector3.new(0, rayStartHeight, 0)
+		local result = workspace:Raycast(rayOrigin, Vector3.new(0, -35, 0), params)
+
+		if result and result.Position.Y <= position.Y + 1.5 and position.Y - result.Position.Y <= 18 then
+			return CFrame.new(result.Position + Vector3.new(0, 4, 0))
+		end
+	end
 
 	for _, offset in ipairs(offsets) do
 		local rayStartHeight = math.min((itemPart.Size.Y / 2) + 1.5, 4)
@@ -2853,7 +2972,7 @@ local normalizeName = Utility.NormalizeName
 local ItemESP = nil
 
 createSmallButton(mainList, "Get Code + Go Barn", function()
-	Teleport.ToLocation("Barn", Vector3.new(477, 87, 318))
+	Teleport.ToLocation("Barn", Vector3.new(480, 29, 325))
 	createNotification("Code", "Searching...")
 
 	task.spawn(function()
@@ -3042,19 +3161,7 @@ local function setMovementPaused(paused)
 	end
 
 	if paused then
-		if not movementSave then
-			movementSave = {
-				WalkSpeed = humanoid.WalkSpeed,
-				JumpPower = humanoid.JumpPower,
-				JumpHeight = humanoid.JumpHeight,
-				AutoRotate = humanoid.AutoRotate
-			}
-		end
-
-		humanoid.WalkSpeed = 0
-		humanoid.JumpPower = 0
-		humanoid.JumpHeight = 0
-		humanoid.AutoRotate = false
+		return
 	elseif movementSave then
 		humanoid.WalkSpeed = movementSave.WalkSpeed
 		humanoid.JumpPower = movementSave.JumpPower
@@ -4403,6 +4510,8 @@ Combat = {
 	GloveTpSlapBusy = false,
 	GloveTpSlapInternalActivate = false,
 	GloveTpSlapHoldTime = 0.5,
+	GloveTpSlapDebounce = 1.5,
+	GloveTpSlapActionName = "GloveTpSlapClickBlock",
 	CollectCratesEnabled = false,
 	CollectCratesConnections = {},
 	CollectCratesCharacterConnections = {},
@@ -4742,7 +4851,9 @@ function Combat.IsEquippedGloveInEnemyHitbox()
 		local _, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
 
 		if targetRoot then
-			local hitboxRadius = (math.max(targetRoot.Size.X, targetRoot.Size.Y, targetRoot.Size.Z) / 2) + 1.5
+			local rootRadius = math.max(targetRoot.Size.X, targetRoot.Size.Y, targetRoot.Size.Z) / 2
+			local configuredRadius = Combat.HitboxSize / 2
+			local hitboxRadius = math.max(rootRadius, configuredRadius, 5) + 2
 			local hitboxRadiusSquared = hitboxRadius * hitboxRadius
 
 			for _, glovePart in ipairs(gloveParts) do
@@ -4767,9 +4878,21 @@ function Combat.TapEquippedGlove()
 	Combat.LastAutoGloveTap = now
 
 	local tool = Combat.GetEquippedTool()
-	if tool and not matchesItem(tool.Name, itemNames) then
+	if Combat.IsEquippedGloveTool(tool) then
 		pcall(function()
 			tool:Activate()
+		end)
+
+		pcall(function()
+			local camera = workspace.CurrentCamera
+			local viewport = camera and camera.ViewportSize or Vector2.new(0, 0)
+			local x = viewport.X > 0 and math.floor(viewport.X / 2) or 0
+			local y = viewport.Y > 0 and math.floor(viewport.Y / 2) or 0
+			local VirtualInputManager = game:GetService("VirtualInputManager")
+
+			VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+			task.wait(0.03)
+			VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
 		end)
 	end
 end
@@ -4820,6 +4943,10 @@ function Combat.IsEquippedGloveTool(tool)
 	local character = player.Character
 
 	if not character or not tool or not tool:IsA("Tool") or tool.Parent ~= character then
+		return false
+	end
+
+	if matchesItem(tool.Name, itemNames) then
 		return false
 	end
 
@@ -5005,23 +5132,44 @@ function Combat.GetGloveTpSlapCenterCFrame(parts)
 end
 
 function Combat.TeleportToNearestPlayerOnGloveSlap(tool)
-	if Combat.GloveTpSlapBusy or os.clock() - Combat.LastGloveTpSlap < Combat.GloveTpSlapHoldTime then
+	local now = os.clock()
+
+	if Combat.GloveTpSlapBusy or now - Combat.LastGloveTpSlap < Combat.GloveTpSlapDebounce then
 		return
 	end
 
-	Combat.GloveTpSlapBusy = true
-	Combat.LastGloveTpSlap = os.clock()
-
 	if not Combat.IsEquippedGloveTool(tool) then
-		Combat.GloveTpSlapBusy = false
 		Combat.ShowGloveTpSlapWarning("Equip a glove before using Glove TP Slap.")
 		return
 	end
 
-	Combat.TeleportToNearestPlayer()
+	Combat.GloveTpSlapBusy = true
+	Combat.LastGloveTpSlap = now
+
+	local character = player.Character
+	local jointRecords = Combat.DetachGloveTpSlapJoints(character, tool)
+	local teleported = Combat.TeleportToNearestPlayer()
+	Combat.RestoreGloveTpSlapJoints(jointRecords)
+
+	if not teleported then
+		Combat.GloveTpSlapBusy = false
+		return
+	end
 
 	task.delay(Combat.GloveTpSlapHoldTime, function()
-		Combat.GloveTpSlapBusy = false
+		if Combat.GloveTpSlapEnabled and Combat.IsEquippedGloveTool(tool) then
+			Combat.GloveTpSlapInternalActivate = true
+
+			pcall(function()
+				tool:Activate()
+			end)
+
+			Combat.GloveTpSlapInternalActivate = false
+		end
+
+		task.delay(math.max(0, Combat.GloveTpSlapDebounce - Combat.GloveTpSlapHoldTime), function()
+			Combat.GloveTpSlapBusy = false
+		end)
 	end)
 end
 
@@ -5084,6 +5232,42 @@ function Combat.RefreshGloveTpSlapHooks()
 end
 
 function Combat.StartGloveTpSlap()
+	ContextActionService:BindActionAtPriority(
+		Combat.GloveTpSlapActionName,
+		function(_, inputState, inputObject)
+			if inputState ~= Enum.UserInputState.Begin or not Combat.GloveTpSlapEnabled or Combat.GloveTpSlapInternalActivate then
+				return Enum.ContextActionResult.Pass
+			end
+
+			if inputObject and inputObject.Position then
+				local playerGui = player:FindFirstChildOfClass("PlayerGui")
+				local ok, guiObjects = pcall(function()
+					return playerGui and playerGui:GetGuiObjectsAtPosition(inputObject.Position.X, inputObject.Position.Y)
+				end)
+
+				if ok and guiObjects then
+					for _, guiObject in ipairs(guiObjects) do
+						if guiObject == gui or guiObject:IsDescendantOf(gui) then
+							return Enum.ContextActionResult.Pass
+						end
+					end
+				end
+			end
+
+			local tool = Combat.GetEquippedTool()
+			if not Combat.IsEquippedGloveTool(tool) then
+				return Enum.ContextActionResult.Pass
+			end
+
+			Combat.TeleportToNearestPlayerOnGloveSlap(tool)
+			return Enum.ContextActionResult.Sink
+		end,
+		false,
+		4000,
+		Enum.UserInputType.MouseButton1,
+		Enum.KeyCode.ButtonR2
+	)
+
 	if not Combat.GloveTpSlapCharacterAddedConnection then
 		Combat.GloveTpSlapCharacterAddedConnection = player.CharacterAdded:Connect(function()
 			task.wait(0.25)
@@ -5098,6 +5282,8 @@ function Combat.StartGloveTpSlap()
 end
 
 function Combat.StopGloveTpSlap()
+	ContextActionService:UnbindAction(Combat.GloveTpSlapActionName)
+
 	if Combat.GloveTpSlapCharacterAddedConnection then
 		Combat.GloveTpSlapCharacterAddedConnection:Disconnect()
 		Combat.GloveTpSlapCharacterAddedConnection = nil
@@ -5166,6 +5352,7 @@ function Combat.CollectCrateWithGlove(tool)
 		return
 	end
 
+	local jointRecords = Combat.DetachGloveTpSlapJoints(character, tool)
 	local partStates = Combat.PrepareGloveTpSlapParts(gloveParts, root)
 	local targetPosition = cratePart.Position + Vector3.new(0, (cratePart.Size.Y / 2) + 1.25, 0)
 
@@ -5186,6 +5373,7 @@ function Combat.CollectCrateWithGlove(tool)
 	task.wait(0.18)
 	Combat.TouchCrateWithGlove(gloveParts, cratePart)
 	Combat.RestoreGloveTpSlapParts(partStates, root)
+	Combat.RestoreGloveTpSlapJoints(jointRecords)
 
 	task.delay(Combat.CollectCratesDebounce, function()
 		Combat.CollectCratesBusy = false
@@ -5685,7 +5873,7 @@ end
 
 function Combat.TeleportToPlayer(targetPlayer)
 	if not Teleport.CanTeleport() then
-		return
+		return false
 	end
 
 	local character = player.Character or player.CharacterAdded:Wait()
@@ -5694,12 +5882,12 @@ function Combat.TeleportToPlayer(targetPlayer)
 
 	if not root then
 		createNotification("Players", "Could not find your character.", "Error")
-		return
+		return false
 	end
 
 	if not targetRoot then
 		createNotification("Players", "Target player is unavailable or ragdolled.", "Warning")
-		return
+		return false
 	end
 
 	local targetCFrame = Combat.GetPlayerGroundCFrame(targetRoot, character, targetCharacter)
@@ -5715,6 +5903,7 @@ function Combat.TeleportToPlayer(targetPlayer)
 	Teleport.AddStrike()
 	Teleport.StartFBlock()
 	createNotification("Players", "Teleported to " .. targetPlayer.Name)
+	return true
 end
 
 function Combat.TeleportToLowestHealthPlayer()
@@ -5763,10 +5952,12 @@ function Combat.TeleportToNearestPlayer()
 	end
 
 	if nearestPlayer then
-		Combat.TeleportToPlayer(nearestPlayer)
+		return Combat.TeleportToPlayer(nearestPlayer)
 	else
 		createNotification("Players", "No valid nearest player found.")
 	end
+
+	return false
 end
 
 function Combat.SetHitboxSize(newSize)
@@ -7065,8 +7256,14 @@ UserInputService.InputBegan:Connect(function(inputObject, gameProcessed)
 	end
 end)
 
+local cleanupRuntime = nil
+
 closeButton.MouseButton1Click:Connect(function()
-	gui:Destroy()
+	if cleanupRuntime then
+		cleanupRuntime()
+	elseif gui.Parent then
+		gui:Destroy()
+	end
 end)
 
 local function applyResponsiveWindow()
@@ -7141,5 +7338,87 @@ task.defer(function()
 	updateSafetyCanvas()
 	updateSettingsCanvas()
 end)
+
+do
+	local cleanupRan = false
+
+	cleanupRuntime = function()
+		if cleanupRan then
+			return
+		end
+
+		cleanupRan = true
+
+		pcall(function()
+			autoCollectEnabled = false
+			autoPermanentEnabled = false
+			autoHealEnabled = false
+			setMovementPaused(false)
+		end)
+
+		pcall(function()
+			if autoHealConnection then
+				autoHealConnection:Disconnect()
+				autoHealConnection = nil
+			end
+		end)
+
+		pcall(function()
+			clearAutoSortConnections()
+			autoSortEnabled = false
+		end)
+
+		pcall(function()
+			if Combat then
+				Combat.HitboxExpanded = false
+				Combat.RefreshHitboxes()
+				Combat.SetAutoGloveTap(false)
+				Combat.SetGloveTpSlap(false)
+				Combat.SetCollectCrates(false)
+				Combat.SetAntiSlap(false)
+				Combat.RestoreGloveSize()
+			end
+		end)
+
+		pcall(function()
+			if ESP then
+				ESP.Disable()
+			end
+		end)
+
+		pcall(function()
+			if ItemESP then
+				ItemESP.SetEnabled(false)
+			end
+		end)
+
+		pcall(function()
+			if Anti then
+				Anti.ClearParts()
+				Anti.SetStaffEnabled(false)
+			end
+		end)
+
+		pcall(function()
+			ContextActionService:UnbindAction(Combat and Combat.GloveTpSlapActionName or "GloveTpSlapClickBlock")
+		end)
+
+		pcall(function()
+			Notify.Clear()
+		end)
+
+		if gui.Parent then
+			gui:Destroy()
+		end
+
+		if sharedEnvironment and sharedEnvironment.OPSlapRoyaleCleanup == cleanupRuntime then
+			sharedEnvironment.OPSlapRoyaleCleanup = nil
+		end
+	end
+
+	if sharedEnvironment then
+		sharedEnvironment.OPSlapRoyaleCleanup = cleanupRuntime
+	end
+end
 
 -- End of OP Slap Royale UI.
