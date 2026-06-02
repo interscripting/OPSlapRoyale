@@ -236,15 +236,17 @@ UI.Icons = {
 	["Auto Items"] = "🤖",
 	["Auto Collect"] = "🧲",
 	["Auto Heal"] = "❤️",
-	["Auto Sort"] = "🎒",
-	["Auto Use Permanent Items"] = "⚡",
-	["Meteor Crate"] = "📦",
+["Auto Sort"] = "🎒",
+["Auto Use Permanent Items"] = "⚡",
+["Bring Items"] = "🧲",
+["Meteor Crate"] = "📦",
 	Hitboxes = "🎯",
-	["Hitbox Size"] = "📏",
-	["Expand Hitbox"] = "📦",
-	["Visualize Hitboxes"] = "✨",
-	["Increase Glove Size"] = "🧤",
-	["Auto Glove Tap"] = "👊",
+["Hitbox Size"] = "📏",
+["Expand Hitbox"] = "📦",
+["Visualize Hitboxes"] = "✨",
+["Player TP Buttons"] = "📍",
+["Increase Glove Size"] = "🧤",
+["Auto Glove Tap"] = "👊",
 	["Glove TP Slap"] = "🎯",
 	["Collect Crates"] = "📦",
 	["Anti Slap"] = "🧱",
@@ -283,7 +285,7 @@ UI.Descriptions = {
 	["Mobile Quick Menus"] = "Touch shortcuts for menus that use hotkeys on PC.",
 	["Auto Items"] = "Automatic item use and collection controls.",
 	Hitboxes = "Adjust hitbox size, visibility, and expansion from one panel.",
-	["Increase Glove Size"] = "Adjusts the size of your equipped glove.",
+	["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
 	["World Safety"] = "Invisible protection over danger zones.",
 	["Themes"] = "Switch the full menu color profile.",
 	["Theme Creator"] = "Tune the accent color for your current theme.",
@@ -1048,10 +1050,11 @@ UI.ToggleDescriptions = {
 	["Auto Collect"] = "Moves to the closest available item and collects it.",
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
 	["Auto Sort"] = "Keeps your glove first, priority items next, and healing items grouped.",
-	["Auto Use Permanent Items"] = "Uses permanent boost items shortly after they enter your inventory.",
-	["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
-	["Visualize Hitboxes"] = "Toggles the neon hitbox preview on or off.",
-	["Increase Glove Size"] = "Changes the size of your currently equipped glove.",
+["Auto Use Permanent Items"] = "Uses permanent boost items shortly after they enter your inventory.",
+["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
+["Visualize Hitboxes"] = "Toggles the neon hitbox preview on or off.",
+["Player TP Buttons"] = "Shows big Teleport buttons above players that safely teleport you to them.",
+["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
 	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
 	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
 	["Collect Crates"] = "When your equipped glove slaps, sends only the glove to a spawned meteor crate.",
@@ -2683,6 +2686,9 @@ end
 local itemNameAliases = {
 	["Bull's Essence"] = {
 		"Bull's essence"
+	},
+	["Sphere of Fury"] = {
+		"Sphere of fury"
 	}
 }
 
@@ -3193,6 +3199,95 @@ local function getCollectibleSearchPool()
 	end
 
 	return Items.GetSearchDescendants()
+end
+
+local function getItemMoveRoot(object)
+	for _, itemName in ipairs(itemNames) do
+		local match = getStrictItemMatchObject(object, itemName)
+
+		if match then
+			return match, itemName
+		end
+	end
+
+	return nil, nil
+end
+
+local function moveItemObjectToCFrame(object, targetCFrame)
+	if object:IsA("Model") then
+		object:PivotTo(targetCFrame)
+		return true
+	end
+
+	if object:IsA("Tool") then
+		local handle = object:FindFirstChild("Handle")
+		if handle and handle:IsA("BasePart") then
+			handle.CFrame = targetCFrame
+			return true
+		end
+	end
+
+	if object:IsA("BasePart") then
+		object.CFrame = targetCFrame
+		return true
+	end
+
+	local part = object:FindFirstChildWhichIsA("BasePart", true)
+	if part then
+		part.CFrame = targetCFrame
+		return true
+	end
+
+	return false
+end
+
+function Items.BringAllToFront()
+	local character = player.Character or player.CharacterAdded:Wait()
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		createNotification("Bring Items", "Could not find your character.", "Error")
+		return
+	end
+
+	Items.RebuildSearchCache()
+
+	local scanStartedAt = os.clock()
+	while Items.SearchCacheBusy and os.clock() - scanStartedAt < 1.5 do
+		task.wait()
+	end
+
+	local movedCount = 0
+	local seenRoots = {}
+
+	for _, object in ipairs(getCollectibleSearchPool()) do
+		local moveRoot, itemName = getItemMoveRoot(object)
+		local part = moveRoot and getLiveItemPart(moveRoot)
+
+		if moveRoot and part and not seenRoots[moveRoot] then
+			seenRoots[moveRoot] = true
+
+			local targetIndex = movedCount + 1
+			local column = (targetIndex - 1) % 5
+			local row = math.floor((targetIndex - 1) / 5)
+			local xOffset = (column - 2) * 3
+			local targetCFrame = root.CFrame * CFrame.new(xOffset, 1.5, -7 - (row * 2.5))
+
+			local ok, moved = pcall(function()
+				return moveItemObjectToCFrame(moveRoot, targetCFrame)
+			end)
+
+			if ok and moved then
+				movedCount = targetIndex
+			end
+		end
+	end
+
+	if movedCount > 0 then
+		createNotification("Bring Items", "Moved " .. tostring(movedCount) .. " items in front of you.", "Success")
+	else
+		createNotification("Bring Items", "No live items found.", "Warning")
+	end
 end
 
 local primaryCollectOrder = {
@@ -3818,6 +3913,14 @@ do
 	end)
 
 	autoSortToggle.Button.LayoutOrder = -9990
+end
+
+do
+	local button = createSmallButton(itemsList, "Bring Items", function()
+		Items.BringAllToFront()
+	end)
+
+	button.LayoutOrder = -9599
 end
 
 do
@@ -4497,6 +4600,11 @@ Combat = {
 	HitboxVisible = true,
 	SavedHitboxes = {},
 	HitboxConnection = nil,
+	PlayerTpButtonsEnabled = false,
+	PlayerTpButtonGuis = {},
+	PlayerTpButtonConnections = {},
+	PlayerTpButtonPlayerConnections = {},
+	PlayerTpButtonPlayerAddedConnection = nil,
 	AutoGloveTapEnabled = false,
 	AutoGloveTapConnection = nil,
 	AutoGloveTapDebounce = 0.08,
@@ -4510,7 +4618,7 @@ Combat = {
 	GloveTpSlapBusy = false,
 	GloveTpSlapInternalActivate = false,
 	GloveTpSlapHoldTime = 0.5,
-	GloveTpSlapDebounce = 1.5,
+	GloveTpSlapDebounce = 1,
 	GloveTpSlapActionName = "GloveTpSlapClickBlock",
 	CollectCratesEnabled = false,
 	CollectCratesConnections = {},
@@ -4532,8 +4640,48 @@ Combat = {
 	GloveSizeMax = 8,
 	GloveSizeStep = 0.25,
 	GloveSizeOriginals = {},
-	GloveSizeLabel = nil
+	GloveSizeLabel = nil,
+	GloveSizeConnections = {},
+	GloveSizeCharacterAddedConnection = nil
 }
+
+function Combat.IsKnownItemToolName(toolName)
+	if not toolName then
+		return false
+	end
+
+	local normalized = Utility.NormalizeName(toolName)
+	local knownItemNames = {
+		"Apple",
+		"Bandage",
+		"Boba",
+		"Bomb",
+		"Bull's Essence",
+		"Bull's essence",
+		"Cube of Ice",
+		"First Aid Kit",
+		"Forcefield Crystal",
+		"Frog Potion",
+		"Gravitation Shard",
+		"Healing Potion",
+		"Lightning Potion",
+		"Potion of Strength",
+		"Speed Potion",
+		"Sphere of Fury",
+		"Sphere of fury",
+		"Tomahawk",
+		"True Power",
+		"Bombs"
+	}
+
+	for _, itemName in ipairs(knownItemNames) do
+		if normalized == Utility.NormalizeName(itemName) then
+			return true
+		end
+	end
+
+	return false
+end
 
 function Combat.GetEnemyRoot(otherPlayer)
 	if otherPlayer == Players.LocalPlayer then
@@ -4646,6 +4794,183 @@ function Combat.RefreshHitboxes()
 		end
 	else
 		Combat.StopHitboxLoop()
+	end
+end
+
+function Combat.ClearPlayerTpButtons()
+	for _, connection in ipairs(Combat.PlayerTpButtonConnections) do
+		if connection then
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+	end
+
+	for _, billboard in pairs(Combat.PlayerTpButtonGuis) do
+		if billboard and billboard.Parent then
+			pcall(function()
+				billboard:Destroy()
+			end)
+		end
+	end
+
+	for _, connection in ipairs(Combat.PlayerTpButtonPlayerConnections) do
+		if connection then
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+	end
+
+	if Combat.PlayerTpButtonPlayerAddedConnection then
+		pcall(function()
+			Combat.PlayerTpButtonPlayerAddedConnection:Disconnect()
+		end)
+		Combat.PlayerTpButtonPlayerAddedConnection = nil
+	end
+
+	Combat.PlayerTpButtonConnections = {}
+	Combat.PlayerTpButtonGuis = {}
+	Combat.PlayerTpButtonPlayerConnections = {}
+end
+
+function Combat.ApplyPlayerTpButton(otherPlayer)
+	if not Combat.PlayerTpButtonsEnabled or otherPlayer == player then
+		return
+	end
+
+	local character = otherPlayer.Character
+	local head = character and character:FindFirstChild("Head")
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	if not character or not head or not humanoid or humanoid.Health <= 0 then
+		return
+	end
+
+	local existing = Combat.PlayerTpButtonGuis[otherPlayer]
+	if existing and existing.Parent and existing.Adornee == head then
+		return
+	elseif existing then
+		pcall(function()
+			existing:Destroy()
+		end)
+	end
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = otherPlayer.Name .. "_PlayerTeleportButton"
+	billboard.Size = UDim2.fromOffset(360, 280)
+	billboard.StudsOffset = Vector3.new(0, 5.2, 0)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 1000000000
+	billboard.Active = true
+	billboard.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	billboard.Adornee = head
+	billboard.Parent = gui
+
+	local button = Instance.new("TextButton")
+	button.Name = "TeleportButton"
+	button.Size = UDim2.fromOffset(190, 46)
+	button.Position = UDim2.new(0.5, -95, 0, 0)
+	button.BackgroundColor3 = Color3.fromRGB(5, 8, 14)
+	button.BackgroundTransparency = 0
+	button.BorderSizePixel = 0
+	button.Text = "TELEPORT"
+	button.Font = Enum.Font.GothamBlack
+	button.TextSize = 21
+	button.TextColor3 = Color3.fromRGB(230, 250, 255)
+	button.TextStrokeTransparency = 0
+	button.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	button.AutoButtonColor = true
+	button.Active = true
+	button.Selectable = true
+	button.ZIndex = 50
+	button.Parent = billboard
+	addCorner(button, 8)
+	addStroke(button, Color3.fromRGB(0, 0, 0), 4)
+
+	local accent = Instance.new("Frame")
+	accent.Name = "AccentLine"
+	accent.Size = UDim2.new(1, -18, 0, 4)
+	accent.Position = UDim2.new(0, 9, 1, -9)
+	accent.BorderSizePixel = 0
+	accent.BackgroundColor3 = Color3.fromRGB(80, 220, 255)
+	accent.ZIndex = 51
+	accent.Parent = button
+	addCorner(accent, 3)
+
+	Combat.PlayerTpButtonGuis[otherPlayer] = billboard
+
+	local function teleportToButtonPlayer()
+		if Combat.PlayerTpButtonsEnabled then
+			Combat.TeleportToPlayer(otherPlayer)
+		end
+	end
+
+	table.insert(Combat.PlayerTpButtonConnections, button.Activated:Connect(teleportToButtonPlayer))
+	table.insert(Combat.PlayerTpButtonConnections, button.MouseButton1Click:Connect(teleportToButtonPlayer))
+	table.insert(Combat.PlayerTpButtonConnections, humanoid.Died:Connect(function()
+		if Combat.PlayerTpButtonGuis[otherPlayer] == billboard then
+			Combat.PlayerTpButtonGuis[otherPlayer] = nil
+		end
+
+		if billboard and billboard.Parent then
+			billboard:Destroy()
+		end
+	end))
+end
+
+function Combat.RefreshPlayerTpButtons()
+	if not Combat.PlayerTpButtonsEnabled then
+		Combat.ClearPlayerTpButtons()
+		return
+	end
+
+	Combat.ClearPlayerTpButtons()
+
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		Combat.ApplyPlayerTpButton(otherPlayer)
+
+		if otherPlayer ~= player then
+			table.insert(Combat.PlayerTpButtonPlayerConnections, otherPlayer.CharacterAdded:Connect(function()
+				task.wait(0.75)
+				Combat.ApplyPlayerTpButton(otherPlayer)
+			end))
+		end
+	end
+
+	if not Combat.PlayerTpButtonPlayerAddedConnection then
+		Combat.PlayerTpButtonPlayerAddedConnection = Players.PlayerAdded:Connect(function(otherPlayer)
+			table.insert(Combat.PlayerTpButtonPlayerConnections, otherPlayer.CharacterAdded:Connect(function()
+				task.wait(0.75)
+				Combat.ApplyPlayerTpButton(otherPlayer)
+			end))
+
+			task.defer(function()
+				task.wait(0.75)
+				Combat.ApplyPlayerTpButton(otherPlayer)
+			end)
+		end)
+	end
+
+	table.insert(Combat.PlayerTpButtonPlayerConnections, Players.PlayerRemoving:Connect(function(otherPlayer)
+		local billboard = Combat.PlayerTpButtonGuis[otherPlayer]
+		Combat.PlayerTpButtonGuis[otherPlayer] = nil
+
+		if billboard and billboard.Parent then
+			billboard:Destroy()
+		end
+	end))
+end
+
+function Combat.SetPlayerTpButtons(state)
+	Combat.PlayerTpButtonsEnabled = state == true
+
+	if Combat.PlayerTpButtonsEnabled then
+		Combat.RefreshPlayerTpButtons()
+		createNotification("Player TP Buttons", "Player TP Buttons enabled.", "Success")
+	else
+		Combat.ClearPlayerTpButtons()
+		createNotification("Player TP Buttons", "Player TP Buttons disabled.")
 	end
 end
 
@@ -4775,52 +5100,56 @@ function Combat.IsValidAutoTapTarget(targetPlayer)
 end
 
 function Combat.IsGlovePart(object)
-	if not object:IsA("BasePart") then
+	if not object or not object:IsA("BasePart") then
 		return false
 	end
 
-	local name = normalizeName(object.Name)
+	local name = Utility.NormalizeName(object.Name)
 	return string.find(name, "glove")
 		or string.find(name, "hand")
 		or string.find(name, "handle")
 end
 
-function Combat.GetAutoGloveTapRadius()
-	return math.max((Combat.HitboxSize / 2) + 4, 8)
-end
-
-function Combat.IsEnemyGloveInHitbox()
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-
+function Combat.GetAutoTapHitboxSize(root)
 	if not root then
-		return false
+		return Vector3.new(Combat.HitboxSize, Combat.HitboxSize, Combat.HitboxSize)
 	end
 
-	local radius = Combat.GetAutoGloveTapRadius()
-	local radiusSquared = radius * radius
+	return Vector3.new(
+		math.max(root.Size.X, Combat.HitboxSize),
+		math.max(root.Size.Y, Combat.HitboxSize),
+		math.max(root.Size.Z, Combat.HitboxSize)
+	)
+end
 
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		local targetCharacter, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
+function Combat.GetAutoTapOverlapParams(parts)
+	local params = OverlapParams.new()
+	params.FilterDescendantsInstances = parts
 
-		if targetCharacter then
-			local rootDelta = root.Position - targetRoot.Position
-			if rootDelta:Dot(rootDelta) <= radiusSquared then
-				return true
-			end
+	local ok = pcall(function()
+		params.FilterType = Enum.RaycastFilterType.Include
+	end)
 
-			for _, object in ipairs(targetCharacter:GetDescendants()) do
-				if Combat.IsGlovePart(object) then
-					local gloveDelta = root.Position - object.Position
-					if gloveDelta:Dot(gloveDelta) <= radiusSquared then
-						return true
-					end
-				end
-			end
+	if not ok then
+		pcall(function()
+			params.FilterType = Enum.RaycastFilterType.Whitelist
+		end)
+	end
+
+	return params
+end
+
+function Combat.GetAutoTapGlovePadding(parts)
+	local padding = 2
+
+	for _, part in ipairs(parts) do
+		if part and part.Parent then
+			local size = part.Size
+			padding = math.max(padding, math.max(size.X, size.Y, size.Z) * 0.5)
 		end
 	end
 
-	return false
+	return padding
 end
 
 function Combat.GetEquippedGloveParts(tool)
@@ -4839,62 +5168,137 @@ function Combat.GetEquippedGloveParts(tool)
 	return parts
 end
 
-function Combat.IsEquippedGloveInEnemyHitbox()
-	local tool = Combat.GetEquippedTool()
-	local gloveParts = Combat.GetEquippedGloveParts(tool)
+function Combat.GetCharacterGloveParts(character)
+	local parts = {}
+	local seen = {}
 
-	if #gloveParts == 0 then
+	if not character then
+		return parts
+	end
+
+	for _, child in ipairs(character:GetChildren()) do
+		if child:IsA("Tool") and not Combat.IsKnownItemToolName(child.Name) then
+			for _, object in ipairs(child:GetDescendants()) do
+				if object:IsA("BasePart") and not seen[object] then
+					seen[object] = true
+					table.insert(parts, object)
+				end
+			end
+		end
+	end
+
+	for _, object in ipairs(character:GetDescendants()) do
+		if Combat.IsGlovePart(object) and not seen[object] then
+			seen[object] = true
+			table.insert(parts, object)
+		end
+	end
+
+	return parts
+end
+
+function Combat.IsPartInsideHitbox(part, hitboxRoot, hitboxSize, padding)
+	if not part or not part.Parent or not hitboxRoot or not hitboxRoot.Parent then
 		return false
 	end
 
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		local _, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
+	local localPosition = hitboxRoot.CFrame:PointToObjectSpace(part.Position)
+	local halfSize = hitboxSize * 0.5
+	local partPadding = padding or (math.max(part.Size.X, part.Size.Y, part.Size.Z) * 0.5)
 
-		if targetRoot then
-			local rootRadius = math.max(targetRoot.Size.X, targetRoot.Size.Y, targetRoot.Size.Z) / 2
-			local configuredRadius = Combat.HitboxSize / 2
-			local hitboxRadius = math.max(rootRadius, configuredRadius, 5) + 2
-			local hitboxRadiusSquared = hitboxRadius * hitboxRadius
+	return math.abs(localPosition.X) <= halfSize.X + partPadding
+		and math.abs(localPosition.Y) <= halfSize.Y + partPadding
+		and math.abs(localPosition.Z) <= halfSize.Z + partPadding
+end
 
-			for _, glovePart in ipairs(gloveParts) do
-				local delta = glovePart.Position - targetRoot.Position
-				if delta:Dot(delta) <= hitboxRadiusSquared then
-					return true
-				end
-			end
+function Combat.ArePartsInsideHitbox(parts, hitboxRoot)
+	if #parts == 0 or not hitboxRoot then
+		return false
+	end
+
+	local hitboxSize = Combat.GetAutoTapHitboxSize(hitboxRoot)
+	local padding = Combat.GetAutoTapGlovePadding(parts)
+
+	local ok, touchingParts = pcall(function()
+		return workspace:GetPartBoundsInBox(hitboxRoot.CFrame, hitboxSize + Vector3.new(padding * 2, padding * 2, padding * 2), Combat.GetAutoTapOverlapParams(parts))
+	end)
+
+	if ok and touchingParts and #touchingParts > 0 then
+		return true
+	end
+
+	for _, part in ipairs(parts) do
+		if Combat.IsPartInsideHitbox(part, hitboxRoot, hitboxSize, padding) then
+			return true
 		end
 	end
 
 	return false
 end
 
+function Combat.IsTargetInAutoTapRange(root, targetRoot)
+	if not root or not targetRoot then
+		return false
+	end
+
+	local targetSize = Combat.GetAutoTapHitboxSize(targetRoot)
+	local targetRadius = math.max(targetSize.X, targetSize.Y, targetSize.Z) * 0.5
+	local localRadius = math.max(root.Size.X, root.Size.Y, root.Size.Z) * 0.5
+	local gloveReach = math.max(6, (Combat.GloveSizeScale or 1) * 4)
+	local triggerDistance = targetRadius + localRadius + gloveReach
+
+	return (root.Position - targetRoot.Position).Magnitude <= triggerDistance
+end
+
+function Combat.FindAutoGloveTapTarget()
+	local tool = Combat.GetEquippedTool()
+	local equippedGloveParts = Combat.GetEquippedGloveParts(tool)
+
+	if #equippedGloveParts == 0 then
+		return nil
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	for _, targetPlayer in ipairs(Players:GetPlayers()) do
+		local targetCharacter, _, targetRoot = Combat.IsValidAutoTapTarget(targetPlayer)
+
+		if targetRoot and (Combat.ArePartsInsideHitbox(equippedGloveParts, targetRoot) or Combat.IsTargetInAutoTapRange(root, targetRoot)) then
+			return targetPlayer
+		end
+
+		if root and targetCharacter then
+			local enemyGloveParts = Combat.GetCharacterGloveParts(targetCharacter)
+
+			if Combat.ArePartsInsideHitbox(enemyGloveParts, root) then
+				return targetPlayer
+			end
+		end
+	end
+
+	return nil
+end
+
 function Combat.TapEquippedGlove()
 	local now = os.clock()
 
 	if now - Combat.LastAutoGloveTap < Combat.AutoGloveTapDebounce then
-		return
+		return false
+	end
+
+	local tool = Combat.GetEquippedTool()
+	if not Combat.IsEquippedGloveTool(tool) then
+		return false
 	end
 
 	Combat.LastAutoGloveTap = now
 
-	local tool = Combat.GetEquippedTool()
-	if Combat.IsEquippedGloveTool(tool) then
-		pcall(function()
-			tool:Activate()
-		end)
+	pcall(function()
+		tool:Activate()
+	end)
 
-		pcall(function()
-			local camera = workspace.CurrentCamera
-			local viewport = camera and camera.ViewportSize or Vector2.new(0, 0)
-			local x = viewport.X > 0 and math.floor(viewport.X / 2) or 0
-			local y = viewport.Y > 0 and math.floor(viewport.Y / 2) or 0
-			local VirtualInputManager = game:GetService("VirtualInputManager")
-
-			VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
-			task.wait(0.03)
-			VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
-		end)
-	end
+	return true
 end
 
 function Combat.StartAutoGloveTap()
@@ -4903,7 +5307,11 @@ function Combat.StartAutoGloveTap()
 	end
 
 	Combat.AutoGloveTapConnection = RunService.Heartbeat:Connect(function()
-		if Combat.AutoGloveTapEnabled and Combat.IsEquippedGloveInEnemyHitbox() then
+		if not Combat.AutoGloveTapEnabled then
+			return
+		end
+
+		if Combat.FindAutoGloveTapTarget() then
 			Combat.TapEquippedGlove()
 		end
 	end)
@@ -4946,19 +5354,25 @@ function Combat.IsEquippedGloveTool(tool)
 		return false
 	end
 
-	if matchesItem(tool.Name, itemNames) then
+	if Combat.IsKnownItemToolName(tool.Name) then
 		return false
 	end
 
-	local toolName = normalizeName(tool.Name)
+	local toolName = Utility.NormalizeName(tool.Name)
 	if string.find(toolName, "glove") or string.find(toolName, "slap") then
 		return true
 	end
 
 	for _, object in ipairs(tool:GetDescendants()) do
-		local objectName = normalizeName(object.Name)
+		local objectName = Utility.NormalizeName(object.Name)
 
 		if string.find(objectName, "glove") or string.find(objectName, "slap") then
+			return true
+		end
+	end
+
+	for _, object in ipairs(tool:GetDescendants()) do
+		if object:IsA("BasePart") then
 			return true
 		end
 	end
@@ -5146,13 +5560,13 @@ function Combat.TeleportToNearestPlayerOnGloveSlap(tool)
 	Combat.GloveTpSlapBusy = true
 	Combat.LastGloveTpSlap = now
 
-	local character = player.Character
-	local jointRecords = Combat.DetachGloveTpSlapJoints(character, tool)
 	local teleported = Combat.TeleportToNearestPlayer()
-	Combat.RestoreGloveTpSlapJoints(jointRecords)
 
 	if not teleported then
-		Combat.GloveTpSlapBusy = false
+		task.delay(Combat.GloveTpSlapDebounce, function()
+			Combat.GloveTpSlapBusy = false
+		end)
+
 		return
 	end
 
@@ -5164,12 +5578,14 @@ function Combat.TeleportToNearestPlayerOnGloveSlap(tool)
 				tool:Activate()
 			end)
 
-			Combat.GloveTpSlapInternalActivate = false
+			task.delay(0.1, function()
+				Combat.GloveTpSlapInternalActivate = false
+			end)
 		end
+	end)
 
-		task.delay(math.max(0, Combat.GloveTpSlapDebounce - Combat.GloveTpSlapHoldTime), function()
-			Combat.GloveTpSlapBusy = false
-		end)
+	task.delay(Combat.GloveTpSlapDebounce, function()
+		Combat.GloveTpSlapBusy = false
 	end)
 end
 
@@ -6015,56 +6431,133 @@ function Combat.SaveGloveOriginal(part)
 	}
 end
 
-function Combat.ApplyGloveSize()
-	local tool = Combat.GetEquippedTool()
-	local parts = Combat.GetGloveParts(tool)
+function Combat.RestoreGloveSize()
+	for part, original in pairs(Combat.GloveSizeOriginals) do
+		if part and part.Parent and original then
+			pcall(function()
+				part.Size = original.Size
+			end)
 
-	if #parts == 0 then
-		if Combat.GloveSizeLabel then
-			Combat.GloveSizeLabel.Text = "Glove Size: " .. string.format("%.2fx", Combat.GloveSizeScale) .. " (equip glove)"
+			for mesh, originalScale in pairs(original.Meshes or {}) do
+				if mesh and mesh.Parent then
+					pcall(function()
+						mesh.Scale = originalScale
+					end)
+				end
+			end
 		end
+	end
+
+	Combat.GloveSizeOriginals = {}
+end
+
+function Combat.ApplyGloveSize()
+	local scale = Combat.GloveSizeScale
+	Combat.RestoreGloveSize()
+	Combat.GloveSizeScale = scale
+
+	local character = player.Character
+	local tool = character and character:FindFirstChildOfClass("Tool")
+
+	if not tool then
+		if Combat.GloveSizeLabel then
+			Combat.GloveSizeLabel.Text = string.format("Glove Size: %.2fx (equip glove)", Combat.GloveSizeScale)
+		end
+
 		return false
 	end
+
+	local parts = Combat.GetGloveParts(tool)
 
 	for _, part in ipairs(parts) do
 		Combat.SaveGloveOriginal(part)
 
 		local original = Combat.GloveSizeOriginals[part]
 		if original then
-			part.Size = original.Size * Combat.GloveSizeScale
+			pcall(function()
+				part.Size = original.Size * Combat.GloveSizeScale
+			end)
 
-			for mesh, originalScale in pairs(original.Meshes) do
+			for mesh, originalScale in pairs(original.Meshes or {}) do
 				if mesh and mesh.Parent then
-					mesh.Scale = originalScale * Combat.GloveSizeScale
+					pcall(function()
+						mesh.Scale = originalScale * Combat.GloveSizeScale
+					end)
 				end
 			end
 		end
 	end
 
 	if Combat.GloveSizeLabel then
-		Combat.GloveSizeLabel.Text = "Glove Size: " .. string.format("%.2fx", Combat.GloveSizeScale)
+		Combat.GloveSizeLabel.Text = string.format("Glove Size: %.2fx", Combat.GloveSizeScale)
 	end
 
-	return true
+	return #parts > 0
 end
 
 function Combat.SetGloveSizeScale(newScale, showNotification)
-	Combat.GloveSizeScale = math.clamp(newScale, Combat.GloveSizeMin, Combat.GloveSizeMax)
+	local steppedScale = math.floor((newScale / Combat.GloveSizeStep) + 0.5) * Combat.GloveSizeStep
+	Combat.GloveSizeScale = math.clamp(steppedScale, Combat.GloveSizeMin, Combat.GloveSizeMax)
 
-	if Combat.ApplyGloveSize() then
-		if showNotification then
-			createNotification("Glove Size", "Glove size set to " .. string.format("%.2fx", Combat.GloveSizeScale) .. ".", "Success")
-		end
-	else
-		if showNotification then
-			createNotification("Glove Size", "Equip your glove first, then adjust the size.", "Warning")
-		end
+	local applied = Combat.ApplyGloveSize()
+
+	if showNotification and not applied then
+		createNotification("Glove Size", "Equip your glove first, then adjust the slider.", "Warning")
 	end
 
 	if Settings and Settings.OnControlChanged then
 		Settings.OnControlChanged()
 	end
 end
+
+function Combat.ClearGloveSizeHooks()
+	for _, connection in ipairs(Combat.GloveSizeConnections) do
+		if connection then
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+	end
+
+	Combat.GloveSizeConnections = {}
+end
+
+function Combat.HookGloveSizeCharacter(character)
+	Combat.ClearGloveSizeHooks()
+
+	if not character then
+		return
+	end
+
+	table.insert(Combat.GloveSizeConnections, character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then
+			task.wait(0.05)
+			Combat.ApplyGloveSize()
+		end
+	end))
+
+	table.insert(Combat.GloveSizeConnections, character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then
+			local scale = Combat.GloveSizeScale
+			Combat.RestoreGloveSize()
+			Combat.GloveSizeScale = scale
+		end
+	end))
+end
+
+function Combat.RefreshGloveSizeHooks()
+	Combat.HookGloveSizeCharacter(player.Character)
+
+	if not Combat.GloveSizeCharacterAddedConnection then
+		Combat.GloveSizeCharacterAddedConnection = player.CharacterAdded:Connect(function(character)
+			task.wait(0.25)
+			Combat.HookGloveSizeCharacter(character)
+			Combat.ApplyGloveSize()
+		end)
+	end
+end
+
+Combat.RefreshGloveSizeHooks()
 
 function Combat.SetupPlayerHitboxRefresh(otherPlayer)
 	otherPlayer.CharacterAdded:Connect(function()
@@ -6224,6 +6717,10 @@ do
 		Combat.SetAutoGloveTap(state)
 	end)
 
+	createToggleButton(combatList, "Player TP Buttons", false, function(state)
+		Combat.SetPlayerTpButtons(state)
+	end)
+
 	createToggleButton(betaList, "Glove TP Slap", false, function(state)
 		Combat.SetGloveTpSlap(state)
 	end)
@@ -6275,29 +6772,41 @@ do
 	slider.AutoButtonColor = false
 	slider.Active = true
 	slider.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	slider.BackgroundTransparency = 0.18
 	slider.Parent = gloveDropdown
 	addCorner(slider, 8)
 
 	local fill = Instance.new("Frame")
 	fill.Size = UDim2.fromScale(0, 1)
 	fill.BorderSizePixel = 0
+	fill.BackgroundTransparency = 0.1
 	fill.Parent = slider
 	themeObject(fill, "BackgroundColor3", "Button")
 	addCorner(fill, 8)
+
+	local valueLabel = Instance.new("TextLabel")
+	valueLabel.Size = UDim2.fromScale(1, 1)
+	valueLabel.BackgroundTransparency = 1
+	valueLabel.Text = "1.00x"
+	valueLabel.Font = Enum.Font.GothamBlack
+	valueLabel.TextSize = isTouchDevice and 10 or 12
+	valueLabel.TextXAlignment = Enum.TextXAlignment.Center
+	valueLabel.TextYAlignment = Enum.TextYAlignment.Center
+	valueLabel.Parent = slider
+	themeObject(valueLabel, "TextColor3", "Text")
 
 	local dragging = false
 
 	local function refreshSlider()
 		local percent = (Combat.GloveSizeScale - Combat.GloveSizeMin) / (Combat.GloveSizeMax - Combat.GloveSizeMin)
 		fill.Size = UDim2.fromScale(math.clamp(percent, 0, 1), 1)
+		valueLabel.Text = string.format("%.2fx", Combat.GloveSizeScale)
 	end
 
 	local function setFromX(x)
-		local percent = math.clamp((x - slider.AbsolutePosition.X) / math.max(slider.AbsoluteSize.X, 1), 0, 1)
-		local value = Combat.GloveSizeMin + ((Combat.GloveSizeMax - Combat.GloveSizeMin) * percent)
-		value = math.floor((value / Combat.GloveSizeStep) + 0.5) * Combat.GloveSizeStep
-
-		Combat.SetGloveSizeScale(value, false)
+		local percent = math.clamp((x - slider.AbsolutePosition.X) / slider.AbsoluteSize.X, 0, 1)
+		local scale = Combat.GloveSizeMin + ((Combat.GloveSizeMax - Combat.GloveSizeMin) * percent)
+		Combat.SetGloveSizeScale(scale, false)
 		refreshSlider()
 	end
 
@@ -7372,6 +7881,8 @@ do
 			if Combat then
 				Combat.HitboxExpanded = false
 				Combat.RefreshHitboxes()
+				Combat.PlayerTpButtonsEnabled = false
+				Combat.ClearPlayerTpButtons()
 				Combat.SetAutoGloveTap(false)
 				Combat.SetGloveTpSlap(false)
 				Combat.SetCollectCrates(false)
