@@ -4929,7 +4929,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 					Teleport.StabilizeItemView(root, itemPart)
 				end)
 				Teleport.AddStrike()
-				Teleport.MaxStrikes = 3
+				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
 				Teleport.PostFLock = 0.3
 				Items.TeleportDebounce = 0.5
@@ -5167,7 +5167,7 @@ function Items.RunEarlyAutoCollect()
 		return
 	end
 
-	Teleport.MaxStrikes = 5
+	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
 	Teleport.PostFLock = 0.3
 	Items.TeleportDebounce = Items.GetEarlyAutoCollectDelay(0.5)
@@ -5289,7 +5289,7 @@ function Items.SetEarlyAutoCollect(state)
 		Items.EarlyAutoCollectConfirmCount = 0
 		Items.StopEarlyAutoCollectPickupSpam()
 		visitedCollectPositions = {}
-		Teleport.MaxStrikes = 5
+		Teleport.MaxStrikes = 4
 		Teleport.Cooldown = 2
 		Teleport.PostFLock = 0.3
 		Items.TeleportDebounce = 0.5
