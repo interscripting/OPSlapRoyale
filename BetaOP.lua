@@ -22,6 +22,64 @@ local ReplicatedStorage = Services.ReplicatedStorage
 local HttpService = Services.HttpService
 local player = Players.LocalPlayer
 
+local UNDER_MAP_PLATFORM_Y = -35
+local UNDER_MAP_PLATFORM_THICKNESS = 0.2
+local UNDER_MAP_SAFE_OFFSET = 4
+local UNDER_MAP_PLATFORM_SIZE = Vector3.new(12000, UNDER_MAP_PLATFORM_THICKNESS, 12000)
+local UnderMapSafetyPlatform = nil
+
+local function isUnderMapSafetyPlatform(object)
+	return object:IsA("BasePart")
+		and object.Name == "Part"
+		and object.Transparency >= 1
+		and object.Anchored
+		and math.abs(object.Position.Y - UNDER_MAP_PLATFORM_Y) <= 1
+		and object.Size.X >= UNDER_MAP_PLATFORM_SIZE.X * 0.9
+		and object.Size.Z >= UNDER_MAP_PLATFORM_SIZE.Z * 0.9
+end
+
+local function clearUnderMapSafetyPlatform()
+	if UnderMapSafetyPlatform and UnderMapSafetyPlatform.Parent then
+		UnderMapSafetyPlatform:Destroy()
+	end
+
+	for _, object in ipairs(workspace:GetChildren()) do
+		if isUnderMapSafetyPlatform(object) then
+			object:Destroy()
+		end
+	end
+
+	UnderMapSafetyPlatform = nil
+end
+
+local function ensureUnderMapSafetyPlatform()
+	if UnderMapSafetyPlatform and UnderMapSafetyPlatform.Parent then
+		return UnderMapSafetyPlatform
+	end
+
+	for _, object in ipairs(workspace:GetChildren()) do
+		if isUnderMapSafetyPlatform(object) then
+			UnderMapSafetyPlatform = object
+			return object
+		end
+	end
+
+	local platform = Instance.new("Part")
+	platform.Name = "Part"
+	platform.Size = UNDER_MAP_PLATFORM_SIZE
+	platform.Position = Vector3.new(0, UNDER_MAP_PLATFORM_Y, 0)
+	platform.Anchored = true
+	platform.CanCollide = true
+	platform.CanTouch = false
+	platform.CanQuery = false
+	platform.Transparency = 1
+	platform.Material = Enum.Material.SmoothPlastic
+	platform.Parent = workspace
+
+	UnderMapSafetyPlatform = platform
+	return platform
+end
+
 local sharedEnvironment = nil
 do
 	local success, environment = pcall(function()
@@ -38,6 +96,96 @@ do
 		sharedEnvironment.OPSlapRoyaleCleanup = nil
 	end
 end
+
+clearUnderMapSafetyPlatform()
+
+local SCHOOL_BUS_CLEANUP_POSITION = Vector3.new(494, 47, -322)
+local SCHOOL_BUS_CLEANUP_RADIUS = 220
+
+local function getObjectWorldPosition(object)
+	if object:IsA("BasePart") then
+		return object.Position
+	end
+
+	if object:IsA("Model") then
+		local ok, pivot = pcall(function()
+			return object:GetPivot()
+		end)
+
+		if ok and pivot then
+			return pivot.Position
+		end
+
+		local boxOk, cframe = pcall(function()
+			return object:GetBoundingBox()
+		end)
+
+		if boxOk and cframe then
+			return cframe.Position
+		end
+	end
+
+	return nil
+end
+
+local function getSchoolBusCleanupCandidate(object)
+	local current = object
+	local candidate = nil
+
+	while current and current ~= workspace do
+		local lowerName = string.lower(current.Name)
+
+		if string.find(lowerName, "bus", 1, true) and (current:IsA("Model") or current:IsA("BasePart")) then
+			candidate = current
+		end
+
+		current = current.Parent
+	end
+
+	return candidate
+end
+
+local function cleanupSchoolBusNearSchoolHouse()
+	local removed = {}
+	local ok, nearbyParts = pcall(function()
+		return workspace:GetPartBoundsInBox(
+			CFrame.new(SCHOOL_BUS_CLEANUP_POSITION),
+			Vector3.new(SCHOOL_BUS_CLEANUP_RADIUS * 2, 160, SCHOOL_BUS_CLEANUP_RADIUS * 2)
+		)
+	end)
+
+	if not ok then
+		return false
+	end
+
+	for _, object in ipairs(nearbyParts) do
+		local candidate = getSchoolBusCleanupCandidate(object)
+
+		if candidate and candidate.Parent and not removed[candidate] then
+			local position = getObjectWorldPosition(candidate)
+
+			if position and (position - SCHOOL_BUS_CLEANUP_POSITION).Magnitude <= SCHOOL_BUS_CLEANUP_RADIUS then
+				removed[candidate] = true
+				pcall(function()
+					candidate:Destroy()
+				end)
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
+task.spawn(function()
+	for _ = 1, 8 do
+		if cleanupSchoolBusNearSchoolHouse() then
+			break
+		end
+
+		task.wait(0.75)
+	end
+end)
 
 local Settings = nil
 local Config = {}
@@ -135,6 +283,18 @@ Notify.Presets = {
 		Color = Color3.fromRGB(255, 90, 105)
 	}
 }
+
+pcall(function()
+	local playerGui = player:WaitForChild("PlayerGui", 5)
+
+	if playerGui then
+		for _, existingGui in ipairs(playerGui:GetChildren()) do
+			if existingGui.Name == "OPSlapRoyaleUI" then
+				existingGui:Destroy()
+			end
+		end
+	end
+end)
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "OPSlapRoyaleUI"
@@ -1062,7 +1222,8 @@ UI.ToggleDescriptions = {
 	["Anti-Ragdoll"] = "Briefly boxes your character in when ragdoll or knockback is detected.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
-	["Anti-Acid & Lava"] = "Places invisible safety floors over known hazard zones.",
+	["Anti-Acid & Lava"] = "Deletes hazard parts with acid, lava, kill, damage, or death names.",
+	["Hide under map"] = "Moves you straight below the map, then back to safe land above you.",
 	["Anti-Staff"] = "Leaves the server when chat suggests recording, proof, or staff attention.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
 	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
@@ -1198,7 +1359,7 @@ function UI.CreateToggleButton(parent, text, defaultState, callback, description
 		end
 	}
 
-	if Settings and Settings.RegisterToggle and text ~= "Toggle recommended settings?" then
+	if Settings and Settings.RegisterToggle and text ~= "Toggle recommended settings?" and text ~= "Hide under map" then
 		Settings.RegisterToggle(text, control)
 	end
 
@@ -2086,7 +2247,9 @@ function Settings.Capture()
 			local success, value = pcall(control.Get)
 
 			if success then
-				toggles[name] = value
+				if name ~= "Hide under map" then
+					toggles[name] = value
+				end
 			end
 		end
 	end
@@ -2152,6 +2315,8 @@ function Settings.Apply(data)
 	end
 
 	local toggles = type(data.Toggles) == "table" and data.Toggles or {}
+	toggles["Hide under map"] = nil
+
 	for name, value in pairs(toggles) do
 		local control = Settings.Controls[name]
 
@@ -2201,6 +2366,16 @@ Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
 Teleport.BlockFUntil = 0
+Teleport.BusTopRidePlatform = nil
+Teleport.BusTopRideConnection = nil
+Teleport.BusTopRideLastCFrame = nil
+Teleport.StabilityWait = 4
+Teleport.LastJumpAt = 0
+Teleport.WalkStartedAt = nil
+Teleport.LastLongWalkAt = 0
+Teleport.LastRagdolledAt = 0
+Teleport.LastBusLandingAt = 0
+Teleport.StabilityConnection = nil
 
 Items.SearchRootName = "Items"
 Items.SearchText = ""
@@ -2517,7 +2692,152 @@ function Teleport.ShowWarning(secondsText)
 	)
 end
 
-function Teleport.CanTeleport(debounceOverride)
+function Teleport.ShowStabilityWarning(reason, secondsLeft)
+	Notify.Show(
+		"Teleport",
+		reason .. " Wait " .. tostring(math.max(1, math.ceil(secondsLeft))) .. " seconds.",
+		"Warning",
+		nil,
+		2.2,
+		true
+	)
+end
+
+function Teleport.IsLocalRagdolled(character, humanoid)
+	if not character or not humanoid then
+		return false
+	end
+
+	local ragdollStatuses = {
+		"Ragdoll",
+		"Ragdolled",
+		"IsRagdolled",
+		"Knocked",
+		"KnockedDown",
+		"Downed"
+	}
+
+	for _, statusName in ipairs(ragdollStatuses) do
+		local characterAttribute = character:GetAttribute(statusName)
+		local humanoidAttribute = humanoid:GetAttribute(statusName)
+
+		if characterAttribute == true or humanoidAttribute == true then
+			return true
+		end
+
+		local statusObject = character:FindFirstChild(statusName, true) or humanoid:FindFirstChild(statusName, true)
+
+		if statusObject then
+			if statusObject:IsA("BoolValue") then
+				if statusObject.Value == true then
+					return true
+				end
+			else
+				return true
+			end
+		end
+	end
+
+	local state = humanoid:GetState()
+
+	return humanoid.PlatformStand
+		or state == Enum.HumanoidStateType.Ragdoll
+		or state == Enum.HumanoidStateType.Physics
+		or state == Enum.HumanoidStateType.FallingDown
+end
+
+function Teleport.UpdateLocalStability()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local now = os.clock()
+
+	if not humanoid or not root or humanoid.Health <= 0 then
+		Teleport.LastRagdolledAt = now
+		Teleport.WalkStartedAt = nil
+		return
+	end
+
+	local velocity = root.AssemblyLinearVelocity or Vector3.zero
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	local moveDirection = humanoid.MoveDirection and humanoid.MoveDirection.Magnitude or 0
+	local state = humanoid:GetState()
+
+	if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+		Teleport.LastJumpAt = now
+	end
+
+	if moveDirection > 0.05 or horizontalVelocity > 3 then
+		Teleport.WalkStartedAt = Teleport.WalkStartedAt or now
+
+		if now - Teleport.WalkStartedAt >= (Teleport.StabilityWait or 4) then
+			Teleport.LastLongWalkAt = now
+		end
+	else
+		Teleport.WalkStartedAt = nil
+	end
+
+	if Teleport.IsLocalRagdolled(character, humanoid) then
+		Teleport.LastRagdolledAt = now
+	end
+end
+
+function Teleport.StartStabilityWatcher()
+	if Teleport.StabilityConnection then
+		return
+	end
+
+	Teleport.StabilityConnection = RunService.Heartbeat:Connect(function()
+		Teleport.UpdateLocalStability()
+	end)
+end
+
+function Teleport.StopStabilityWatcher()
+	if Teleport.StabilityConnection then
+		Teleport.StabilityConnection:Disconnect()
+		Teleport.StabilityConnection = nil
+	end
+end
+
+function Teleport.CanPassStabilityGate()
+	local now = os.clock()
+	local waitTime = Teleport.StabilityWait or 4
+	local jumpLeft = waitTime - (now - (Teleport.LastJumpAt or 0))
+
+	if jumpLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after jumping before teleporting.", jumpLeft)
+		return false
+	end
+
+	local longWalkLeft = waitTime - (now - (Teleport.LastLongWalkAt or 0))
+
+	if longWalkLeft > 0 then
+		Teleport.ShowStabilityWarning("Stop walking before teleporting.", longWalkLeft)
+		return false
+	end
+
+	local ragdollLeft = waitTime - (now - (Teleport.LastRagdolledAt or now))
+
+	if ragdollLeft > 0 then
+		Teleport.ShowStabilityWarning("Recover from ragdoll before teleporting.", ragdollLeft)
+		return false
+	end
+
+	local busLandingLeft = waitTime - (now - (Teleport.LastBusLandingAt or 0))
+
+	if busLandingLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after landing from the bus.", busLandingLeft)
+		return false
+	end
+
+	return true
+end
+
+function Teleport.CanTeleport(debounceOverride, ignoreStability)
+	if not ignoreStability and not Teleport.CanPassStabilityGate() then
+		return false
+	end
+
 	if Teleport.IsLocked() then
 		Teleport.ShowWarning(tostring(Teleport.GetCooldownLeft()))
 		return false
@@ -2536,6 +2856,8 @@ function Teleport.CanTeleport(debounceOverride)
 	return true
 end
 
+Teleport.StartStabilityWatcher()
+
 function Teleport.AddStrike()
 	Teleport.LastClickAt = os.clock()
 	Teleport.Strikes += 1
@@ -2552,8 +2874,10 @@ function Teleport.StartFBlock()
 end
 
 function Teleport.StartBusLandingLock(duration)
-	local unlockAt = os.clock() + (duration or 5)
+	local now = os.clock()
+	local unlockAt = now + (duration or Teleport.StabilityWait or 4)
 
+	Teleport.LastBusLandingAt = now
 	Teleport.LockedUntil = math.max(Teleport.LockedUntil, unlockAt)
 	Teleport.BlockFUntil = math.max(Teleport.BlockFUntil, unlockAt)
 	Items.BusLandingFBlockActive = true
@@ -2979,13 +3303,273 @@ function Teleport.ToLocation(locationName, position, forceTeleport)
 	createNotification("Teleport", "Teleported to " .. locationName)
 end
 
+function Teleport.GetBusCandidateFromObject(object)
+	local current = object
+	local candidate = nil
+
+	while current and current ~= workspace do
+		local name = Utility.NormalizeName(current.Name)
+
+		if string.find(name, "bus", 1, true) and (current:IsA("Model") or current:IsA("BasePart")) then
+			candidate = current
+		end
+
+		current = current.Parent
+	end
+
+	return candidate
+end
+
+function Teleport.GetBusParts(candidate)
+	local parts = {}
+
+	if not candidate or not candidate.Parent then
+		return parts
+	end
+
+	if candidate:IsA("BasePart") then
+		table.insert(parts, candidate)
+		return parts
+	end
+
+	for _, object in ipairs(candidate:GetDescendants()) do
+		if object:IsA("BasePart") then
+			table.insert(parts, object)
+		end
+	end
+
+	return parts
+end
+
+function Teleport.IsSchoolHouseBusCandidate(candidate)
+	local position = getObjectWorldPosition(candidate)
+
+	return position and (position - SCHOOL_BUS_CLEANUP_POSITION).Magnitude <= SCHOOL_BUS_CLEANUP_RADIUS
+end
+
+function Teleport.FindSchoolBusTopTarget()
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local seen = {}
+	local bestCandidate = nil
+	local bestParts = nil
+	local bestDistance = math.huge
+
+	for _, object in ipairs(workspace:GetDescendants()) do
+		local candidate = Teleport.GetBusCandidateFromObject(object)
+
+		if candidate and candidate.Parent and not seen[candidate] and not Teleport.IsSchoolHouseBusCandidate(candidate) then
+			seen[candidate] = true
+
+			local parts = Teleport.GetBusParts(candidate)
+			local position = getObjectWorldPosition(candidate)
+
+			if #parts > 0 and position then
+				local distance = root and (root.Position - position).Magnitude or 0
+
+				if distance < bestDistance then
+					bestDistance = distance
+					bestCandidate = candidate
+					bestParts = parts
+				end
+			end
+		end
+	end
+
+	return bestCandidate, bestParts
+end
+
+function Teleport.MakeBusCollidable(parts)
+	for _, part in ipairs(parts or {}) do
+		if part and part.Parent then
+			pcall(function()
+				part.CanCollide = true
+				part.CustomPhysicalProperties = PhysicalProperties.new(0.7, 1, 0, 100, 0)
+			end)
+		end
+	end
+end
+
+function Teleport.ClearBusTopRidePlatform()
+	if Teleport.BusTopRideConnection then
+		Teleport.BusTopRideConnection:Disconnect()
+		Teleport.BusTopRideConnection = nil
+	end
+
+	if Teleport.BusTopRidePlatform and Teleport.BusTopRidePlatform.Parent then
+		Teleport.BusTopRidePlatform:Destroy()
+	end
+
+	Teleport.BusTopRidePlatform = nil
+	Teleport.BusTopRideLastCFrame = nil
+end
+
+function Teleport.GetBusTopCFrame(candidate, parts)
+	local topPart = nil
+	local topY = -math.huge
+
+	for _, part in ipairs(parts or {}) do
+		if part and part.Parent then
+			local partTopY = part.Position.Y + (part.Size.Y * 0.5)
+
+			if partTopY > topY then
+				topY = partTopY
+				topPart = part
+			end
+		end
+	end
+
+	if not topPart then
+		return nil
+	end
+
+	local targetPosition = topPart.Position + Vector3.new(0, (topPart.Size.Y * 0.5) + 5, 0)
+	local platformPosition = Vector3.new(topPart.Position.X, topY + 0.15, topPart.Position.Z)
+
+	if candidate and candidate:IsA("Model") then
+		local ok, boxCFrame, boxSize = pcall(function()
+			return candidate:GetBoundingBox()
+		end)
+
+		if ok and boxCFrame and boxSize then
+			targetPosition = Vector3.new(boxCFrame.Position.X, boxCFrame.Position.Y + (boxSize.Y * 0.5) + 5, boxCFrame.Position.Z)
+			platformPosition = Vector3.new(boxCFrame.Position.X, boxCFrame.Position.Y + (boxSize.Y * 0.5) + 0.15, boxCFrame.Position.Z)
+		end
+	end
+
+	return CFrame.new(targetPosition), CFrame.new(platformPosition), topPart
+end
+
+function Teleport.IsRootOnBusTopRide(root, platformCFrame)
+	if not root or not platformCFrame then
+		return false
+	end
+
+	local localPosition = platformCFrame:PointToObjectSpace(root.Position)
+
+	return math.abs(localPosition.X) <= 18
+		and math.abs(localPosition.Z) <= 18
+		and localPosition.Y >= -4
+		and localPosition.Y <= 12
+end
+
+function Teleport.CreateBusTopRidePlatform(candidate, parts, platformCFrame, topPart)
+	Teleport.ClearBusTopRidePlatform()
+
+	if not platformCFrame then
+		return
+	end
+
+	local platform = Instance.new("Part")
+	platform.Name = "Part"
+	platform.Size = Vector3.new(18, 0.3, 18)
+	platform.CFrame = platformCFrame
+	platform.Anchored = topPart == nil
+	platform.Massless = true
+	platform.CanCollide = true
+	platform.CanTouch = false
+	platform.CanQuery = false
+	platform.Transparency = 1
+	platform.Material = Enum.Material.SmoothPlastic
+	platform.CustomPhysicalProperties = PhysicalProperties.new(0.7, 1, 0, 100, 0)
+	platform.Parent = workspace
+
+	if topPart and topPart.Parent then
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = platform
+		weld.Part1 = topPart
+		weld.Parent = platform
+	end
+
+	Teleport.BusTopRidePlatform = platform
+	Teleport.BusTopRideLastCFrame = platformCFrame
+	Teleport.BusTopRideConnection = RunService.Heartbeat:Connect(function(dt)
+		if not platform.Parent or not candidate or not candidate.Parent or (topPart and not topPart.Parent) then
+			Teleport.ClearBusTopRidePlatform()
+			return
+		end
+
+		local _, nextPlatformCFrame = Teleport.GetBusTopCFrame(candidate, parts)
+
+		if nextPlatformCFrame then
+			local lastCFrame = Teleport.BusTopRideLastCFrame or platform.CFrame
+			local delta = nextPlatformCFrame.Position - lastCFrame.Position
+			local horizontalDelta = Vector3.new(delta.X, 0, delta.Z)
+
+			if platform.Anchored then
+				platform.CFrame = nextPlatformCFrame
+			end
+
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+
+			if root and Teleport.IsRootOnBusTopRide(root, lastCFrame) and horizontalDelta.Magnitude > 0.001 and horizontalDelta.Magnitude < 80 then
+				root.CFrame = root.CFrame + horizontalDelta
+
+				local velocity = root.AssemblyLinearVelocity
+				local followDt = math.max(dt or 0, 1 / 240)
+				root.AssemblyLinearVelocity = Vector3.new(horizontalDelta.X / followDt, velocity.Y, horizontalDelta.Z / followDt)
+			end
+
+			Teleport.BusTopRideLastCFrame = nextPlatformCFrame
+		end
+	end)
+end
+
+function Teleport.ToSchoolBusTop()
+	if not Teleport.CanTeleport() then
+		return
+	end
+
+	local character = player.Character or player.CharacterAdded:Wait()
+	local root = character:WaitForChild("HumanoidRootPart", 5)
+
+	if not root then
+		createNotification("School Bus", "Could not find your character.", "Error")
+		return
+	end
+
+	local bus, parts = Teleport.FindSchoolBusTopTarget()
+	local targetCFrame, platformCFrame, topPart = Teleport.GetBusTopCFrame(bus, parts)
+
+	if not bus or not targetCFrame then
+		createNotification("School Bus", "Could not find a bus outside the schoolhouse area.", "Warning")
+		return
+	end
+
+	Teleport.MakeBusCollidable(parts)
+	Teleport.CreateBusTopRidePlatform(bus, parts, platformCFrame, topPart)
+	if UI then
+		UI.SkipNextBusLandingLockUntil = os.clock() + 3
+		UI.BusLandingWasInBus = false
+	end
+	Teleport.MoveRoot(root, targetCFrame)
+	Teleport.AddStrike()
+	Teleport.StartFBlock()
+	createNotification("School Bus", "Teleported on top of the bus.", "Success")
+end
+
 Items.SearchCache = {}
 Items.SearchCacheBusy = false
 Items.LastSearchCacheAt = 0
 Items.SearchCacheCooldown = 0.35
 
 function Items.GetSearchRoot()
-	return workspace:FindFirstChild(Items.SearchRootName)
+	local exactRoot = workspace:FindFirstChild(Items.SearchRootName)
+
+	if exactRoot then
+		return exactRoot
+	end
+
+	local wantedName = string.lower(Items.SearchRootName)
+
+	for _, child in ipairs(workspace:GetChildren()) do
+		if string.lower(child.Name) == wantedName then
+			return child
+		end
+	end
+
+	return nil
 end
 
 function Items.RebuildSearchCache()
@@ -2996,7 +3580,14 @@ function Items.RebuildSearchCache()
 	Items.SearchCacheBusy = true
 
 	task.spawn(function()
-		local root = Items.GetSearchRoot() or workspace
+		local root = Items.GetSearchRoot()
+		if not root then
+			Items.SearchCache = {}
+			Items.LastSearchCacheAt = os.clock()
+			Items.SearchCacheBusy = false
+			return
+		end
+
 		local queue = root:GetChildren()
 		local results = {}
 		local scanned = 0
@@ -3352,9 +3943,18 @@ UI.AutoEarlyBusJumpEnabled = false
 UI.AutoEarlyBusJumpThread = nil
 UI.AutoEarlyBusJumpFiredInBus = false
 UI.LastAutoEarlyBusJumpAt = 0
+UI.LastJumpBusSeenAt = 0
+UI.JumpBusSearchActive = false
+UI.JumpBusExitSent = false
+UI.JumpBusTrackedObject = nil
+UI.LastSlapRoyaleTimerNumber = nil
+UI.LastSlapRoyaleTimerZeroAt = -math.huge
+UI.JumpBusSearchStartedAt = 0
+UI.JumpBusTimerSeen = false
 UI.BusLandingWatcherStarted = false
 UI.BusLandingWasInBus = false
 UI.LastBusLandingLockAt = 0
+UI.SkipNextBusLandingLockUntil = 0
 UI.AutoRejoinEnabled = false
 UI.AutoRejoinConnections = {}
 UI.AutoRejoinBusy = false
@@ -3373,11 +3973,14 @@ function UI.FireRemoteAction(label, remoteName, ...)
 
 		if ok then
 			createNotification(label, remoteName .. " request sent.", "Success")
+			return true
 		else
 			createNotification(label, "Failed: " .. tostring(err), "Error")
+			return false
 		end
 	else
 		createNotification(label, remoteName .. " remote not found.", "Error")
+		return false
 	end
 end
 
@@ -3395,22 +3998,110 @@ function UI.RequestEarlyBusPriorityTeleport(delaySeconds, forceRestart)
 end
 
 function UI.FireEarlyBusJump()
-	UI.FireRemoteAction("Early Bus Jump", "BusJumping", true)
-	UI.RequestEarlyBusPriorityTeleport()
+	local success = UI.FireRemoteAction("Early Bus Jump", "BusJumping", true)
+
+	if success then
+		UI.JumpBusExitSent = true
+		UI.RequestEarlyBusPriorityTeleport()
+	end
+
+	return success
 end
 
-function UI.GetBusCandidates()
-	if os.clock() - UI.LastBusSearchAt < 0.6 then
+function UI.RefreshJumpBusTimerWindow()
+	local timerNumber = Main.FindSlapRoyaleTimer()
+	local now = os.clock()
+
+	if timerNumber then
+		UI.JumpBusTimerSeen = true
+
+		if timerNumber <= 5 or (UI.LastSlapRoyaleTimerNumber and UI.LastSlapRoyaleTimerNumber > 0 and timerNumber <= 0) then
+			UI.LastSlapRoyaleTimerZeroAt = now
+		end
+
+		UI.LastSlapRoyaleTimerNumber = timerNumber
+	elseif UI.LastSlapRoyaleTimerNumber and UI.LastSlapRoyaleTimerNumber <= 5 then
+		UI.LastSlapRoyaleTimerZeroAt = now
+		UI.LastSlapRoyaleTimerNumber = nil
+	else
+		UI.LastSlapRoyaleTimerNumber = nil
+	end
+end
+
+function UI.IsJumpBusDetectionActive()
+	UI.RefreshJumpBusTimerWindow()
+
+	if UI.JumpBusExitSent then
+		return true
+	end
+
+	if UI.JumpBusSearchActive ~= true then
+		return false
+	end
+
+	local now = os.clock()
+
+	if now - UI.LastSlapRoyaleTimerZeroAt <= 7 then
+		return true
+	end
+
+	return not UI.JumpBusTimerSeen and now - (UI.JumpBusSearchStartedAt or 0) <= 12
+end
+
+function UI.GetBusCandidateRoot(object)
+	local current = object
+	local candidate = nil
+
+	while current and current ~= workspace do
+		local lowerName = string.lower(current.Name)
+
+		if string.find(lowerName, "bus", 1, true) and (current:IsA("Model") or current:IsA("BasePart")) then
+			candidate = current
+		end
+
+		current = current.Parent
+	end
+
+	return candidate
+end
+
+function UI.IsJumpBusCandidate(object)
+	local lowerName = string.lower(object.Name)
+
+	return string.find(lowerName, "bus", 1, true) ~= nil and (object:IsA("Model") or object:IsA("BasePart"))
+end
+
+function UI.GetBusCandidates(rootPosition)
+	if os.clock() - UI.LastBusSearchAt < 0.35 then
 		return UI.BusSearchCache
 	end
 
 	local results = {}
 
-	for _, object in ipairs(workspace:GetDescendants()) do
-		local lowerName = string.lower(object.Name)
-		if string.find(lowerName, "bus", 1, true) then
-			if object:IsA("Model") or object:IsA("BasePart") then
+	if UI.IsJumpBusDetectionActive() and rootPosition then
+		local seen = {}
+
+		for _, object in ipairs(workspace:GetDescendants()) do
+			if UI.IsJumpBusCandidate(object) and not seen[object] then
+				seen[object] = true
 				table.insert(results, object)
+			end
+		end
+
+		if #results == 0 then
+			local ok, nearbyParts = pcall(function()
+				return workspace:GetPartBoundsInBox(CFrame.new(rootPosition), Vector3.new(160, 120, 160))
+			end)
+
+			if ok then
+				for _, part in ipairs(nearbyParts) do
+					local candidate = UI.GetBusCandidateRoot(part)
+
+					if candidate and not seen[candidate] then
+						seen[candidate] = true
+						table.insert(results, candidate)
+					end
+				end
 			end
 		end
 	end
@@ -3456,8 +4147,21 @@ function UI.IsLocalPlayerInBus()
 		return false
 	end
 
-	for _, busObject in ipairs(UI.GetBusCandidates()) do
+	if UI.JumpBusTrackedObject and UI.JumpBusTrackedObject.Parent then
+		if UI.IsPointNearObjectBounds(root.Position, UI.JumpBusTrackedObject) then
+			UI.LastJumpBusSeenAt = os.clock()
+			return true
+		end
+
+		if UI.JumpBusExitSent then
+			return false
+		end
+	end
+
+	for _, busObject in ipairs(UI.GetBusCandidates(root.Position)) do
 		if busObject.Parent and UI.IsPointNearObjectBounds(root.Position, busObject) then
+			UI.LastJumpBusSeenAt = os.clock()
+			UI.JumpBusTrackedObject = busObject
 			return true
 		end
 	end
@@ -3542,15 +4246,26 @@ function UI.RunAutoEarlyBusJump()
 		return
 	end
 
+	UI.JumpBusSearchActive = true
+	UI.JumpBusExitSent = false
+	UI.JumpBusTrackedObject = nil
+	UI.JumpBusSearchStartedAt = os.clock()
+	UI.JumpBusTimerSeen = false
+	UI.LastSlapRoyaleTimerNumber = nil
+	UI.LastSlapRoyaleTimerZeroAt = -math.huge
+	UI.BusSearchCache = {}
+	UI.LastBusSearchAt = 0
+
 	UI.AutoEarlyBusJumpThread = task.spawn(function()
 		while UI.AutoEarlyBusJumpEnabled do
 			local inBus = UI.IsLocalPlayerInBus()
 
 			if inBus and not UI.AutoEarlyBusJumpFiredInBus and os.clock() - UI.LastAutoEarlyBusJumpAt >= 1 then
-				UI.AutoEarlyBusJumpFiredInBus = true
-				UI.LastAutoEarlyBusJumpAt = os.clock()
-				UI.FireEarlyBusJump()
-			elseif not inBus then
+				if UI.FireEarlyBusJump() then
+					UI.AutoEarlyBusJumpFiredInBus = true
+					UI.LastAutoEarlyBusJumpAt = os.clock()
+				end
+			elseif not inBus and not UI.JumpBusExitSent then
 				UI.AutoEarlyBusJumpFiredInBus = false
 			end
 
@@ -3559,6 +4274,8 @@ function UI.RunAutoEarlyBusJump()
 
 		UI.AutoEarlyBusJumpThread = nil
 		UI.AutoEarlyBusJumpFiredInBus = false
+		UI.JumpBusSearchActive = false
+		UI.JumpBusTimerSeen = false
 	end)
 end
 
@@ -3573,23 +4290,31 @@ function UI.StartBusLandingWatcher()
 		while gui.Parent do
 			local inBus = UI.IsLocalPlayerInBus()
 			local now = os.clock()
+			local skipBusLandingLock = now < (UI.SkipNextBusLandingLockUntil or 0)
 
-			if UI.BusLandingWasInBus and not inBus then
+			if UI.BusLandingWasInBus and not inBus and not skipBusLandingLock then
 				local earlyJumpedRecently = UI.LastAutoEarlyBusJumpAt > 0 and now - UI.LastAutoEarlyBusJumpAt <= 2
 
 				if UI.AutoEarlyBusJumpEnabled or earlyJumpedRecently then
+					UI.JumpBusSearchActive = false
+					UI.JumpBusExitSent = false
+					UI.JumpBusTrackedObject = nil
+					UI.AutoEarlyBusJumpFiredInBus = false
+					UI.JumpBusTimerSeen = false
+					UI.BusSearchCache = {}
+					UI.LastBusSearchAt = 0
 					UI.LastAutoEarlyBusJumpAt = now
 					UI.RequestEarlyBusPriorityTeleport(nil, true)
 				end
 
-				if not earlyJumpedRecently and now - UI.LastBusLandingLockAt >= 5 then
-					UI.LastBusLandingLockAt = now
-					Teleport.StartBusLandingLock(5)
-					Notify.Show("Bus Landing", "Teleports and pickup are locked for 5 seconds.", "Warning", nil, 2.2, true)
+			if not earlyJumpedRecently and now - UI.LastBusLandingLockAt >= 4 then
+				UI.LastBusLandingLockAt = now
+				Teleport.StartBusLandingLock(4)
+				Notify.Show("Bus Landing", "Teleports and pickup are locked for 4 seconds.", "Warning", nil, 2.2, true)
 				end
 			end
 
-			UI.BusLandingWasInBus = inBus
+			UI.BusLandingWasInBus = skipBusLandingLock and false or inBus
 			task.wait(0.15)
 		end
 	end)
@@ -3601,9 +4326,26 @@ function UI.SetAutoEarlyBusJump(state)
 	UI.AutoEarlyBusJumpEnabled = state == true
 
 	if UI.AutoEarlyBusJumpEnabled then
+		UI.JumpBusSearchActive = true
+		UI.JumpBusExitSent = false
+		UI.JumpBusTrackedObject = nil
+		UI.AutoEarlyBusJumpFiredInBus = false
+		UI.JumpBusSearchStartedAt = os.clock()
+		UI.JumpBusTimerSeen = false
+		UI.LastSlapRoyaleTimerNumber = nil
+		UI.LastSlapRoyaleTimerZeroAt = -math.huge
+		UI.BusSearchCache = {}
+		UI.LastBusSearchAt = 0
 		UI.RunAutoEarlyBusJump()
 		createNotification("Early Bus Jump", "Auto bus jump enabled.", "Success")
 	else
+		UI.JumpBusSearchActive = false
+		UI.JumpBusExitSent = false
+		UI.JumpBusTrackedObject = nil
+		UI.AutoEarlyBusJumpFiredInBus = false
+		UI.JumpBusTimerSeen = false
+		UI.BusSearchCache = {}
+		UI.LastBusSearchAt = 0
 		createNotification("Early Bus Jump", "Auto bus jump disabled.")
 	end
 end
@@ -3650,6 +4392,10 @@ do
 			updateTeleportCanvas,
 			"Moves you to a selected map location."
 		)
+
+		createSmallButton(dropdown, "Teleport On School Bus", function()
+			Teleport.ToSchoolBusTop()
+		end)
 
 		for _, location in ipairs(Teleport.Locations) do
 			createSmallButton(dropdown, location.Name, function()
@@ -4446,7 +5192,7 @@ function Items.RunEarlyAutoCollect()
 			continue
 		end
 
-		if not Teleport.CanTeleport(0.5) then
+		if not Teleport.CanTeleport(0.5, true) then
 			task.wait(0.05)
 			continue
 		end
@@ -5301,31 +6047,26 @@ ItemESP.ColorLookup = {
 	[normalizeName("Tomahawk")] = ItemESP.Colors.Danger
 }
 
+ItemESP.KnownNameLookup = {}
+
+for _, itemName in ipairs(itemNames) do
+	ItemESP.KnownNameLookup[normalizeName(itemName)] = itemName
+end
+
 function ItemESP.GetColor(itemName)
 	return ItemESP.ColorLookup[normalizeName(itemName)] or ItemESP.Colors.Default
 end
 
 function ItemESP.GetKnownName(object)
-	local normalized = normalizeName(getItemDisplayName(object))
-
-	for _, itemName in ipairs(itemNames) do
-		if normalized == normalizeName(itemName) then
-			return itemName
-		end
-	end
-
-	return nil
+	return ItemESP.KnownNameLookup[normalizeName(getItemDisplayName(object))]
 end
 
 function ItemESP.GetSearchPool()
-	local taggedItems = CollectionService:GetTagged(COLLECTIBLE_TAG)
-
-	if #taggedItems > 0 then
-		return taggedItems
+	if Items.GetSearchRoot and Items.GetSearchRoot() then
+		return Items.GetSearchDescendants()
 	end
 
-	local root = Items.GetSearchRoot and Items.GetSearchRoot() or workspace
-	return root:GetDescendants()
+	return CollectionService:GetTagged(COLLECTIBLE_TAG)
 end
 
 function ItemESP.ClearObject(object)
@@ -8018,8 +8759,8 @@ local itemEspToggle = createToggleButton(itemsList, "Item ESP", false, function(
 end)
 
 local Anti = {
-	Folder = nil,
 	StaffEnabled = false,
+	HideUnderMapEnabled = false,
 	StaffConnections = {},
 	StaffKeywords = {
 		"record", "recording", "rec", "clip", "proof", "evidence", "caught", "exposed",
@@ -8031,54 +8772,98 @@ local Anti = {
 	}
 }
 
-function Anti.ClearParts()
-	if Anti.Folder and Anti.Folder.Parent then
-		Anti.Folder:Destroy()
+function Anti.IsHazardName(text)
+	local lowerName = string.lower(tostring(text or ""))
+	local hazardWords = {
+		"acid",
+		"lava",
+		"kill",
+		"damage",
+		"death",
+		"deadly",
+		"hazard",
+		"hurt",
+		"burn",
+		"fire",
+		"void",
+		"toxic"
+	}
+
+	for _, word in ipairs(hazardWords) do
+		if string.find(lowerName, word, 1, true) then
+			return true
+		end
 	end
 
-	Anti.Folder = nil
+	return false
 end
 
-function Anti.CreatePart(position, size)
-	if not Anti.Folder then
-		return
+function Anti.HasHazardAssetId(object)
+	local targetAssetId = "113506713"
+
+	local function matchesAssetId(value)
+		return string.find(tostring(value or ""), targetAssetId, 1, true) ~= nil
 	end
 
-	local platform = Instance.new("Part")
-	platform.Name = "Part"
-	platform.Size = size
-	platform.Position = position
-	platform.Anchored = true
-	platform.CanCollide = true
-	platform.Transparency = 1
-	platform.Color = Color3.fromRGB(0, 170, 255)
-	platform.Material = Enum.Material.SmoothPlastic
-	platform.Parent = Anti.Folder
+	if object:IsA("MeshPart") and (matchesAssetId(object.MeshId) or matchesAssetId(object.TextureID)) then
+		return true
+	end
 
-	return platform
+	for _, descendant in ipairs(object:GetDescendants()) do
+		if descendant:IsA("SpecialMesh") and (matchesAssetId(descendant.MeshId) or matchesAssetId(descendant.TextureId)) then
+			return true
+		end
+
+		if descendant:IsA("Decal") and matchesAssetId(descendant.Texture) then
+			return true
+		end
+
+		if descendant:IsA("Texture") and matchesAssetId(descendant.Texture) then
+			return true
+		end
+	end
+
+	return false
+end
+
+function Anti.IsHazardPart(object)
+	if not object or not object:IsA("BasePart") then
+		return false
+	end
+
+	if Anti.HasHazardAssetId(object) then
+		return true
+	end
+
+	local current = object
+
+	while current and current ~= workspace do
+		if Anti.IsHazardName(current.Name) then
+			return true
+		end
+
+		current = current.Parent
+	end
+
+	return false
 end
 
 function Anti.EnableAcidLava()
-	Anti.ClearParts()
+	local removed = {}
+	local removedCount = 0
 
-	Anti.Folder = Instance.new("Folder")
-	Anti.Folder.Name = "AntiAcidLavaParts"
-	Anti.Folder.Parent = workspace
+	for _, object in ipairs(workspace:GetDescendants()) do
+		if Anti.IsHazardPart(object) and object.Parent and not removed[object] then
+			removed[object] = true
+			removedCount += 1
 
-	Anti.CreatePart(
-		Vector3.new(-74.52057647705078, 13, -727.3116455078125),
-		Vector3.new(150, 2, 150)
-	)
+			pcall(function()
+				object:Destroy()
+			end)
+		end
+	end
 
-	Anti.CreatePart(
-		Vector3.new(-255.963623046875, -33.78499221801758, 407.39410400390625),
-		Vector3.new(300, 5, 300)
-	)
-
-	Anti.CreatePart(
-		Vector3.new(-591.77001953125, -47.32532501220703, -205.88002014160156),
-		Vector3.new(300, 5, 300)
-	)
+	return removedCount
 end
 
 function Anti.ClearStaffConnections()
@@ -8146,31 +8931,97 @@ function Anti.SetStaffEnabled(state)
 	end
 end
 
+function Anti.GetLocalRoot()
+	local character = player.Character or player.CharacterAdded:Wait()
+	return character and character:WaitForChild("HumanoidRootPart", 5)
+end
+
+function Anti.GetGroundReturnCFrame(root)
+	local platform = UnderMapSafetyPlatform
+	local character = player.Character
+	local returnX = root.Position.X
+	local returnZ = root.Position.Z
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local excludeInstances = {}
+
+	if character then
+		table.insert(excludeInstances, character)
+	end
+
+	if platform then
+		table.insert(excludeInstances, platform)
+	end
+
+	params.FilterDescendantsInstances = excludeInstances
+
+	local origin = Vector3.new(returnX, 320, returnZ)
+	local result = workspace:Raycast(origin, Vector3.new(0, -520, 0), params)
+
+	if result and result.Position.Y > -80 and result.Position.Y < 260 then
+		return CFrame.new(returnX, result.Position.Y + UNDER_MAP_SAFE_OFFSET, returnZ)
+	end
+
+	return CFrame.new(returnX, 30 + UNDER_MAP_SAFE_OFFSET, returnZ)
+end
+
+function Anti.SetHideUnderMap(state)
+	local root = Anti.GetLocalRoot()
+
+	if not root then
+		createNotification("Hide under map", "Could not find your character.", "Error")
+		return
+	end
+
+	local targetCFrame = nil
+	local clearPlatformAfterMove = false
+
+	if state then
+		local platform = ensureUnderMapSafetyPlatform()
+
+		Anti.HideUnderMapEnabled = true
+		targetCFrame = CFrame.new(root.Position.X, platform.Position.Y + (platform.Size.Y * 0.5) + UNDER_MAP_SAFE_OFFSET, root.Position.Z)
+		createNotification("Hide under map", "Moved under the map.", "Success")
+	else
+		Anti.HideUnderMapEnabled = false
+		targetCFrame = Anti.GetGroundReturnCFrame(root)
+		clearPlatformAfterMove = true
+		createNotification("Hide under map", "Moved back above ground.", "Info")
+	end
+
+	Teleport.MoveRoot(root, targetCFrame)
+
+	if clearPlatformAfterMove then
+		clearUnderMapSafetyPlatform()
+	end
+end
+
 local antiAcidLavaToggle
 local antiStaffToggle
 local antiRagdollToggle
+local hideUnderMapToggle
 
-do
-	local dropdown = createDropdown(safetyList, "World Safety", updateSafetyCanvas)
+antiAcidLavaToggle = createToggleButton(safetyList, "Anti-Acid & Lava", false, function(state)
+	if state then
+		local removedCount = Anti.EnableAcidLava()
+		createNotification("Anti-Acid", "Removed " .. tostring(removedCount or 0) .. " hazard objects.", "Success")
+	else
+		createNotification("Anti-Acid", "Anti-Acid & Lava disabled.")
+	end
+end)
 
-	antiAcidLavaToggle = createToggleButton(dropdown, "Anti-Acid & Lava", false, function(state)
-		if state then
-			Anti.EnableAcidLava()
-			createNotification("Anti-Acid", "Anti-Acid & Lava enabled.", "Success")
-		else
-			Anti.ClearParts()
-			createNotification("Anti-Acid", "Anti-Acid & Lava disabled.")
-		end
-	end)
+hideUnderMapToggle = createToggleButton(safetyList, "Hide under map", false, function(state)
+	Anti.SetHideUnderMap(state)
+end)
 
-	antiRagdollToggle = createToggleButton(dropdown, "Anti-Ragdoll", false, function(state)
-		Combat.SetAntiSlap(state)
-	end)
+antiRagdollToggle = createToggleButton(safetyList, "Anti-Ragdoll", false, function(state)
+	Combat.SetAntiSlap(state)
+end)
 
-	antiStaffToggle = createToggleButton(dropdown, "Anti-Staff", false, function(state)
-		Anti.SetStaffEnabled(state)
-	end)
-end
+antiStaffToggle = createToggleButton(safetyList, "Anti-Staff", false, function(state)
+	Anti.SetStaffEnabled(state)
+end)
 
 createToggleButton(mainList, "Toggle recommended settings?", false, function(state)
 	if playerEspToggle then
@@ -8198,7 +9049,7 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on ESP, hitbox, auto tap, teleport hotkeys, and anti-acid/lava.")
+end, "Turns on ESP, hitbox, auto tap, teleport hotkeys, and hazard deletion.")
 
 do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
@@ -8814,9 +9665,20 @@ do
 
 		pcall(function()
 			if Anti then
-				Anti.ClearParts()
+				Anti.HideUnderMapEnabled = false
 				Anti.SetStaffEnabled(false)
 			end
+		end)
+
+		pcall(function()
+			if Teleport then
+				Teleport.ClearBusTopRidePlatform()
+				Teleport.StopStabilityWatcher()
+			end
+		end)
+
+		pcall(function()
+			clearUnderMapSafetyPlatform()
 		end)
 
 		pcall(function()
@@ -8831,13 +9693,19 @@ do
 			gui:Destroy()
 		end
 
-		if sharedEnvironment and sharedEnvironment.OPSlapRoyaleCleanup == cleanupRuntime then
-			sharedEnvironment.OPSlapRoyaleCleanup = nil
+		if sharedEnvironment then
+			pcall(function()
+				if sharedEnvironment.OPSlapRoyaleCleanup == cleanupRuntime then
+					sharedEnvironment.OPSlapRoyaleCleanup = nil
+				end
+			end)
 		end
 	end
 
 	if sharedEnvironment then
-		sharedEnvironment.OPSlapRoyaleCleanup = cleanupRuntime
+		pcall(function()
+			sharedEnvironment.OPSlapRoyaleCleanup = cleanupRuntime
+		end)
 	end
 end
 
