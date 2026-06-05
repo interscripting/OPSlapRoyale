@@ -2360,7 +2360,7 @@ Main.CodeSearchRadius = 180
 
 Teleport.MaxStrikes = 4
 Teleport.Cooldown = 2
-Teleport.Debounce = 0.5
+Teleport.Debounce = 0.7
 Teleport.PostFLock = 0.3
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
@@ -5031,7 +5031,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
 				Teleport.PostFLock = 0.3
-				Items.TeleportDebounce = 0.5
+				Items.TeleportDebounce = 0.7
 				createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 			end
 		else
@@ -5160,7 +5160,7 @@ function Items.RunEarlyAutoCollect()
 	Teleport.MaxStrikes = 5
 	Teleport.Cooldown = 2
 	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
+	Items.TeleportDebounce = 0.7
 	createNotification("Early Auto Collect", "Timer hit 3. Starting priority collection.", "Success")
 
 	while Items.EarlyAutoCollectEnabled do
@@ -5257,10 +5257,10 @@ function Items.SetEarlyAutoCollect(state)
 		Items.EarlyAutoCollectConfirmAt = 0
 		Items.EarlyAutoCollectConfirmCount = 0
 		visitedCollectPositions = {}
-		Teleport.MaxStrikes = 5
+		Teleport.MaxStrikes = 4
 		Teleport.Cooldown = 2
 		Teleport.PostFLock = 0.3
-		Items.TeleportDebounce = 0.5
+		Items.TeleportDebounce = 0.7
 		createNotification("Early Auto Collect", "Waiting for countdown to end.", "Info")
 
 		if not Items.EarlyAutoCollectThread then
