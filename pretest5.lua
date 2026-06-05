@@ -409,7 +409,7 @@ UI.Icons = {
 ["Visualize Hitboxes"] = "✨",
 ["Player TP Buttons"] = "📍",
 ["Increase Glove Size"] = "🧤",
-	["Auto Glove Tap"] = "👊",
+["Auto Glove Tap"] = "👊",
 	["Glove TP Slap"] = "🎯",
 	["Collect Crates"] = "📦",
 	["Anti-Ragdoll"] = "🧱",
@@ -2369,6 +2369,13 @@ Teleport.BlockFUntil = 0
 Teleport.BusTopRidePlatform = nil
 Teleport.BusTopRideConnection = nil
 Teleport.BusTopRideLastCFrame = nil
+Teleport.StabilityWait = 4
+Teleport.LastJumpAt = 0
+Teleport.WalkStartedAt = nil
+Teleport.LastLongWalkAt = 0
+Teleport.LastRagdolledAt = 0
+Teleport.LastBusLandingAt = 0
+Teleport.StabilityConnection = nil
 
 Items.SearchRootName = "Items"
 Items.SearchText = ""
@@ -2379,14 +2386,6 @@ Items.EarlyAutoCollectToggle = nil
 Items.EarlyAutoCollectAutoStarted = false
 Items.EarlyAutoCollectNotInLobby = false
 Items.EarlyAutoCollectPauseUntil = 0
-Items.EarlyAutoCollectEstimatedFps = 60
-Items.EarlyAutoCollectFpsSamples = {}
-Items.EarlyAutoCollectFpsSampleLimit = 20
-Items.EarlyAutoCollectPickupSpamActive = false
-Items.EarlyAutoCollectPickupSpamThread = nil
-Items.EarlyAutoCollectCurrentItemObject = nil
-Items.EarlyAutoCollectCurrentItemPart = nil
-Items.EarlyAutoCollectCurrentItemName = nil
 Items.EarlyBusPriorityTeleportBusy = false
 Items.EarlyBusPriorityTeleportToken = 0
 Items.LastEarlyBusPriorityTeleportAt = 0
@@ -2693,7 +2692,152 @@ function Teleport.ShowWarning(secondsText)
 	)
 end
 
-function Teleport.CanTeleport(debounceOverride)
+function Teleport.ShowStabilityWarning(reason, secondsLeft)
+	Notify.Show(
+		"Teleport",
+		reason .. " Wait " .. tostring(math.max(1, math.ceil(secondsLeft))) .. " seconds.",
+		"Warning",
+		nil,
+		2.2,
+		true
+	)
+end
+
+function Teleport.IsLocalRagdolled(character, humanoid)
+	if not character or not humanoid then
+		return false
+	end
+
+	local ragdollStatuses = {
+		"Ragdoll",
+		"Ragdolled",
+		"IsRagdolled",
+		"Knocked",
+		"KnockedDown",
+		"Downed"
+	}
+
+	for _, statusName in ipairs(ragdollStatuses) do
+		local characterAttribute = character:GetAttribute(statusName)
+		local humanoidAttribute = humanoid:GetAttribute(statusName)
+
+		if characterAttribute == true or humanoidAttribute == true then
+			return true
+		end
+
+		local statusObject = character:FindFirstChild(statusName, true) or humanoid:FindFirstChild(statusName, true)
+
+		if statusObject then
+			if statusObject:IsA("BoolValue") then
+				if statusObject.Value == true then
+					return true
+				end
+			else
+				return true
+			end
+		end
+	end
+
+	local state = humanoid:GetState()
+
+	return humanoid.PlatformStand
+		or state == Enum.HumanoidStateType.Ragdoll
+		or state == Enum.HumanoidStateType.Physics
+		or state == Enum.HumanoidStateType.FallingDown
+end
+
+function Teleport.UpdateLocalStability()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local now = os.clock()
+
+	if not humanoid or not root or humanoid.Health <= 0 then
+		Teleport.LastRagdolledAt = now
+		Teleport.WalkStartedAt = nil
+		return
+	end
+
+	local velocity = root.AssemblyLinearVelocity or Vector3.zero
+	local horizontalVelocity = Vector3.new(velocity.X, 0, velocity.Z).Magnitude
+	local moveDirection = humanoid.MoveDirection and humanoid.MoveDirection.Magnitude or 0
+	local state = humanoid:GetState()
+
+	if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+		Teleport.LastJumpAt = now
+	end
+
+	if moveDirection > 0.05 or horizontalVelocity > 3 then
+		Teleport.WalkStartedAt = Teleport.WalkStartedAt or now
+
+		if now - Teleport.WalkStartedAt >= (Teleport.StabilityWait or 4) then
+			Teleport.LastLongWalkAt = now
+		end
+	else
+		Teleport.WalkStartedAt = nil
+	end
+
+	if Teleport.IsLocalRagdolled(character, humanoid) then
+		Teleport.LastRagdolledAt = now
+	end
+end
+
+function Teleport.StartStabilityWatcher()
+	if Teleport.StabilityConnection then
+		return
+	end
+
+	Teleport.StabilityConnection = RunService.Heartbeat:Connect(function()
+		Teleport.UpdateLocalStability()
+	end)
+end
+
+function Teleport.StopStabilityWatcher()
+	if Teleport.StabilityConnection then
+		Teleport.StabilityConnection:Disconnect()
+		Teleport.StabilityConnection = nil
+	end
+end
+
+function Teleport.CanPassStabilityGate()
+	local now = os.clock()
+	local waitTime = Teleport.StabilityWait or 4
+	local jumpLeft = waitTime - (now - (Teleport.LastJumpAt or 0))
+
+	if jumpLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after jumping before teleporting.", jumpLeft)
+		return false
+	end
+
+	local longWalkLeft = waitTime - (now - (Teleport.LastLongWalkAt or 0))
+
+	if longWalkLeft > 0 then
+		Teleport.ShowStabilityWarning("Stop walking before teleporting.", longWalkLeft)
+		return false
+	end
+
+	local ragdollLeft = waitTime - (now - (Teleport.LastRagdolledAt or now))
+
+	if ragdollLeft > 0 then
+		Teleport.ShowStabilityWarning("Recover from ragdoll before teleporting.", ragdollLeft)
+		return false
+	end
+
+	local busLandingLeft = waitTime - (now - (Teleport.LastBusLandingAt or 0))
+
+	if busLandingLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after landing from the bus.", busLandingLeft)
+		return false
+	end
+
+	return true
+end
+
+function Teleport.CanTeleport(debounceOverride, ignoreStability)
+	if not ignoreStability and not Teleport.CanPassStabilityGate() then
+		return false
+	end
+
 	if Teleport.IsLocked() then
 		Teleport.ShowWarning(tostring(Teleport.GetCooldownLeft()))
 		return false
@@ -2712,6 +2856,8 @@ function Teleport.CanTeleport(debounceOverride)
 	return true
 end
 
+Teleport.StartStabilityWatcher()
+
 function Teleport.AddStrike()
 	Teleport.LastClickAt = os.clock()
 	Teleport.Strikes += 1
@@ -2725,6 +2871,23 @@ end
 function Teleport.StartFBlock()
 	Teleport.BlockFUntil = os.clock() + Teleport.PostFLock
 	Teleport.RefreshPickupLock()
+end
+
+function Teleport.StartBusLandingLock(duration)
+	local now = os.clock()
+	local unlockAt = now + (duration or Teleport.StabilityWait or 4)
+
+	Teleport.LastBusLandingAt = now
+	Teleport.LockedUntil = math.max(Teleport.LockedUntil, unlockAt)
+	Teleport.BlockFUntil = math.max(Teleport.BlockFUntil, unlockAt)
+	Items.BusLandingFBlockActive = true
+	Teleport.RefreshPickupLock()
+
+	task.delay(math.max(0.05, unlockAt - os.clock()), function()
+		if Teleport.BlockFUntil <= unlockAt + 0.02 then
+			Items.BusLandingFBlockActive = false
+		end
+	end)
 end
 
 function Teleport.RefreshPickupLock()
@@ -2895,64 +3058,8 @@ function Teleport.StabilizeItemView(root, itemPart)
 
 	if camera then
 		local focus = itemPart.Position + Vector3.new(0, 1.2, 0)
-		local look = root.CFrame.LookVector
-		local right = root.CFrame.RightVector
-		local params = RaycastParams.new()
-		params.FilterType = Enum.RaycastFilterType.Exclude
-		params.FilterDescendantsInstances = { character or root, itemPart }
-
-		local function itemVisibleFrom(cameraPosition)
-			local direction = focus - cameraPosition
-
-			if direction.Magnitude <= 0.1 then
-				return true
-			end
-
-			local hit = workspace:Raycast(cameraPosition, direction, params)
-			if hit and hit.Instance and (hit.Position - focus).Magnitude > 2 then
-				return false
-			end
-
-			local viewportPosition, onScreen = camera:WorldToViewportPoint(focus)
-			local viewportSize = camera.ViewportSize
-
-			return onScreen
-				and viewportPosition.Z > 0
-				and viewportPosition.X > viewportSize.X * 0.08
-				and viewportPosition.X < viewportSize.X * 0.92
-				and viewportPosition.Y > viewportSize.Y * 0.08
-				and viewportPosition.Y < viewportSize.Y * 0.92
-		end
-
-		local cameraPositions = {
-			root.Position - look * 10 + Vector3.new(0, 4, 0),
-			root.Position + look * 10 + Vector3.new(0, 4, 0),
-			root.Position + right * 10 + Vector3.new(0, 4, 0),
-			root.Position - right * 10 + Vector3.new(0, 4, 0),
-			root.Position + (look + right).Unit * 11 + Vector3.new(0, 5, 0),
-			root.Position + (look - right).Unit * 11 + Vector3.new(0, 5, 0),
-			root.Position + (-look + right).Unit * 11 + Vector3.new(0, 5, 0),
-			root.Position + (-look - right).Unit * 11 + Vector3.new(0, 5, 0),
-			focus + Vector3.new(0, 13, 0) - look * 5
-		}
-
-		local selectedPosition = nil
-
-		for _, cameraPosition in ipairs(cameraPositions) do
-			camera.CFrame = CFrame.lookAt(cameraPosition, focus)
-			task.wait()
-
-			if itemVisibleFrom(cameraPosition) then
-				selectedPosition = cameraPosition
-				break
-			end
-		end
-
-		if selectedPosition then
-			camera.CFrame = CFrame.lookAt(selectedPosition, focus)
-		else
-			camera.CFrame = CFrame.lookAt(root.Position - look * 12 + Vector3.new(0, 6, 0), focus)
-		end
+		local cameraPosition = root.Position - root.CFrame.LookVector * 10 + Vector3.new(0, 4, 0)
+		camera.CFrame = CFrame.lookAt(cameraPosition, focus)
 
 		if humanoid then
 			camera.CameraSubject = humanoid
@@ -3433,7 +3540,7 @@ function Teleport.ToSchoolBusTop()
 	Teleport.MakeBusCollidable(parts)
 	Teleport.CreateBusTopRidePlatform(bus, parts, platformCFrame, topPart)
 	if UI then
-		UI.SkipNextBusLandingUntil = os.clock() + 3
+		UI.SkipNextBusLandingLockUntil = os.clock() + 3
 		UI.BusLandingWasInBus = false
 	end
 	Teleport.MoveRoot(root, targetCFrame)
@@ -3813,7 +3920,7 @@ ContextActionService:BindActionAtPriority(
 	"BlockFAfterTeleport",
 	function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and os.clock() < Teleport.BlockFUntil then
-			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive then
+			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive and not Items.BusLandingFBlockActive then
 				Teleport.BlockFUntil = 0
 				return Enum.ContextActionResult.Pass
 			end
@@ -3846,7 +3953,8 @@ UI.JumpBusSearchStartedAt = 0
 UI.JumpBusTimerSeen = false
 UI.BusLandingWatcherStarted = false
 UI.BusLandingWasInBus = false
-UI.SkipNextBusLandingUntil = 0
+UI.LastBusLandingLockAt = 0
+UI.SkipNextBusLandingLockUntil = 0
 UI.AutoRejoinEnabled = false
 UI.AutoRejoinConnections = {}
 UI.AutoRejoinBusy = false
@@ -3876,8 +3984,20 @@ function UI.FireRemoteAction(label, remoteName, ...)
 	end
 end
 
-function UI.FireEarlyBusJump()
+function UI.RequestEarlyBusPriorityTeleport(delaySeconds, forceRestart)
+	task.delay(delaySeconds or 0, function()
+		for _ = 1, 30 do
+			if UI.TeleportToEarlyBusPriorityItem then
+				UI.TeleportToEarlyBusPriorityItem(forceRestart)
+				return
+			end
 
+			task.wait(0.2)
+		end
+	end)
+end
+
+function UI.FireEarlyBusJump()
 	local success = UI.FireRemoteAction("Early Bus Jump", "BusJumping", true)
 
 	if success then
@@ -4170,9 +4290,9 @@ function UI.StartBusLandingWatcher()
 		while gui.Parent do
 			local inBus = UI.IsLocalPlayerInBus()
 			local now = os.clock()
-			local skipBusLanding = now < (UI.SkipNextBusLandingUntil or 0)
+			local skipBusLandingLock = now < (UI.SkipNextBusLandingLockUntil or 0)
 
-			if UI.BusLandingWasInBus and not inBus and not skipBusLanding then
+			if UI.BusLandingWasInBus and not inBus and not skipBusLandingLock then
 				local earlyJumpedRecently = UI.LastAutoEarlyBusJumpAt > 0 and now - UI.LastAutoEarlyBusJumpAt <= 2
 
 				if UI.AutoEarlyBusJumpEnabled or earlyJumpedRecently then
@@ -4187,9 +4307,14 @@ function UI.StartBusLandingWatcher()
 					UI.RequestEarlyBusPriorityTeleport(nil, true)
 				end
 
+			if not earlyJumpedRecently and now - UI.LastBusLandingLockAt >= 4 then
+				UI.LastBusLandingLockAt = now
+				Teleport.StartBusLandingLock(4)
+				Notify.Show("Bus Landing", "Teleports and pickup are locked for 4 seconds.", "Warning", nil, 2.2, true)
+				end
 			end
 
-			UI.BusLandingWasInBus = skipBusLanding and false or inBus
+			UI.BusLandingWasInBus = skipBusLandingLock and false or inBus
 			task.wait(0.15)
 		end
 	end)
@@ -4818,7 +4943,6 @@ end
 local pressF
 
 function UI.TeleportToEarlyBusPriorityItem(forceRestart)
-
 	if Items.EarlyBusPriorityTeleportBusy and not forceRestart then
 		return
 	end
@@ -4985,108 +5109,13 @@ function Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, dur
 		while Items.EarlyAutoCollectEnabled and os.clock() < stopAt and isSameItemStillThere(itemObject, itemPart, itemName) do
 			Items.TryPickupPrompt(itemObject, itemPart)
 			pressF()
-			task.wait(Items.GetEarlyAutoCollectDelay(0.08))
+			task.wait(0.08)
 		end
 	end)
-end
-
-function Items.UpdateEarlyAutoCollectFps(dt)
-	if not dt or dt <= 0 then
-		return
-	end
-
-	local fps = math.clamp(1 / dt, 10, 240)
-	local samples = Items.EarlyAutoCollectFpsSamples
-
-	table.insert(samples, fps)
-
-	while #samples > Items.EarlyAutoCollectFpsSampleLimit do
-		table.remove(samples, 1)
-	end
-
-	local total = 0
-
-	for _, sample in ipairs(samples) do
-		total += sample
-	end
-
-	if #samples > 0 then
-		Items.EarlyAutoCollectEstimatedFps = total / #samples
-	end
-end
-
-function Items.GetEarlyAutoCollectFpsMultiplier()
-	local fps = math.max(1, Items.EarlyAutoCollectEstimatedFps or 60)
-
-	return math.clamp(60 / fps, 1, 2.5)
-end
-
-function Items.GetEarlyAutoCollectDelay(baseDelay)
-	return baseDelay * Items.GetEarlyAutoCollectFpsMultiplier()
-end
-
-function Items.WaitEarlyAutoCollect(baseDelay)
-	task.wait(Items.GetEarlyAutoCollectDelay(baseDelay))
-end
-
-function Items.ClearEarlyAutoCollectPickupTarget()
-	Items.EarlyAutoCollectCurrentItemObject = nil
-	Items.EarlyAutoCollectCurrentItemPart = nil
-	Items.EarlyAutoCollectCurrentItemName = nil
-end
-
-function Items.StopEarlyAutoCollectPickupSpam()
-	Items.EarlyAutoCollectPickupSpamActive = false
-	Items.EarlyAutoCollectPickupSpamThread = nil
-	Items.ClearEarlyAutoCollectPickupTarget()
-end
-
-function Items.TryEarlyAutoCollectPickup()
-	pcall(function()
-		game:GetService("ProximityPromptService").Enabled = true
-	end)
-
-	local itemObject = Items.EarlyAutoCollectCurrentItemObject
-	local itemPart = Items.EarlyAutoCollectCurrentItemPart
-	local itemName = Items.EarlyAutoCollectCurrentItemName
-
-	if itemObject and itemPart and itemName and isSameItemStillThere(itemObject, itemPart, itemName) then
-		Items.TryPickupPrompt(itemObject, itemPart)
-	end
-
-	pressF(true)
-end
-
-function Items.StartEarlyAutoCollectPickupSpam()
-	if Items.EarlyAutoCollectPickupSpamActive then
-		return
-	end
-
-	Items.EarlyAutoCollectPickupSpamActive = true
-
-	Items.EarlyAutoCollectPickupSpamThread = task.spawn(function()
-		while Items.EarlyAutoCollectEnabled and Items.EarlyAutoCollectPickupSpamActive do
-			Items.TryEarlyAutoCollectPickup()
-			Items.WaitEarlyAutoCollect(0.08)
-		end
-
-		Items.StopEarlyAutoCollectPickupSpam()
-	end)
-end
-
-function Items.NotifyEarlyAutoCollect(message, kind)
-	if Notify and Notify.Muted then
-		return
-	end
-
-	createNotification("Early Auto Collect", message, kind)
 end
 
 function Items.StopEarlyAutoCollect(message, notInLobby)
 	Items.EarlyAutoCollectEnabled = false
-	Items.StopEarlyAutoCollectPickupSpam()
-	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
 	setMovementPaused(false)
 
 	if notInLobby then
@@ -5098,19 +5127,13 @@ function Items.StopEarlyAutoCollect(message, notInLobby)
 	end
 
 	if message then
-		Items.NotifyEarlyAutoCollect(message)
+		createNotification("Early Auto Collect", message)
 	end
 end
 
 function Items.RunEarlyAutoCollect()
 	setMovementPaused(true)
 	Items.EarlyAutoCollectSawTimer = false
-	Items.EarlyAutoCollectEstimatedFps = 60
-	Items.EarlyAutoCollectFpsSamples = {}
-
-	local fpsConnection = RunService.Heartbeat:Connect(function(dt)
-		Items.UpdateEarlyAutoCollectFps(dt)
-	end)
 
 	while Items.EarlyAutoCollectEnabled do
 		local number = Main.FindSlapRoyaleTimer()
@@ -5130,29 +5153,19 @@ function Items.RunEarlyAutoCollect()
 	end
 
 	if not Items.EarlyAutoCollectEnabled then
-		if fpsConnection then
-			fpsConnection:Disconnect()
-			fpsConnection = nil
-		end
-
-		Items.StopEarlyAutoCollectPickupSpam()
-		Teleport.PostFLock = 0.3
-		Items.TeleportDebounce = 0.5
 		setMovementPaused(false)
 		return
 	end
 
-	Teleport.MaxStrikes = 4
+	Teleport.MaxStrikes = 5
 	Teleport.Cooldown = 2
 	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = Items.GetEarlyAutoCollectDelay(0.5)
-	Items.NotifyEarlyAutoCollect("Timer hit 3. Starting priority collection.", "Success")
+	Items.TeleportDebounce = 0.5
+	createNotification("Early Auto Collect", "Timer hit 3. Starting priority collection.", "Success")
 
 	while Items.EarlyAutoCollectEnabled do
-		Items.TeleportDebounce = Items.GetEarlyAutoCollectDelay(0.5)
-
 		while Items.EarlyAutoCollectEnabled and os.clock() < (Items.EarlyAutoCollectPauseUntil or 0) do
-			Items.WaitEarlyAutoCollect(0.05)
+			task.wait(0.05)
 		end
 
 		if Items.EarlyAutoCollectEnabled and Items.ShouldFinishEarlyAutoCollectPermanents() then
@@ -5163,7 +5176,7 @@ function Items.RunEarlyAutoCollect()
 				Items.EarlyAutoCollectToggle.Set(false, false)
 			end
 
-			Items.NotifyEarlyAutoCollect("Permanent items collected. Going barn.", "Success")
+			createNotification("Early Auto Collect", "Permanent items collected. Going barn.", "Success")
 
 			task.defer(function()
 				Main.GetCodeGoBarn()
@@ -5175,18 +5188,18 @@ function Items.RunEarlyAutoCollect()
 		local itemName, itemCFrame, itemPosition, itemObject, itemPart = findNextCollectTarget()
 
 		if not itemName then
-			Items.WaitEarlyAutoCollect(isItemScanLoading() and 0.05 or 0.1)
+			task.wait(isItemScanLoading() and 0.05 or 0.1)
 			continue
 		end
 
-		if not Teleport.CanTeleport(Items.GetEarlyAutoCollectDelay(0.5), true) then
-			Items.WaitEarlyAutoCollect(0.05)
+		if not Teleport.CanTeleport(0.5, true) then
+			task.wait(0.05)
 			continue
 		end
 
 		if not isSameItemStillThere(itemObject, itemPart, itemName) then
 			markVisitedCollectPosition(itemPosition)
-			Items.WaitEarlyAutoCollect(0.05)
+			task.wait(0.05)
 			continue
 		end
 
@@ -5199,49 +5212,30 @@ function Items.RunEarlyAutoCollect()
 			local groundCFrame = Teleport.GetItemCFrame(itemPart, { character, itemObject })
 
 			Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
-			task.delay(Items.GetEarlyAutoCollectDelay(0.05), function()
+			task.delay(0.05, function()
 				Teleport.StabilizeItemView(root, itemPart)
 			end)
-			task.delay(Items.GetEarlyAutoCollectDelay(0.18), function()
-				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
-					Teleport.StabilizeItemView(root, itemPart)
-				end
-			end)
-			task.delay(Items.GetEarlyAutoCollectDelay(0.35), function()
-				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
-					Teleport.StabilizeItemView(root, itemPart)
-				end
-			end)
 			Teleport.AddStrike()
-			Teleport.PostFLock = Items.GetEarlyAutoCollectDelay(0.3)
 			Teleport.StartFBlock()
-			Items.EarlyAutoCollectCurrentItemObject = itemObject
-			Items.EarlyAutoCollectCurrentItemPart = itemPart
-			Items.EarlyAutoCollectCurrentItemName = itemName
-			Items.StartEarlyAutoCollectPickupSpam()
-			Items.NotifyEarlyAutoCollect("Collected " .. itemName)
+			createNotification("Early Auto Collect", "Collected " .. itemName)
 
-			Items.TryEarlyAutoCollectPickup()
+			task.delay(0.1, function()
+				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
+					Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, 0.45)
+				end
+			end)
 		end
 
-		Items.WaitEarlyAutoCollect(0.5)
+		task.wait(0.5)
 	end
 
-	if fpsConnection then
-		fpsConnection:Disconnect()
-		fpsConnection = nil
-	end
-
-	Items.StopEarlyAutoCollectPickupSpam()
-	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
 	setMovementPaused(false)
 end
 
 function Items.SetEarlyAutoCollect(state)
 	if state then
 		if Items.EarlyAutoCollectNotInLobby then
-			Items.NotifyEarlyAutoCollect("Not in lobby", "Warning")
+			createNotification("Early Auto Collect", "Not in lobby", "Warning")
 
 			task.defer(function()
 				if Items.EarlyAutoCollectToggle then
@@ -5262,13 +5256,12 @@ function Items.SetEarlyAutoCollect(state)
 		Items.EarlyAutoCollectConfirmingPermanents = false
 		Items.EarlyAutoCollectConfirmAt = 0
 		Items.EarlyAutoCollectConfirmCount = 0
-		Items.StopEarlyAutoCollectPickupSpam()
 		visitedCollectPositions = {}
-		Teleport.MaxStrikes = 4
+		Teleport.MaxStrikes = 5
 		Teleport.Cooldown = 2
 		Teleport.PostFLock = 0.3
 		Items.TeleportDebounce = 0.5
-		Items.NotifyEarlyAutoCollect("Waiting for countdown to end.", "Info")
+		createNotification("Early Auto Collect", "Waiting for countdown to end.", "Info")
 
 		if not Items.EarlyAutoCollectThread then
 			Items.EarlyAutoCollectThread = task.spawn(function()
@@ -5278,11 +5271,8 @@ function Items.SetEarlyAutoCollect(state)
 		end
 	else
 		Items.EarlyAutoCollectEnabled = false
-		Items.StopEarlyAutoCollectPickupSpam()
-		Teleport.PostFLock = 0.3
-		Items.TeleportDebounce = 0.5
 		setMovementPaused(false)
-		Items.NotifyEarlyAutoCollect("Early Auto Collect disabled.")
+		createNotification("Early Auto Collect", "Early Auto Collect disabled.")
 	end
 end
 
@@ -9683,6 +9673,7 @@ do
 		pcall(function()
 			if Teleport then
 				Teleport.ClearBusTopRidePlatform()
+				Teleport.StopStabilityWatcher()
 			end
 		end)
 
