@@ -2384,6 +2384,11 @@ Items.EarlyAutoCollectPauseUntil = 0
 Items.EarlyAutoCollectEstimatedFps = 60
 Items.EarlyAutoCollectFpsSamples = {}
 Items.EarlyAutoCollectFpsSampleLimit = 20
+Items.EarlyAutoCollectPickupSpamActive = false
+Items.EarlyAutoCollectPickupSpamThread = nil
+Items.EarlyAutoCollectCurrentItemObject = nil
+Items.EarlyAutoCollectCurrentItemPart = nil
+Items.EarlyAutoCollectCurrentItemName = nil
 Items.EarlyBusPriorityTeleportBusy = false
 Items.EarlyBusPriorityTeleportToken = 0
 Items.LastEarlyBusPriorityTeleportAt = 0
@@ -2892,8 +2897,64 @@ function Teleport.StabilizeItemView(root, itemPart)
 
 	if camera then
 		local focus = itemPart.Position + Vector3.new(0, 1.2, 0)
-		local cameraPosition = root.Position - root.CFrame.LookVector * 10 + Vector3.new(0, 4, 0)
-		camera.CFrame = CFrame.lookAt(cameraPosition, focus)
+		local look = root.CFrame.LookVector
+		local right = root.CFrame.RightVector
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { character or root, itemPart }
+
+		local function itemVisibleFrom(cameraPosition)
+			local direction = focus - cameraPosition
+
+			if direction.Magnitude <= 0.1 then
+				return true
+			end
+
+			local hit = workspace:Raycast(cameraPosition, direction, params)
+			if hit and hit.Instance and (hit.Position - focus).Magnitude > 2 then
+				return false
+			end
+
+			local viewportPosition, onScreen = camera:WorldToViewportPoint(focus)
+			local viewportSize = camera.ViewportSize
+
+			return onScreen
+				and viewportPosition.Z > 0
+				and viewportPosition.X > viewportSize.X * 0.08
+				and viewportPosition.X < viewportSize.X * 0.92
+				and viewportPosition.Y > viewportSize.Y * 0.08
+				and viewportPosition.Y < viewportSize.Y * 0.92
+		end
+
+		local cameraPositions = {
+			root.Position - look * 10 + Vector3.new(0, 4, 0),
+			root.Position + look * 10 + Vector3.new(0, 4, 0),
+			root.Position + right * 10 + Vector3.new(0, 4, 0),
+			root.Position - right * 10 + Vector3.new(0, 4, 0),
+			root.Position + (look + right).Unit * 11 + Vector3.new(0, 5, 0),
+			root.Position + (look - right).Unit * 11 + Vector3.new(0, 5, 0),
+			root.Position + (-look + right).Unit * 11 + Vector3.new(0, 5, 0),
+			root.Position + (-look - right).Unit * 11 + Vector3.new(0, 5, 0),
+			focus + Vector3.new(0, 13, 0) - look * 5
+		}
+
+		local selectedPosition = nil
+
+		for _, cameraPosition in ipairs(cameraPositions) do
+			camera.CFrame = CFrame.lookAt(cameraPosition, focus)
+			task.wait()
+
+			if itemVisibleFrom(cameraPosition) then
+				selectedPosition = cameraPosition
+				break
+			end
+		end
+
+		if selectedPosition then
+			camera.CFrame = CFrame.lookAt(selectedPosition, focus)
+		else
+			camera.CFrame = CFrame.lookAt(root.Position - look * 12 + Vector3.new(0, 6, 0), focus)
+		end
 
 		if humanoid then
 			camera.CameraSubject = humanoid
@@ -3754,7 +3815,7 @@ ContextActionService:BindActionAtPriority(
 	"BlockFAfterTeleport",
 	function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and os.clock() < Teleport.BlockFUntil then
-			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive then
+			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive and not (Combat and Combat.BombCollectEnabled) then
 				Teleport.BlockFUntil = 0
 				return Enum.ContextActionResult.Pass
 			end
@@ -4993,6 +5054,51 @@ function Items.WaitEarlyAutoCollect(baseDelay)
 	task.wait(Items.GetEarlyAutoCollectDelay(baseDelay))
 end
 
+function Items.ClearEarlyAutoCollectPickupTarget()
+	Items.EarlyAutoCollectCurrentItemObject = nil
+	Items.EarlyAutoCollectCurrentItemPart = nil
+	Items.EarlyAutoCollectCurrentItemName = nil
+end
+
+function Items.StopEarlyAutoCollectPickupSpam()
+	Items.EarlyAutoCollectPickupSpamActive = false
+	Items.EarlyAutoCollectPickupSpamThread = nil
+	Items.ClearEarlyAutoCollectPickupTarget()
+end
+
+function Items.TryEarlyAutoCollectPickup()
+	pcall(function()
+		game:GetService("ProximityPromptService").Enabled = true
+	end)
+
+	local itemObject = Items.EarlyAutoCollectCurrentItemObject
+	local itemPart = Items.EarlyAutoCollectCurrentItemPart
+	local itemName = Items.EarlyAutoCollectCurrentItemName
+
+	if itemObject and itemPart and itemName and isSameItemStillThere(itemObject, itemPart, itemName) then
+		Items.TryPickupPrompt(itemObject, itemPart)
+	end
+
+	pressF(true)
+end
+
+function Items.StartEarlyAutoCollectPickupSpam()
+	if Items.EarlyAutoCollectPickupSpamActive then
+		return
+	end
+
+	Items.EarlyAutoCollectPickupSpamActive = true
+
+	Items.EarlyAutoCollectPickupSpamThread = task.spawn(function()
+		while Items.EarlyAutoCollectEnabled and Items.EarlyAutoCollectPickupSpamActive do
+			Items.TryEarlyAutoCollectPickup()
+			Items.WaitEarlyAutoCollect(0.08)
+		end
+
+		Items.StopEarlyAutoCollectPickupSpam()
+	end)
+end
+
 function Items.NotifyEarlyAutoCollect(message, kind)
 	if Notify and Notify.Muted then
 		return
@@ -5003,6 +5109,7 @@ end
 
 function Items.StopEarlyAutoCollect(message, notInLobby)
 	Items.EarlyAutoCollectEnabled = false
+	Items.StopEarlyAutoCollectPickupSpam()
 	Teleport.PostFLock = 0.3
 	Items.TeleportDebounce = 0.5
 	setMovementPaused(false)
@@ -5053,6 +5160,7 @@ function Items.RunEarlyAutoCollect()
 			fpsConnection = nil
 		end
 
+		Items.StopEarlyAutoCollectPickupSpam()
 		Teleport.PostFLock = 0.3
 		Items.TeleportDebounce = 0.5
 		setMovementPaused(false)
@@ -5119,16 +5227,26 @@ function Items.RunEarlyAutoCollect()
 			task.delay(Items.GetEarlyAutoCollectDelay(0.05), function()
 				Teleport.StabilizeItemView(root, itemPart)
 			end)
+			task.delay(Items.GetEarlyAutoCollectDelay(0.18), function()
+				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
+					Teleport.StabilizeItemView(root, itemPart)
+				end
+			end)
+			task.delay(Items.GetEarlyAutoCollectDelay(0.35), function()
+				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
+					Teleport.StabilizeItemView(root, itemPart)
+				end
+			end)
 			Teleport.AddStrike()
 			Teleport.PostFLock = Items.GetEarlyAutoCollectDelay(0.3)
 			Teleport.StartFBlock()
+			Items.EarlyAutoCollectCurrentItemObject = itemObject
+			Items.EarlyAutoCollectCurrentItemPart = itemPart
+			Items.EarlyAutoCollectCurrentItemName = itemName
+			Items.StartEarlyAutoCollectPickupSpam()
 			Items.NotifyEarlyAutoCollect("Collected " .. itemName)
 
-			task.delay(Items.GetEarlyAutoCollectDelay(0.1), function()
-				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
-					Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, Items.GetEarlyAutoCollectDelay(0.45))
-				end
-			end)
+			Items.TryEarlyAutoCollectPickup()
 		end
 
 		Items.WaitEarlyAutoCollect(0.5)
@@ -5139,6 +5257,7 @@ function Items.RunEarlyAutoCollect()
 		fpsConnection = nil
 	end
 
+	Items.StopEarlyAutoCollectPickupSpam()
 	Teleport.PostFLock = 0.3
 	Items.TeleportDebounce = 0.5
 	setMovementPaused(false)
@@ -5168,6 +5287,7 @@ function Items.SetEarlyAutoCollect(state)
 		Items.EarlyAutoCollectConfirmingPermanents = false
 		Items.EarlyAutoCollectConfirmAt = 0
 		Items.EarlyAutoCollectConfirmCount = 0
+		Items.StopEarlyAutoCollectPickupSpam()
 		visitedCollectPositions = {}
 		Teleport.MaxStrikes = 5
 		Teleport.Cooldown = 2
@@ -5183,6 +5303,7 @@ function Items.SetEarlyAutoCollect(state)
 		end
 	else
 		Items.EarlyAutoCollectEnabled = false
+		Items.StopEarlyAutoCollectPickupSpam()
 		Teleport.PostFLock = 0.3
 		Items.TeleportDebounce = 0.5
 		setMovementPaused(false)
@@ -6217,6 +6338,9 @@ Combat = {
 	BombCollectThread = nil,
 	BombCollectToggle = nil,
 	BombCollectSawTimer = false,
+	BombCollectEstimatedFps = 60,
+	BombCollectFpsSamples = {},
+	BombCollectFpsSampleLimit = 20,
 	AntiSlapEnabled = false,
 	AntiSlapConnections = {},
 	AntiSlapBoxFolder = nil,
@@ -7658,8 +7782,63 @@ function Combat.FindBombCollectTarget()
 	return nil, nil, nil, nil
 end
 
+function Combat.UpdateBombCollectFps(dt)
+	if not dt or dt <= 0 then
+		return
+	end
+
+	local fps = math.clamp(1 / dt, 10, 240)
+	local samples = Combat.BombCollectFpsSamples
+
+	if type(samples) ~= "table" then
+		samples = {}
+		Combat.BombCollectFpsSamples = samples
+	end
+
+	table.insert(samples, fps)
+
+	while #samples > Combat.BombCollectFpsSampleLimit do
+		table.remove(samples, 1)
+	end
+
+	local total = 0
+
+	for _, sample in ipairs(samples) do
+		total += sample
+	end
+
+	if #samples > 0 then
+		Combat.BombCollectEstimatedFps = total / #samples
+	end
+end
+
+function Combat.GetBombCollectFpsMultiplier()
+	local fps = math.max(1, Combat.BombCollectEstimatedFps or 60)
+
+	return math.clamp(60 / fps, 1, 2.5)
+end
+
+function Combat.GetBombCollectDelay(baseDelay)
+	return baseDelay * Combat.GetBombCollectFpsMultiplier()
+end
+
+function Combat.WaitBombCollect(baseDelay)
+	task.wait(Combat.GetBombCollectDelay(baseDelay))
+end
+
+function Combat.ApplyBombCollectTiming()
+	Teleport.PostFLock = Combat.GetBombCollectDelay(0.2)
+	Items.TeleportDebounce = Combat.GetBombCollectDelay(0.5)
+end
+
+function Combat.ResetBombCollectTiming()
+	Teleport.PostFLock = 0.3
+	Items.TeleportDebounce = 0.5
+end
+
 function Combat.StopBombCollect(message, updateToggle)
 	Combat.BombCollectEnabled = false
+	Combat.ResetBombCollectTiming()
 
 	if updateToggle ~= false and Combat.BombCollectToggle and type(Combat.BombCollectToggle.Set) == "function" then
 		Combat.BombCollectToggle.Set(false, false)
@@ -7672,19 +7851,37 @@ end
 
 function Combat.RunBombCollect()
 	Combat.DisableEarlyItemAutomationForBombCollect(true)
+	Combat.BombCollectEstimatedFps = 60
+	Combat.BombCollectFpsSamples = {}
 
 	Teleport.MaxStrikes = 5
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
+	Combat.ApplyBombCollectTiming()
+
+	local fpsConnection = RunService.Heartbeat:Connect(function(dt)
+		if Combat.BombCollectEnabled then
+			Combat.UpdateBombCollectFps(dt)
+			Combat.ApplyBombCollectTiming()
+		end
+	end)
+
+	local function finishBombCollectThread()
+		if fpsConnection then
+			fpsConnection:Disconnect()
+			fpsConnection = nil
+		end
+
+		Combat.ResetBombCollectTiming()
+		Combat.BombCollectThread = nil
+	end
 
 	local function waitForBombScan()
 		if type(isItemScanLoading) == "function" and isItemScanLoading() then
-			task.wait(0.05)
+			Combat.WaitBombCollect(0.05)
 			return
 		end
 
-		task.wait(0.15)
+		Combat.WaitBombCollect(0.15)
 	end
 
 	local function markBombVisited(position)
@@ -7722,11 +7919,26 @@ function Combat.RunBombCollect()
 		if type(pressF) == "function" then
 			pressF(true)
 		end
+
+		pcall(function()
+			local VirtualInputManager = game:GetService("VirtualInputManager")
+
+			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+			task.wait(0.01)
+			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
+			task.wait(0.06)
+			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+		end)
+
+		if Teleport then
+			Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, os.clock() + Combat.GetBombCollectDelay(0.2))
+			Teleport.RefreshPickupLock()
+		end
 	end
 
 	local function canBombTeleport()
 		if Teleport and type(Teleport.CanTeleport) == "function" then
-			return Teleport.CanTeleport(0.5, true)
+			return Teleport.CanTeleport(Combat.GetBombCollectDelay(0.5), true)
 		end
 
 		return true
@@ -7765,12 +7977,12 @@ function Combat.RunBombCollect()
 
 	if timerEnded then
 		Combat.StopBombCollect("Timer ended. Bomb collection stopped.", true)
-		Combat.BombCollectThread = nil
+		finishBombCollectThread()
 		return
 	end
 
 	if not canStart or not Combat.BombCollectEnabled then
-		Combat.BombCollectThread = nil
+		finishBombCollectThread()
 		return
 	end
 
@@ -7794,13 +8006,13 @@ function Combat.RunBombCollect()
 		end
 
 		if not canBombTeleport() then
-			task.wait(0.05)
+			Combat.WaitBombCollect(0.05)
 			continue
 		end
 
 		if not isBombStillThere(itemObject, itemPart, wantedName) then
 			markBombVisited(itemPart.Position)
-			task.wait(0.05)
+			Combat.WaitBombCollect(0.05)
 			continue
 		end
 
@@ -7821,22 +8033,23 @@ function Combat.RunBombCollect()
 					Teleport.AddStrike()
 				end
 				notifyBombCollect("Collected " .. itemName)
+				tryBombPickup(itemObject, itemPart)
 
-				task.delay(0.1, function()
-					local stopAt = os.clock() + 1
+				task.spawn(function()
+					local stopAt = os.clock() + 1.8
 
 					while Combat.BombCollectEnabled and os.clock() < stopAt and isBombStillThere(itemObject, itemPart, wantedName) do
 						tryBombPickup(itemObject, itemPart)
-						task.wait(0.08)
+						Combat.WaitBombCollect(0.2)
 					end
 				end)
 			end
 		end
 
-		task.wait(0.5)
+		Combat.WaitBombCollect(0.5)
 	end
 
-	Combat.BombCollectThread = nil
+	finishBombCollectThread()
 end
 
 function Combat.SetBombCollect(state)
