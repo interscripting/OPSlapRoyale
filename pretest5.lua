@@ -3815,7 +3815,7 @@ ContextActionService:BindActionAtPriority(
 	"BlockFAfterTeleport",
 	function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and os.clock() < Teleport.BlockFUntil then
-			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive and not (Combat and Combat.BombCollectEnabled) then
+			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive then
 				Teleport.BlockFUntil = 0
 				return Enum.ContextActionResult.Pass
 			end
@@ -4929,7 +4929,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 					Teleport.StabilizeItemView(root, itemPart)
 				end)
 				Teleport.AddStrike()
-				Teleport.MaxStrikes = 4
+				Teleport.MaxStrikes = 3
 				Teleport.Cooldown = 3
 				Teleport.PostFLock = 0.3
 				Items.TeleportDebounce = 0.5
@@ -7932,7 +7932,6 @@ function Combat.RunBombCollect()
 
 		if Teleport then
 			Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, os.clock() + Combat.GetBombCollectDelay(0.2))
-			Teleport.RefreshPickupLock()
 		end
 	end
 
