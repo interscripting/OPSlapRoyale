@@ -411,7 +411,6 @@ UI.Icons = {
 ["Increase Glove Size"] = "🧤",
 	["Auto Glove Tap"] = "👊",
 	["Glove TP Slap"] = "🎯",
-	["Bomb Collect"] = "💣",
 	["Collect Crates"] = "📦",
 	["Anti-Ragdoll"] = "🧱",
 	["Player Stats ESP"] = "📊",
@@ -1219,7 +1218,6 @@ UI.ToggleDescriptions = {
 ["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
 	["Auto Glove Tap"] = "Automatically taps/clicks when another player's glove enters your hitbox.",
 	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
-	["Bomb Collect"] = "Disables early collection/jump and only teleports to bombs until the timer ends.",
 	["Collect Crates"] = "When your equipped glove slaps, sends only the glove to a spawned meteor crate.",
 	["Anti-Ragdoll"] = "Briefly boxes your character in when ragdoll or knockback is detected.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
@@ -3878,27 +3876,7 @@ function UI.FireRemoteAction(label, remoteName, ...)
 	end
 end
 
-function UI.RequestEarlyBusPriorityTeleport(delaySeconds, forceRestart)
-	task.delay(delaySeconds or 0, function()
-		if Combat and Combat.BombCollectEnabled then
-			return
-		end
-
-		for _ = 1, 30 do
-			if UI.TeleportToEarlyBusPriorityItem then
-				UI.TeleportToEarlyBusPriorityItem(forceRestart)
-				return
-			end
-
-			task.wait(0.2)
-		end
-	end)
-end
-
 function UI.FireEarlyBusJump()
-	if Combat and Combat.BombCollectEnabled then
-		return false
-	end
 
 	local success = UI.FireRemoteAction("Early Bus Jump", "BusJumping", true)
 
@@ -4840,9 +4818,6 @@ end
 local pressF
 
 function UI.TeleportToEarlyBusPriorityItem(forceRestart)
-	if Combat and Combat.BombCollectEnabled then
-		return
-	end
 
 	if Items.EarlyBusPriorityTeleportBusy and not forceRestart then
 		return
@@ -6334,13 +6309,6 @@ Combat = {
 	CollectCratesBusy = false,
 	LastCollectCrateSlap = 0,
 	CollectCratesDebounce = 0.35,
-	BombCollectEnabled = false,
-	BombCollectThread = nil,
-	BombCollectToggle = nil,
-	BombCollectSawTimer = false,
-	BombCollectEstimatedFps = 60,
-	BombCollectFpsSamples = {},
-	BombCollectFpsSampleLimit = 20,
 	AntiSlapEnabled = false,
 	AntiSlapConnections = {},
 	AntiSlapBoxFolder = nil,
@@ -7603,477 +7571,6 @@ function Combat.SetCollectCrates(state)
 	end
 end
 
-function Combat.DisableEarlyItemAutomationForBombCollect(cancelScheduledBusTeleport)
-	Items.EarlyAutoCollectEnabled = false
-	Items.EarlyAutoCollectPauseUntil = 0
-	Items.EarlyBusFBlockActive = false
-	Items.EarlyBusPriorityTeleportBusy = false
-
-	if cancelScheduledBusTeleport then
-		Items.EarlyBusPriorityTeleportToken = (Items.EarlyBusPriorityTeleportToken or 0) + 1
-	end
-
-	if UI then
-		UI.AutoEarlyBusJumpEnabled = false
-		UI.AutoEarlyBusJumpFiredInBus = false
-		UI.JumpBusSearchActive = false
-		UI.JumpBusExitSent = false
-		UI.JumpBusTrackedObject = nil
-	end
-end
-
-function Combat.IsBombCollectTimerOver()
-	if not Main or type(Main.FindSlapRoyaleTimer) ~= "function" then
-		return false
-	end
-
-	local number = Main.FindSlapRoyaleTimer()
-
-	if number then
-		Combat.BombCollectSawTimer = true
-		Main.TimerPrinterLastNumber = number
-
-		return number <= 0
-	end
-
-	return Combat.BombCollectSawTimer == true
-end
-
-function Combat.WaitForBombCollectStart()
-	Combat.BombCollectSawTimer = false
-	Combat.BombCollectCountdownStarted = false
-
-	while Combat.BombCollectEnabled do
-		local number = nil
-
-		if Main and type(Main.FindSlapRoyaleTimer) == "function" then
-			number = Main.FindSlapRoyaleTimer()
-		end
-
-		if number then
-			Combat.BombCollectSawTimer = true
-			Main.TimerPrinterLastNumber = number
-
-			if number <= 0 then
-				return false, true
-			end
-
-			if number <= 3 then
-				Combat.BombCollectCountdownStarted = true
-				return true, false
-			end
-		end
-
-		task.wait(0.05)
-	end
-
-	return false, false
-end
-
-function Combat.FindBombCollectTarget()
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart")
-
-	if not root then
-		return nil, nil, nil, nil
-	end
-
-	local bombLookup = {
-		[Utility.NormalizeName("Bomb")] = "Bomb",
-		[Utility.NormalizeName("Bombs")] = "Bombs"
-	}
-	local closestWantedName = nil
-	local closestObject = nil
-	local closestPart = nil
-	local closestDistance = math.huge
-
-	local function getBombMatchName(object)
-		local current = object
-
-		while current and current ~= workspace do
-			local wantedName = bombLookup[Utility.NormalizeName(current.Name)]
-
-			if wantedName then
-				return wantedName
-			end
-
-			current = current.Parent
-		end
-
-		return nil
-	end
-
-	local function getBombSearchPool()
-		if type(getCollectibleSearchPool) == "function" then
-			return getCollectibleSearchPool()
-		end
-
-		if Items and type(Items.GetSearchDescendants) == "function" then
-			return Items.GetSearchDescendants()
-		end
-
-		return {}
-	end
-
-	local function getBombLivePart(object)
-		if type(getLiveItemPart) == "function" then
-			return getLiveItemPart(object)
-		end
-
-		if not object or not object.Parent or not object:IsDescendantOf(workspace) then
-			return nil
-		end
-
-		local part = object:IsA("BasePart") and object or object:FindFirstChildWhichIsA("BasePart", true)
-
-		if not part or not part.Parent or not part:IsDescendantOf(workspace) then
-			return nil
-		end
-
-		return part
-	end
-
-	local function isBombPositionVisited(position)
-		if type(isVisitedCollectPosition) == "function" then
-			return isVisitedCollectPosition(position)
-		end
-
-		return false
-	end
-
-	for _, object in ipairs(getBombSearchPool()) do
-		local wantedName = getBombMatchName(object)
-		local part = wantedName and getBombLivePart(object)
-
-		if part and not isBombPositionVisited(part.Position) then
-			local distance = (root.Position - part.Position).Magnitude
-
-			if distance < closestDistance then
-				closestDistance = distance
-				closestWantedName = wantedName
-				closestObject = object
-				closestPart = part
-			end
-		end
-	end
-
-	if not closestPart then
-		for _, object in ipairs(getBombSearchPool()) do
-			local wantedName = getBombMatchName(object)
-			local part = wantedName and getBombLivePart(object)
-
-			if part then
-				local distance = (root.Position - part.Position).Magnitude
-
-				if distance < closestDistance then
-					closestDistance = distance
-					closestWantedName = wantedName
-					closestObject = object
-					closestPart = part
-				end
-			end
-		end
-	end
-
-	if closestWantedName and closestObject and closestPart then
-		return closestWantedName, closestWantedName, closestObject, closestPart
-	end
-
-	return nil, nil, nil, nil
-end
-
-function Combat.UpdateBombCollectFps(dt)
-	if not dt or dt <= 0 then
-		return
-	end
-
-	local fps = math.clamp(1 / dt, 10, 240)
-	local samples = Combat.BombCollectFpsSamples
-
-	if type(samples) ~= "table" then
-		samples = {}
-		Combat.BombCollectFpsSamples = samples
-	end
-
-	table.insert(samples, fps)
-
-	while #samples > Combat.BombCollectFpsSampleLimit do
-		table.remove(samples, 1)
-	end
-
-	local total = 0
-
-	for _, sample in ipairs(samples) do
-		total += sample
-	end
-
-	if #samples > 0 then
-		Combat.BombCollectEstimatedFps = total / #samples
-	end
-end
-
-function Combat.GetBombCollectFpsMultiplier()
-	local fps = math.max(1, Combat.BombCollectEstimatedFps or 60)
-
-	return math.clamp(60 / fps, 1, 2.5)
-end
-
-function Combat.GetBombCollectDelay(baseDelay)
-	return baseDelay * Combat.GetBombCollectFpsMultiplier()
-end
-
-function Combat.WaitBombCollect(baseDelay)
-	task.wait(Combat.GetBombCollectDelay(baseDelay))
-end
-
-function Combat.ApplyBombCollectTiming()
-	Teleport.PostFLock = Combat.GetBombCollectDelay(0.2)
-	Items.TeleportDebounce = Combat.GetBombCollectDelay(0.5)
-end
-
-function Combat.ResetBombCollectTiming()
-	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
-end
-
-function Combat.StopBombCollect(message, updateToggle)
-	Combat.BombCollectEnabled = false
-	Combat.ResetBombCollectTiming()
-
-	if updateToggle ~= false and Combat.BombCollectToggle and type(Combat.BombCollectToggle.Set) == "function" then
-		Combat.BombCollectToggle.Set(false, false)
-	end
-
-	if message and type(createNotification) == "function" then
-		createNotification("Bomb Collect", message, "Info")
-	end
-end
-
-function Combat.RunBombCollect()
-	Combat.DisableEarlyItemAutomationForBombCollect(true)
-	Combat.BombCollectEstimatedFps = 60
-	Combat.BombCollectFpsSamples = {}
-
-	Teleport.MaxStrikes = 5
-	Teleport.Cooldown = 2
-	Combat.ApplyBombCollectTiming()
-
-	local fpsConnection = RunService.Heartbeat:Connect(function(dt)
-		if Combat.BombCollectEnabled then
-			Combat.UpdateBombCollectFps(dt)
-			Combat.ApplyBombCollectTiming()
-		end
-	end)
-
-	local function finishBombCollectThread()
-		if fpsConnection then
-			fpsConnection:Disconnect()
-			fpsConnection = nil
-		end
-
-		Combat.ResetBombCollectTiming()
-		Combat.BombCollectThread = nil
-	end
-
-	local function waitForBombScan()
-		if type(isItemScanLoading) == "function" and isItemScanLoading() then
-			Combat.WaitBombCollect(0.05)
-			return
-		end
-
-		Combat.WaitBombCollect(0.15)
-	end
-
-	local function markBombVisited(position)
-		if type(markVisitedCollectPosition) == "function" then
-			markVisitedCollectPosition(position)
-		end
-	end
-
-	local function isBombStillThere(itemObject, itemPart, wantedName)
-		if type(isSameItemStillThere) == "function" then
-			return isSameItemStillThere(itemObject, itemPart, wantedName)
-		end
-
-		return itemObject ~= nil
-			and itemPart ~= nil
-			and itemObject.Parent ~= nil
-			and itemPart.Parent ~= nil
-			and itemObject:IsDescendantOf(workspace)
-			and itemPart:IsDescendantOf(workspace)
-	end
-
-	local function tryBombPickup(itemObject, itemPart)
-		if Teleport then
-			Teleport.BlockFUntil = 0
-		end
-
-		pcall(function()
-			game:GetService("ProximityPromptService").Enabled = true
-		end)
-
-		if Items and type(Items.TryPickupPrompt) == "function" then
-			Items.TryPickupPrompt(itemObject, itemPart)
-		end
-
-		if type(pressF) == "function" then
-			pressF(true)
-		end
-
-		pcall(function()
-			local VirtualInputManager = game:GetService("VirtualInputManager")
-
-			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-			task.wait(0.01)
-			VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
-			task.wait(0.06)
-			VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
-		end)
-
-		if Teleport then
-			Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, os.clock() + Combat.GetBombCollectDelay(0.2))
-		end
-	end
-
-	local function canBombTeleport()
-		if Teleport and type(Teleport.CanTeleport) == "function" then
-			return Teleport.CanTeleport(Combat.GetBombCollectDelay(0.5), true)
-		end
-
-		return true
-	end
-
-	local function getBombTeleportCFrame(itemPart, character, itemObject)
-		if Teleport and type(Teleport.GetItemCFrame) == "function" then
-			return Teleport.GetItemCFrame(itemPart, { character, itemObject })
-		end
-
-		return itemPart.CFrame + Vector3.new(0, 4, 0)
-	end
-
-	local function stabilizeBombView(root, itemPart)
-		if Teleport and type(Teleport.StabilizeItemView) == "function" then
-			Teleport.StabilizeItemView(root, itemPart)
-		end
-	end
-
-	local function moveBombRoot(root, targetCFrame, itemPosition)
-		if Teleport and type(Teleport.MoveRoot) == "function" then
-			Teleport.MoveRoot(root, targetCFrame, itemPosition)
-			return
-		end
-
-		root.CFrame = targetCFrame
-	end
-
-	local function notifyBombCollect(message, preset)
-		if type(createNotification) == "function" then
-			createNotification("Bomb Collect", message, preset or "Info")
-		end
-	end
-
-	local canStart, timerEnded = Combat.WaitForBombCollectStart()
-
-	if timerEnded then
-		Combat.StopBombCollect("Timer ended. Bomb collection stopped.", true)
-		finishBombCollectThread()
-		return
-	end
-
-	if not canStart or not Combat.BombCollectEnabled then
-		finishBombCollectThread()
-		return
-	end
-
-	while Combat.BombCollectEnabled do
-		Combat.DisableEarlyItemAutomationForBombCollect(false)
-
-		if Combat.IsBombCollectTimerOver() then
-			Combat.StopBombCollect("Timer ended. Bomb collection stopped.", true)
-			break
-		end
-
-		if Items and type(Items.RebuildSearchCache) == "function" then
-			Items.RebuildSearchCache()
-		end
-
-		local wantedName, itemName, itemObject, itemPart = Combat.FindBombCollectTarget()
-
-		if not itemName then
-			waitForBombScan()
-			continue
-		end
-
-		if not canBombTeleport() then
-			Combat.WaitBombCollect(0.05)
-			continue
-		end
-
-		if not isBombStillThere(itemObject, itemPart, wantedName) then
-			markBombVisited(itemPart.Position)
-			Combat.WaitBombCollect(0.05)
-			continue
-		end
-
-		local character = player.Character or player.CharacterAdded:Wait()
-		local root = character:WaitForChild("HumanoidRootPart", 5)
-
-		if root then
-			markBombVisited(itemPart.Position)
-
-			local groundCFrame = getBombTeleportCFrame(itemPart, character, itemObject)
-
-			if groundCFrame then
-				moveBombRoot(root, groundCFrame, itemPart.Position)
-				task.delay(0.05, function()
-					stabilizeBombView(root, itemPart)
-				end)
-				if Teleport and type(Teleport.AddStrike) == "function" then
-					Teleport.AddStrike()
-				end
-				notifyBombCollect("Collected " .. itemName)
-				tryBombPickup(itemObject, itemPart)
-
-				task.spawn(function()
-					local stopAt = os.clock() + 1.8
-
-					while Combat.BombCollectEnabled and os.clock() < stopAt and isBombStillThere(itemObject, itemPart, wantedName) do
-						tryBombPickup(itemObject, itemPart)
-						Combat.WaitBombCollect(0.2)
-					end
-				end)
-			end
-		end
-
-		Combat.WaitBombCollect(0.5)
-	end
-
-	finishBombCollectThread()
-end
-
-function Combat.SetBombCollect(state)
-	if state then
-		if Combat.BombCollectEnabled then
-			return
-		end
-
-		Combat.BombCollectEnabled = true
-		visitedCollectPositions = {}
-		Combat.DisableEarlyItemAutomationForBombCollect(true)
-		if type(createNotification) == "function" then
-			createNotification("Bomb Collect", "Bomb-only collection enabled.", "Success")
-		end
-
-		if not Combat.BombCollectThread then
-			Combat.BombCollectThread = task.spawn(function()
-				Combat.RunBombCollect()
-			end)
-		end
-	else
-		Combat.StopBombCollect("Bomb-only collection disabled.", false)
-	end
-end
-
 function Combat.CreateAntiSlapPart(folder, cframe, size)
 	local part = Instance.new("Part")
 	part.Name = "Part"
@@ -8900,10 +8397,6 @@ do
 
 	autoGloveTapToggle = createToggleButton(combatList, "Auto Glove Tap", false, function(state)
 		Combat.SetAutoGloveTap(state)
-	end)
-
-	Combat.BombCollectToggle = createToggleButton(combatList, "Bomb Collect", false, function(state)
-		Combat.SetBombCollect(state)
 	end)
 
 	createToggleButton(combatList, "Player TP Buttons", false, function(state)
@@ -10163,7 +9656,6 @@ do
 				Combat.SetAutoGloveTap(false)
 				Combat.SetGloveTpSlap(false)
 				Combat.SetCollectCrates(false)
-				Combat.SetBombCollect(false)
 				Combat.SetAntiSlap(false)
 				Combat.RestoreGloveSize()
 			end
