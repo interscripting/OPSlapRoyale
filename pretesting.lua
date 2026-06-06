@@ -5841,14 +5841,6 @@ function Items.RestoreEarlyAutoCollectConflicts()
 	Items.EarlyAutoCollectRestoreAutoPermanent = false
 end
 
-function Items.EnableAutoPickupAfterEarlyAutoCollect()
-	if Items.AutoPickupToggle then
-		Items.AutoPickupToggle.Set(true, false)
-	end
-
-	Items.SetAutoPickup(true, true)
-end
-
 function Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, duration)
 	local stopAt = os.clock() + duration
 
@@ -5920,7 +5912,6 @@ function Items.RunEarlyAutoCollect()
 			Items.EarlyAutoCollectEnabled = false
 			setMovementPaused(false)
 			Items.RestoreEarlyAutoCollectConflicts()
-			Items.EnableAutoPickupAfterEarlyAutoCollect()
 
 			if Items.EarlyAutoCollectToggle then
 				Items.EarlyAutoCollectToggle.Set(false, false)
