@@ -5413,10 +5413,6 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 end
 
 function pressF(skipPickupLock)
-	if isTouchDevice then
-		return false
-	end
-
 	local VirtualInputManager = game:GetService("VirtualInputManager")
 	local pressed = false
 
@@ -5659,8 +5655,9 @@ function Items.UsePickupInput(itemObject, itemPart, skipPickupLock)
 	if isTouchDevice then
 		local usedPrompt = Items.TryPickupPrompt(itemObject, itemPart)
 		local tappedIcon = Items.TapMobilePickupIcon(itemObject, itemPart)
+		local pressedKey = pressF(skipPickupLock) == true
 
-		return usedPrompt or tappedIcon
+		return usedPrompt or tappedIcon or pressedKey
 	end
 
 	return pressF(skipPickupLock) == true
