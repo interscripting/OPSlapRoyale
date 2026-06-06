@@ -2288,8 +2288,8 @@ Main.KeypadSearchRadius = 170
 
 Teleport.MaxStrikes = 4
 Teleport.Cooldown = 2
-Teleport.PostFLock = 0.2
-Items.TeleportDebounce = 0.6
+Teleport.Debounce = 0.7
+Teleport.PostFLock = 0.5
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -2836,7 +2836,10 @@ function Teleport.IsLocked()
 end
 
 function Teleport.ResetStrikesIfReady()
-	if Teleport.LastClickAt == 0 or os.clock() - Teleport.LastClickAt >= Teleport.Cooldown then
+	local lastClickAt = tonumber(Teleport.LastClickAt) or 0
+	local cooldown = tonumber(Teleport.Cooldown) or 0
+
+	if lastClickAt == 0 or os.clock() - lastClickAt >= cooldown then
 		Teleport.Strikes = 0
 		Teleport.LockedUntil = 0
 	end
@@ -2986,10 +2989,11 @@ function Teleport.GetWaitBeforeTeleport(debounceOverride)
 		return math.max(0, Teleport.LockedUntil - now)
 	end
 
-	local debounce = debounceOverride or Teleport.Debounce
+	local debounce = tonumber(debounceOverride or Teleport.Debounce) or 0
+	local lastClickAt = tonumber(Teleport.LastClickAt) or 0
 
-	if Teleport.LastClickAt ~= 0 then
-		return math.max(0, debounce - (now - Teleport.LastClickAt))
+	if lastClickAt ~= 0 then
+		return math.max(0, debounce - (now - lastClickAt))
 	end
 
 	return 0
@@ -3008,10 +3012,11 @@ function Teleport.CanTeleport(debounceOverride, ignoreStability, silent)
 	end
 
 	local now = os.clock()
-	local debounce = debounceOverride or Teleport.Debounce
-	local debounceLeft = debounce - (now - Teleport.LastClickAt)
+	local debounce = tonumber(debounceOverride or Teleport.Debounce) or 0
+	local lastClickAt = tonumber(Teleport.LastClickAt) or 0
+	local debounceLeft = debounce - (now - lastClickAt)
 
-	if Teleport.LastClickAt ~= 0 and debounceLeft > 0 then
+	if lastClickAt ~= 0 and debounceLeft > 0 then
 		if not silent then
 			Teleport.ShowWarning(tostring(math.max(1, math.ceil(debounceLeft))))
 		end
@@ -5387,8 +5392,8 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 				Teleport.AddStrike()
 				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
-				Teleport.PostFLock = 0.2
-				Items.TeleportDebounce = 0.6
+				Teleport.PostFLock = 0.5
+				Items.TeleportDebounce = 0.7
 				createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 			end
 		else
@@ -5431,6 +5436,7 @@ end
 
 function Items.TryPickupPrompt(itemObject, itemPart)
 	local promptList = {}
+	local triggered = false
 
 	local function addPrompts(root)
 		if not root then
@@ -5462,9 +5468,166 @@ function Items.TryPickupPrompt(itemObject, itemPart)
 					task.wait(math.max(prompt.HoldDuration, 0.05))
 					prompt:InputHoldEnd()
 				end
+
+				triggered = true
 			end)
 		end
 	end
+
+	return triggered
+end
+
+function Items.GetMobilePickupButtonScore(button)
+	if not button
+		or not button:IsA("GuiButton")
+		or not button.Visible
+		or button.AbsoluteSize.X < 12
+		or button.AbsoluteSize.Y < 12
+		or button:IsDescendantOf(gui) then
+		return 0
+	end
+
+	local text = button.Name or ""
+
+	if button:IsA("TextButton") then
+		text = text .. " " .. (button.Text or "")
+	end
+
+	for _, child in ipairs(button:GetDescendants()) do
+		if child:IsA("TextLabel") or child:IsA("TextButton") or child:IsA("TextBox") then
+			text = text .. " " .. (child.Text or "")
+		end
+	end
+
+	local normalized = normalizeName(text)
+	local score = 0
+
+	if normalized:find("pickup", 1, true) or normalized:find("pick up", 1, true) then
+		score += 12
+	end
+
+	if normalized:find("collect", 1, true)
+		or normalized:find("grab", 1, true)
+		or normalized:find("take", 1, true)
+		or normalized:find("interact", 1, true)
+		or normalized:find("loot", 1, true)
+		or normalized:find("item", 1, true) then
+		score += 8
+	end
+
+	if normalized == "f" or normalized == "e" or normalized:find("pressf", 1, true) or normalized:find("presse", 1, true) then
+		score += 5
+	end
+
+	local viewport = getViewportSize()
+	local center = button.AbsolutePosition + (button.AbsoluteSize * 0.5)
+
+	if center.X > viewport.X * 0.45 and center.Y > viewport.Y * 0.35 then
+		score += 2
+	end
+
+	return score
+end
+
+function Items.FindMobilePickupButton()
+	local playerGui = player:FindFirstChildOfClass("PlayerGui")
+	local bestButton = nil
+	local bestScore = 0
+
+	if not playerGui then
+		return nil
+	end
+
+	for _, object in ipairs(playerGui:GetDescendants()) do
+		local score = Items.GetMobilePickupButtonScore(object)
+
+		if score > bestScore then
+			bestButton = object
+			bestScore = score
+		end
+	end
+
+	return bestScore > 0 and bestButton or nil
+end
+
+function Items.TapMobilePickupButton()
+	local button = Items.FindMobilePickupButton()
+
+	if not button then
+		return false
+	end
+
+	local tapped = false
+
+	pcall(function()
+		if type(firesignal) == "function" then
+			firesignal(button.Activated)
+			firesignal(button.MouseButton1Click)
+			tapped = true
+		end
+	end)
+
+	pcall(function()
+		local VirtualInputManager = game:GetService("VirtualInputManager")
+		local center = button.AbsolutePosition + (button.AbsoluteSize * 0.5)
+
+		VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, true, game, 0)
+		task.wait(0.03)
+		VirtualInputManager:SendMouseButtonEvent(center.X, center.Y, 0, false, game, 0)
+		tapped = true
+	end)
+
+	return tapped
+end
+
+function Items.TapMobilePickupIcon(itemPart)
+	if not itemPart or not itemPart.Parent then
+		return false
+	end
+
+	local camera = workspace.CurrentCamera
+
+	if not camera then
+		return false
+	end
+
+	local halfHeight = itemPart:IsA("BasePart") and (itemPart.Size.Y * 0.5) or 1
+	local tapPositions = {
+		itemPart.Position + Vector3.new(0, halfHeight + 2.5, 0),
+		itemPart.Position + Vector3.new(0, halfHeight + 1.4, 0),
+		itemPart.Position,
+	}
+	local VirtualInputManager = game:GetService("VirtualInputManager")
+
+	for _, worldPosition in ipairs(tapPositions) do
+		local screenPosition, onScreen = camera:WorldToViewportPoint(worldPosition)
+
+		if onScreen and screenPosition.Z > 0 then
+			local x = math.floor(screenPosition.X)
+			local y = math.floor(screenPosition.Y)
+			local tapped = false
+
+			pcall(function()
+				VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 0)
+				task.wait(0.03)
+				VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 0)
+				tapped = true
+			end)
+
+			pcall(function()
+				VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.Begin, x, y)
+				task.wait(0.03)
+				VirtualInputManager:SendTouchEvent(1, Enum.UserInputState.End, x, y)
+				tapped = true
+			end)
+
+			if tapped then
+				return true
+			end
+		end
+	end
+
+	return false
 end
 
 function Items.IsPickupInputLocked()
@@ -5479,8 +5642,10 @@ function Items.UsePickupInput(itemObject, itemPart, skipPickupLock)
 	end
 
 	if isTouchDevice then
-		Items.TryPickupPrompt(itemObject, itemPart)
-		return true
+		local usedPrompt = Items.TryPickupPrompt(itemObject, itemPart)
+		local tappedIcon = Items.TapMobilePickupIcon(itemPart)
+
+		return usedPrompt or tappedIcon
 	end
 
 	return pressF(skipPickupLock) == true
@@ -5824,8 +5989,8 @@ function Items.ResetPriorityCollectState(mode)
 	invalidateCollectibleSearchPool()
 	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.6
+	Teleport.PostFLock = 0.5
+	Items.TeleportDebounce = 0.7
 end
 
 function Items.RunPriorityAutoCollect(mode)
@@ -5863,8 +6028,8 @@ function Items.RunPriorityAutoCollect(mode)
 
 	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.6
+	Teleport.PostFLock = 0.5
+	Items.TeleportDebounce = 0.7
 	createNotification(title, isEarly and "Timer hit 3. Starting priority collection." or "Starting priority collection.", "Success")
 
 	while Items.IsPriorityCollectEnabled(mode) do
