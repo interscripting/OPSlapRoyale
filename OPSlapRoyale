@@ -1,21 +1,16 @@
-
-local WindUI = loadstring(game:HttpGet(
-    "https://github.com/Footagesus/WindUI/releases/latest/download/main.lua"
-))()
-
 local Services = {
 	Players = game:GetService("Players"),
 	RunService = game:GetService("RunService"),
 	TweenService = game:GetService("TweenService"),
 	UserInputService = game:GetService("UserInputService"),
 	MarketplaceService = game:GetService("MarketplaceService"),
-	ReplicatedStorage = game:GetService("ReplicatedStorage"),
 	ContextActionService = game:GetService("ContextActionService"),
 	CollectionService = game:GetService("CollectionService"),
+	ReplicatedStorage = game:GetService("ReplicatedStorage"),
 	TeleportService = game:GetService("TeleportService"),
 	GuiService = game:GetService("GuiService"),
-	HttpService = game:GetService("HttpService"),
-	ProximityPromptService = game:GetService("ProximityPromptService")
+	ProximityPromptService = game:GetService("ProximityPromptService"),
+	HttpService = game:GetService("HttpService")
 }
 
 local Players = Services.Players
@@ -23,222 +18,12 @@ local RunService = Services.RunService
 local TweenService = Services.TweenService
 local UserInputService = Services.UserInputService
 local MarketplaceService = Services.MarketplaceService
-local ReplicatedStorage = Services.ReplicatedStorage
 local ContextActionService = Services.ContextActionService
-local HttpService = Services.HttpService
+local ReplicatedStorage = Services.ReplicatedStorage
 local ProximityPromptService = Services.ProximityPromptService
+local HttpService = Services.HttpService
 local player = Players.LocalPlayer
 
-for _, object in ipairs(workspace:GetChildren()) do
-	if object.Name == "OPAutoPickupZone" then
-		pcall(function()
-			object:Destroy()
-		end)
-	end
-end
-
-local sharedEnvironment = nil
-do
-	local success, environment = pcall(function()
-		return type(getgenv) == "function" and getgenv() or nil
-	end)
-
-	if success and type(environment) == "table" then
-		sharedEnvironment = environment
-
-		if type(sharedEnvironment.OPSlapRoyaleCleanup) == "function" then
-			pcall(sharedEnvironment.OPSlapRoyaleCleanup)
-		end
-
-		sharedEnvironment.OPSlapRoyaleCleanup = nil
-	end
-end
-
-local State = { _NotifyMuted = false }
-local Settings = nil
-
-local function notify(title, content, kind, _clickCb, duration, _force)
-    if State._NotifyMuted and not _force then return end
-    local iconMap = {
-        Success="check-circle", Warning="alert-triangle",
-        Error="x-circle", Info="info",
-    }
-    local k = kind or "Info"
-    WindUI:Notify({
-        Title    = tostring(title or ""),
-        Content  = tostring(content or ""),
-        Duration = tonumber(duration) or 4,
-        Icon     = iconMap[k] or "bell",
-    })
-end
-
-local _toggleRegistry = {}
-local _sliderRegistry = {}
-local _windToggles = nil
-
-local function createToggleButton(parent, text, default, callback, descText)
-    local state = default == true
-    local control = {}
-    control.Button = Instance.new("Frame")
-    control.Label = Instance.new("Frame")
-    control.Description = Instance.new("Frame")
-    function control.Set(newState, runCallback)
-        state = newState == true
-        if runCallback then pcall(callback, state) end
-    end
-    function control.Get() return state end
-    _toggleRegistry[text] = { default = default, callback = callback, control = control }
-    return control
-end
-
-local function createSmallButton(parent, text, callback)
-    local f = Instance.new("Frame")
-    f.Name = text or "Button"
-    return f
-end
-
-local function createWarningLabel(parent, text)
-    return Instance.new("Frame")
-end
-
-local function createSearchBox(parent, placeholder, callback)
-    return Instance.new("Frame"), Instance.new("TextBox")
-end
-
-local function createDropdown(list, titleText, updateCanvas)
-    local body = Instance.new("Frame")
-    body:SetAttribute("IsDropdownBody", true)
-    return body
-end
-
-local function createSideDropdown(list, titleText, updateCanvas, descText)
-    local body = Instance.new("Frame")
-    body:SetAttribute("IsDropdownBody", true)
-    return body
-end
-
-local UI = {
-    SideDropdowns = {},
-    DropdownClosers = {},
-    ActiveSideDropdown = nil,
-    WindowTransparency = 0.45,
-    UserScaleMultiplier = 1,
-    Icons = {},
-    Descriptions = {},
-    ToggleDescriptions = {},
-    ToggleRefs = {},
-    SelectTab = function() end,
-    ApplyTheme = function() end,
-    CloseActiveSideDropdown = function() end,
-    CloseAllDropdowns = function() end,
-    CreateSlider = function(parent, text, minV, maxV, defV, callback)
-        local value = math.clamp(defV, minV, maxV)
-        local control = {}
-        function control.Set(newValue, runCallback)
-            value = math.clamp(newValue, minV, maxV)
-            if runCallback then pcall(callback, value) end
-        end
-        function control.Get() return value end
-        control.Holder = Instance.new("Frame")
-        _sliderRegistry[text] = { min=minV, max=maxV, default=defV, callback=callback, control=control }
-        return control
-    end,
-}
-
-local currentTheme = {
-    Panel = Color3.fromRGB(30, 30, 40),
-    Button = Color3.fromRGB(60, 60, 80),
-    ButtonDark = Color3.fromRGB(40, 40, 55),
-    Text = Color3.fromRGB(230, 230, 240),
-    SubText = Color3.fromRGB(160, 160, 180),
-    Stroke = Color3.fromRGB(80, 80, 110),
-    Toggle = Color3.fromRGB(130, 80, 220),
-    ToggleOff = Color3.fromRGB(60, 60, 80),
-}
-local themes = { ["Default"] = currentTheme }
-local function applyTheme() end
-local function themeObject() end
-
-local Notify = { Order = 0, Active = {}, Muted = false }
-function Notify.Show(...) notify(...) end
-function Notify.Clear() end
-function Notify.RefreshLayout() end
-function Notify.Trim() end
-
-local function updateMainCanvas() end
-local function updateItemsCanvas() end
-local function updateTeleportCanvas() end
-local function updateCombatCanvas() end
-local function updateBetaCanvas() end
-local function updateSafetyCanvas() end
-local function updateSettingsCanvas() end
-
-local mainList = Instance.new("Frame")
-local itemsList = Instance.new("Frame")
-local teleportList = Instance.new("Frame")
-local combatList = Instance.new("Frame")
-local betaList = Instance.new("Frame")
-local safetyList = Instance.new("Frame")
-local settingsList = Instance.new("Frame")
-
-local Window = {
-    Minimized = false,
-    Locked = false,
-    Dragging = false,
-    Resizing = false,
-    ResizeHandle = nil,
-    DidDragWindow = false,
-    DefaultReopenKey = Enum.KeyCode.RightShift,
-    ReopenKey = Enum.KeyCode.RightShift,
-    CustomKeybindsEnabled = false,
-    WaitingForKeybind = false,
-    LauncherSize = 58,
-    ToggleMinimized = function() end,
-    Minimize = function() end,
-    StartDrag = function() end,
-    StopDrag = function() end,
-    StartResize = function() end,
-    StopResize = function() end,
-    HandleInputChanged = function() end,
-    GetLauncherCenterPosition = function() return UDim2.new() end,
-    GetLauncherPosition = function() return UDim2.new() end,
-}
-
-local mainFrame = Instance.new("Frame")
-local gui = Instance.new("ScreenGui")
-gui.Name = "OPSlapRoyaleStub"
-gui.Parent = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
-local topBar = Instance.new("Frame")
-local minimizeButton = Instance.new("TextButton")
-local closeButton = Instance.new("TextButton")
-local tabScroll = Instance.new("ScrollingFrame")
-local tabLayout = Instance.new("UIListLayout")
-local contentFrame = Instance.new("Frame")
-local rootScale = Instance.new("UIScale")
-local isTouchDevice = game:GetService("UserInputService").TouchEnabled
-
-local function getViewportSize()
-    local cam = workspace.CurrentCamera
-    return cam and cam.ViewportSize or Vector2.new(1920,1080)
-end
-local function getUIScale() return 1 end
-local function px(v) return v end
-local function getWindowSize() return UDim2.new() end
-local function getMinimizedSize() return UDim2.new() end
-local function getOpenWindowPosition() return UDim2.new() end
-local function tweenWindow() end
-local function applyMobileMetrics() end
-local function selectTab() end
-local function applyTheme() end
-
-local function themeObject() end
-local function addCorner() return Instance.new("UICorner") end
-local function addStroke() return Instance.new("UIStroke") end
-local function styleButton() end
-
-local createNotification = notify
-
--- Current OP_Control runtime helpers
 local UNDER_MAP_PLATFORM_Y = -35
 local UNDER_MAP_PLATFORM_THICKNESS = 0.2
 local UNDER_MAP_SAFE_OFFSET = 4
@@ -320,8 +105,1973 @@ end
 
 clearUnderMapSafetyPlatform()
 
+local Settings = nil
+local Config = {}
 
--- Current OP_Control feature layer, with e-copy WindUI controls below
+Config.Themes = {
+	["Neon Orchid"] = {
+		Main = Color3.fromRGB(13, 10, 24),
+		Panel = Color3.fromRGB(21, 17, 36),
+		Button = Color3.fromRGB(216, 96, 255),
+		ButtonDark = Color3.fromRGB(35, 27, 56),
+		Stroke = Color3.fromRGB(250, 150, 255),
+		Text = Color3.fromRGB(253, 248, 255),
+		SubText = Color3.fromRGB(204, 181, 222)
+	},
+	["Cyber Lime"] = {
+		Main = Color3.fromRGB(8, 15, 13),
+		Panel = Color3.fromRGB(13, 26, 23),
+		Button = Color3.fromRGB(142, 255, 92),
+		ButtonDark = Color3.fromRGB(23, 42, 35),
+		Stroke = Color3.fromRGB(195, 255, 139),
+		Text = Color3.fromRGB(244, 255, 242),
+		SubText = Color3.fromRGB(176, 216, 174)
+	},
+	["Solar Flare"] = {
+		Main = Color3.fromRGB(20, 12, 9),
+		Panel = Color3.fromRGB(37, 22, 17),
+		Button = Color3.fromRGB(255, 174, 64),
+		ButtonDark = Color3.fromRGB(59, 35, 26),
+		Stroke = Color3.fromRGB(255, 214, 112),
+		Text = Color3.fromRGB(255, 248, 238),
+		SubText = Color3.fromRGB(232, 190, 146)
+	},
+	["Ocean Sync"] = {
+		Main = Color3.fromRGB(7, 16, 24),
+		Panel = Color3.fromRGB(12, 30, 43),
+		Button = Color3.fromRGB(58, 210, 255),
+		ButtonDark = Color3.fromRGB(20, 48, 64),
+		Stroke = Color3.fromRGB(132, 234, 255),
+		Text = Color3.fromRGB(241, 252, 255),
+		SubText = Color3.fromRGB(166, 208, 224)
+	},
+	["Rose Terminal"] = {
+		Main = Color3.fromRGB(22, 9, 16),
+		Panel = Color3.fromRGB(37, 16, 28),
+		Button = Color3.fromRGB(255, 92, 156),
+		ButtonDark = Color3.fromRGB(56, 27, 42),
+		Stroke = Color3.fromRGB(255, 162, 204),
+		Text = Color3.fromRGB(255, 246, 250),
+		SubText = Color3.fromRGB(226, 174, 200)
+	}
+}
+
+local themes = Config.Themes
+local currentTheme = themes["Neon Orchid"]
+
+local UI = {
+	SideDropdowns = {},
+	DropdownClosers = {},
+	WindowTransparency = 0.45,
+	ThemedObjects = {},
+	TabButtons = {},
+	ToggleRefs = {},
+	Pages = {},
+	SelectedTab = "Main",
+	TopLevelToggleOrder = 0
+}
+
+local Notify = {
+	Order = 0,
+	Active = {},
+	Width = 286,
+	Height = 68,
+	Gap = 6,
+	BottomOffset = 58,
+	RightOffset = 10,
+	LifeTime = 4.2,
+	MaxVisible = 4,
+	Muted = false
+}
+
+Notify.Presets = {
+	Info = {
+		Icon = "💬",
+		Color = Color3.fromRGB(95, 205, 255)
+	},
+	Success = {
+		Icon = "✅",
+		Color = Color3.fromRGB(95, 255, 165)
+	},
+	Warning = {
+		Icon = "⚠️",
+		Color = Color3.fromRGB(255, 205, 85)
+	},
+	Error = {
+		Icon = "❌",
+		Color = Color3.fromRGB(255, 90, 105)
+	}
+}
+
+pcall(function()
+	local playerGui = player:WaitForChild("PlayerGui", 5)
+
+	if playerGui then
+		for _, existingGui in ipairs(playerGui:GetChildren()) do
+			if existingGui.Name == "OPSlapRoyaleUI" then
+				existingGui:Destroy()
+			end
+		end
+	end
+end)
+
+local gui = Instance.new("ScreenGui")
+gui.Name = "OPSlapRoyaleUI"
+gui.ResetOnSpawn = false
+gui.DisplayOrder = 999999
+gui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+gui.Parent = player:WaitForChild("PlayerGui")
+
+function UI.ThemeObject(object, property, key)
+	table.insert(UI.ThemedObjects, {
+		Object = object,
+		Property = property,
+		Key = key
+	})
+
+	object[property] = currentTheme[key]
+end
+
+function UI.AddCorner(object, radius)
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, radius or 8)
+	corner.Parent = object
+	return corner
+end
+
+function UI.AddStroke(object, color, thickness)
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = color or Color3.fromRGB(0, 0, 0)
+	stroke.Thickness = thickness or 2
+	stroke.Parent = object
+	return stroke
+end
+
+function UI.StyleButton(button)
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.ClipsDescendants = true
+	button.BackgroundTransparency = 0.12
+	UI.AddCorner(button, 6)
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 1
+	scale.Parent = button
+
+	local stroke = Instance.new("UIStroke")
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Thickness = 1
+	stroke.Transparency = 0.76
+	stroke.Parent = button
+	UI.ThemeObject(stroke, "Color", "Stroke")
+
+	UI.ThemeObject(button, "TextColor3", "Text")
+
+	local hovering = false
+
+	local function tween(object, duration, props)
+		TweenService:Create(
+			object,
+			TweenInfo.new(duration, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			props
+		):Play()
+	end
+
+	button.MouseEnter:Connect(function()
+		hovering = true
+		tween(scale, 0.14, { Scale = 1.006 })
+		tween(stroke, 0.14, { Transparency = 0.42 })
+		tween(button, 0.14, { BackgroundTransparency = 0.04 })
+	end)
+
+	button.MouseLeave:Connect(function()
+		hovering = false
+		tween(scale, 0.16, { Scale = 1 })
+		tween(stroke, 0.16, { Transparency = 0.76 })
+		tween(button, 0.16, { BackgroundTransparency = 0.12 })
+	end)
+
+	button.MouseButton1Down:Connect(function()
+		tween(scale, 0.08, { Scale = 0.985 })
+	end)
+
+	button.MouseButton1Up:Connect(function()
+		tween(scale, 0.14, { Scale = hovering and 1.006 or 1 })
+	end)
+end
+
+UI.Icons = {
+	Main = "🏠",
+	Items = "🎒",
+	Teleports = "🧭",
+	Combat = "⚔️",
+	Visuals = "👁️",
+	Safety = "🛡️",
+	Settings = "⚙️",
+	BETA = "🧪",
+	["Get Code + Go Barn"] = "🔢",
+	["Early Bus Jump"] = "BUS",
+	["Auto Rejoin"] = "JOIN",
+	["Quick Teleports"] = "⚡",
+	["Mobile Quick Menus"] = "📱",
+	["Map Locations"] = "🗺️",
+	["Item Teleports"] = "🎁",
+	["Player Teleports"] = "👤",
+	["Auto Items"] = "🤖",
+	["Auto Heal"] = "❤️",
+["Auto Sort"] = "🎒",
+["Auto Use Permanent Items"] = "⚡",
+["Meteor Crate"] = "📦",
+	Hitboxes = "🎯",
+["Hitbox Size"] = "📏",
+["Expand Hitbox"] = "📦",
+["Visualize Hitboxes"] = "✨",
+["Player TP Buttons"] = "📍",
+["Increase Glove Size"] = "🧤",
+["Auto Slap"] = "👊",
+	["Glove TP Slap"] = "🎯",
+	["Expand crate hitboxes"] = "📦",
+	["Anti-Ragdoll"] = "🧱",
+	["Player Stats ESP"] = "📊",
+	["Item ESP"] = "💎",
+	["World Safety"] = "🚧",
+	["Anti-Acid & Lava"] = "🔥",
+	["Anti-Staff"] = "🕵️",
+	["Themes"] = "🎨",
+	["Cycle Theme"] = "🔁",
+	["Disable Notifications"] = "🔕",
+	["Window Transparency"] = "🪟",
+	["Quick Menu Hotkeys"] = "⌨️",
+	["Toggle recommended settings?"] = "⭐",
+	["Teleport To Lowest Health"] = "🩹",
+	["Teleport To Nearest"] = "📍",
+	["Open Item Teleports"] = "🎁",
+	["Open Player Teleports"] = "👤",
+	["Open Map Locations"] = "🗺️",
+	Teleport = "🚀"
+}
+
+UI.Descriptions = {
+	Main = "Fast actions, puzzle tools, and recommended setup.",
+	Items = "Find, track, and collect the nearest useful item.",
+	Teleports = "Jump to map points or players from compact menus.",
+	Combat = "Hitbox controls and player movement utilities.",
+	Visuals = "On-screen overlays and player information.",
+	Safety = "World hazard protection and safety toggles.",
+	Settings = "Theme, hotkey, and window controls.",
+	BETA = "Experimental combat tools.",
+	["Quick Teleports"] = "Pinned locations for fast map movement.",
+	["Mobile Quick Menus"] = "Touch shortcuts for menus that use hotkeys on PC.",
+	["Auto Items"] = "Automatic item use and collection controls.",
+	Hitboxes = "Adjust hitbox size, visibility, and expansion from one panel.",
+	["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
+	["World Safety"] = "Invisible protection over danger zones.",
+	["Themes"] = "Switch the full menu color profile.",
+	["Theme Creator"] = "Tune the accent color for your current theme.",
+	["Get Code + Go Barn"] = "Moves to barn, scans puzzle assets, and reports the code.",
+	["Early Bus Jump"] = "Auto-fires bus jump when the script detects your character inside the bus.",
+	["Early Auto Collect"] = "Must be activated before there are 3 seconds left.",
+	["Auto collect"] = "Collects priority items without waiting for the round countdown.",
+	["Auto Rejoin"] = "Teleports to place 9426795465 when you die or a disconnect prompt appears.",
+	["Infinite jump"] = "Lets each manual jump request jump again while in the air.",
+	["Toggle recommended settings?"] = "Turns on Auto Use Permanents, hitbox, Player ESP, Early Auto Collect, Anti-Ragdoll, Anti-Staff, and Auto Heal."
+}
+
+function UI.GetIcon(text)
+	if UI.Icons[text] then
+		return UI.Icons[text]
+	end
+
+	return UI.Icons.Teleport
+end
+
+function UI.GetDescription(text)
+	return UI.Descriptions[text] or ""
+end
+
+local themeObject = UI.ThemeObject
+local addCorner = UI.AddCorner
+local addStroke = UI.AddStroke
+local styleButton = UI.StyleButton
+
+local mainFrame = Instance.new("Frame")
+mainFrame.Size = UDim2.fromOffset(520, 380)
+mainFrame.Position = UDim2.fromScale(0.5, 0.5)
+mainFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = true
+mainFrame.BackgroundTransparency = 0
+mainFrame.ZIndex = 10
+mainFrame.Parent = gui
+themeObject(mainFrame, "BackgroundColor3", "Main")
+addCorner(mainFrame, 14)
+
+local isTouchDevice = UserInputService.TouchEnabled
+
+local function getViewportSize()
+	local camera = workspace.CurrentCamera
+	return camera and camera.ViewportSize or Vector2.new(660, 430)
+end
+
+local function getUIScale()
+	local viewport = getViewportSize()
+
+	if isTouchDevice or viewport.X < 720 then
+		return math.clamp(viewport.X / 430, 0.72, 0.9)
+	end
+
+	if viewport.X < 1000 or viewport.Y < 650 then
+		return 0.88
+	end
+
+	if viewport.X < 1360 or viewport.Y < 760 then
+		return 0.94
+	end
+
+	return 1
+end
+
+local function px(value)
+	return math.max(1, math.floor(value * getUIScale() + 0.5))
+end
+
+local rootScale = Instance.new("UIScale")
+rootScale.Scale = getUIScale()
+rootScale.Parent = mainFrame
+
+local function getWindowSize()
+	local viewport = getViewportSize()
+	local scale = getUIScale()
+
+	if isTouchDevice or viewport.X < 720 then
+		return UDim2.fromOffset(
+			math.clamp(math.floor(viewport.X * 0.92), 280, math.floor(470 * scale)),
+			math.clamp(math.floor(viewport.Y * 0.74), 260, math.floor(420 * scale))
+		)
+	end
+
+	return UDim2.fromOffset(
+		math.clamp(math.floor(viewport.X * 0.58), 500, math.floor(680 * scale)),
+		math.clamp(math.floor(viewport.Y * 0.7), 340, math.floor(470 * scale))
+	)
+end
+
+local function getMinimizedSize()
+	local viewport = getViewportSize()
+
+	if isTouchDevice or viewport.X < 720 then
+		return UDim2.fromOffset(math.clamp(math.floor(viewport.X * 0.76), 230, 390), px(42))
+	end
+
+	return UDim2.fromOffset(420, 42)
+end
+
+local function applyMobileMetrics()
+	local viewport = getViewportSize()
+	local compact = isTouchDevice or viewport.X < 720
+
+	Notify.Width = compact and math.clamp(math.floor(viewport.X * 0.72), 210, 280) or math.floor(286 * getUIScale())
+	Notify.RightOffset = compact and 8 or 10
+	Notify.BottomOffset = compact and 44 or 58
+	Notify.Height = compact and 64 or math.floor(68 * getUIScale())
+	Notify.Gap = compact and 5 or 6
+end
+
+applyMobileMetrics()
+
+local normalSize = getWindowSize()
+local minimizedSize = getMinimizedSize()
+local windowTween = nil
+
+local function getOpenWindowPosition()
+	local viewport = getViewportSize()
+	local topPadding = isTouchDevice and 28 or 38
+	local centerY = math.floor((normalSize.Y.Offset / 2) + topPadding)
+	local maxCenterY = math.max(centerY, viewport.Y - math.floor(normalSize.Y.Offset / 2) - 12)
+
+	return UDim2.new(0.5, 0, 0, math.min(centerY, maxCenterY))
+end
+
+mainFrame.Size = UDim2.fromOffset(math.max(normalSize.X.Offset - 36, 280), math.max(normalSize.Y.Offset - 36, 260))
+mainFrame.Position = getOpenWindowPosition()
+
+local function tweenWindow(targetSize, targetPosition, duration)
+	if windowTween then
+		windowTween:Cancel()
+	end
+
+	windowTween = TweenService:Create(
+		mainFrame,
+		TweenInfo.new(duration or 0.35, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Size = targetSize,
+			Position = targetPosition
+		}
+	)
+
+	windowTween:Play()
+	return windowTween
+end
+
+task.defer(function()
+	tweenWindow(normalSize, getOpenWindowPosition(), 0.45)
+end)
+
+do
+	local stroke = addStroke(mainFrame, currentTheme.Stroke, 1)
+	themeObject(stroke, "Color", "Stroke")
+end
+
+do
+	local glow = Instance.new("UIStroke")
+	glow.Thickness = 5
+	glow.Transparency = 0.7
+	glow.Parent = mainFrame
+	themeObject(glow, "Color", "Stroke")
+end
+
+do
+	local accent = Instance.new("Frame")
+	accent.Size = UDim2.new(1, -22, 0, 2)
+	accent.Position = UDim2.fromOffset(11, 53)
+	accent.BorderSizePixel = 0
+	accent.Parent = mainFrame
+	themeObject(accent, "BackgroundColor3", "Stroke")
+	addCorner(accent, 2)
+end
+
+do
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.fromScale(1, 1)
+	holder.BackgroundTransparency = 1
+	holder.ZIndex = 0
+	holder.Parent = mainFrame
+
+	for i = 1, 10 do
+		local line = Instance.new("Frame")
+		line.Size = UDim2.new(1, 0, 0, 1)
+		line.Position = UDim2.new(0, 0, 0, i * 38)
+		line.BackgroundTransparency = 0.88
+		line.BorderSizePixel = 0
+		line.Parent = holder
+		themeObject(line, "BackgroundColor3", "Stroke")
+	end
+end
+
+local topBar = Instance.new("Frame")
+topBar.Size = UDim2.new(1, 0, 0, 56)
+topBar.BackgroundTransparency = 1
+topBar.Active = true
+topBar.ZIndex = 30
+topBar.Parent = mainFrame
+
+do
+	local box = Instance.new("Frame")
+	box.Size = UDim2.new(1, -104, 0, 32)
+	box.Position = UDim2.fromOffset(10, 9)
+	box.BorderSizePixel = 0
+	box.Parent = topBar
+	themeObject(box, "BackgroundColor3", "Panel")
+	box.BackgroundTransparency = 0.08
+	addCorner(box, 6)
+	addStroke(box, Color3.fromRGB(0, 0, 0), 2)
+
+	local badge = Instance.new("TextLabel")
+	badge.Size = UDim2.fromOffset(26, 22)
+	badge.Position = UDim2.fromOffset(7, 5)
+	badge.BorderSizePixel = 0
+	badge.Text = "OP"
+	badge.Font = Enum.Font.GothamBlack
+	badge.TextSize = 10
+	badge.Parent = box
+	themeObject(badge, "BackgroundColor3", "ButtonDark")
+	themeObject(badge, "TextColor3", "Button")
+	addCorner(badge, 6)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -44, 1, 0)
+	title.Position = UDim2.fromOffset(38, 0)
+	title.BackgroundTransparency = 1
+	title.Text = "OP Control"
+	title.Font = Enum.Font.GothamBlack
+	title.TextSize = isTouchDevice and 15 or 17
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = box
+	themeObject(title, "TextColor3", "Text")
+end
+
+local minimizeButton = Instance.new("TextButton")
+minimizeButton.Size = UDim2.fromOffset(31, 31)
+minimizeButton.Position = UDim2.new(1, -70, 0, 9)
+minimizeButton.Text = "-"
+minimizeButton.Font = Enum.Font.GothamBold
+minimizeButton.TextSize = 18
+minimizeButton.ZIndex = 40
+minimizeButton.Parent = topBar
+themeObject(minimizeButton, "BackgroundColor3", "ButtonDark")
+styleButton(minimizeButton)
+
+local closeButton = Instance.new("TextButton")
+closeButton.Size = UDim2.fromOffset(31, 31)
+closeButton.Position = UDim2.new(1, -35, 0, 9)
+closeButton.Text = "X"
+closeButton.Font = Enum.Font.GothamBold
+closeButton.TextSize = 14
+closeButton.ZIndex = 40
+closeButton.Parent = topBar
+themeObject(closeButton, "BackgroundColor3", "ButtonDark")
+styleButton(closeButton)
+
+local viewportSize = getViewportSize()
+local sideTabWidth = viewportSize.X < 420 and 70 or 88
+local contentLeftOffset = 9
+
+local tabScroll = Instance.new("ScrollingFrame")
+tabScroll.Size = UDim2.new(1, -18, 0, 50)
+tabScroll.Position = UDim2.fromOffset(9, 61)
+tabScroll.BorderSizePixel = 0
+tabScroll.ScrollBarThickness = 4
+tabScroll.CanvasSize = UDim2.fromOffset(0, 0)
+tabScroll.ClipsDescendants = true
+tabScroll.ScrollingDirection = Enum.ScrollingDirection.X
+tabScroll.Parent = mainFrame
+themeObject(tabScroll, "BackgroundColor3", "Panel")
+addCorner(tabScroll, 6)
+
+local tabStroke = addStroke(tabScroll, currentTheme.Stroke, 1)
+themeObject(tabStroke, "Color", "Stroke")
+tabStroke.Transparency = 0.35
+
+local tabLayout = Instance.new("UIListLayout")
+tabLayout.FillDirection = Enum.FillDirection.Horizontal
+tabLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+tabLayout.Padding = UDim.new(0, 7)
+tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
+tabLayout.Parent = tabScroll
+
+local tabPadding = Instance.new("UIPadding")
+tabPadding.PaddingTop = UDim.new(0, 6)
+tabPadding.PaddingLeft = UDim.new(0, 7)
+tabPadding.PaddingRight = UDim.new(0, 7)
+tabPadding.Parent = tabScroll
+
+local contentFrame = Instance.new("Frame")
+contentFrame.Size = UDim2.new(1, -18, 1, -122)
+contentFrame.Position = UDim2.fromOffset(contentLeftOffset, 116)
+contentFrame.BorderSizePixel = 0
+contentFrame.ClipsDescendants = true
+contentFrame.Parent = mainFrame
+themeObject(contentFrame, "BackgroundColor3", "Panel")
+addCorner(contentFrame, 6)
+
+local contentStroke = addStroke(contentFrame, currentTheme.Stroke, 1)
+themeObject(contentStroke, "Color", "Stroke")
+contentStroke.Transparency = 0.35
+
+function UI.CreatePage(name)
+	local page = Instance.new("Frame")
+	page.Name = name .. "Page"
+	page.Size = UDim2.fromScale(1, 1)
+	page.BackgroundTransparency = 1
+	page.Visible = false
+	page.Parent = contentFrame
+	UI.Pages[name] = page
+	return page
+end
+
+UI.CreatePage("Main")
+UI.CreatePage("Items")
+UI.CreatePage("Teleports")
+UI.CreatePage("Combat")
+UI.CreatePage("BETA")
+UI.CreatePage("Safety")
+UI.CreatePage("Settings")
+
+function UI.ApplyTheme(themeName)
+	if not themes[themeName] then
+		return
+	end
+
+	currentTheme = themes[themeName]
+	UI.CurrentThemeName = themeName
+
+	for _, item in ipairs(UI.ThemedObjects) do
+		if item.Object and item.Object.Parent then
+			item.Object[item.Property] = currentTheme[item.Key]
+		end
+	end
+
+	for name, button in pairs(UI.TabButtons) do
+		button.BackgroundColor3 = name == UI.SelectedTab and currentTheme.Button or currentTheme.ButtonDark
+
+		local icon = button:FindFirstChild("IconBadge")
+		local label = button:FindFirstChild("TabLabel")
+
+		if icon then
+			icon.BackgroundColor3 = name == UI.SelectedTab and currentTheme.Main or currentTheme.Panel
+			icon.TextColor3 = name == UI.SelectedTab and currentTheme.Button or currentTheme.Text
+		end
+
+		if label then
+			label.TextColor3 = currentTheme.Text
+		end
+	end
+end
+
+function UI.SelectTab(tabName)
+	UI.SelectedTab = tabName
+
+	for name, page in pairs(UI.Pages) do
+		page.Visible = name == tabName
+	end
+
+	for name, button in pairs(UI.TabButtons) do
+		button.BackgroundColor3 = name == tabName and currentTheme.Button or currentTheme.ButtonDark
+
+		local icon = button:FindFirstChild("IconBadge")
+		local label = button:FindFirstChild("TabLabel")
+
+		if icon then
+			icon.BackgroundColor3 = name == tabName and currentTheme.Main or currentTheme.Panel
+			icon.TextColor3 = name == tabName and currentTheme.Button or currentTheme.Text
+		end
+
+		if label then
+			label.TextColor3 = currentTheme.Text
+		end
+	end
+end
+
+function UI.CreateTab(name)
+	local button = Instance.new("TextButton")
+	button.Name = name .. "Tab"
+	button.Size = UDim2.fromOffset(isTouchDevice and 72 or 94, isTouchDevice and 38 or 40)
+	button.Text = ""
+	button.Font = Enum.Font.GothamBlack
+	button.TextSize = 12
+	button.TextXAlignment = Enum.TextXAlignment.Center
+	button.BorderSizePixel = 0
+	button.AutoButtonColor = false
+	button.ClipsDescendants = true
+	button.Parent = tabScroll
+	themeObject(button, "BackgroundColor3", "ButtonDark")
+	themeObject(button, "TextColor3", "Text")
+	addCorner(button, 6)
+
+	local icon = Instance.new("TextLabel")
+	icon.Name = "IconBadge"
+	icon.Size = UDim2.fromOffset(18, 18)
+	icon.Position = UDim2.fromOffset(8, 10)
+	icon.BackgroundTransparency = 0
+	icon.Text = UI.GetIcon(name)
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 10
+	icon.TextXAlignment = Enum.TextXAlignment.Center
+	icon.TextYAlignment = Enum.TextYAlignment.Center
+	icon.Parent = button
+	addCorner(icon, 5)
+
+	local label = Instance.new("TextLabel")
+	label.Name = "TabLabel"
+	label.Size = UDim2.new(1, -34, 1, 0)
+	label.Position = UDim2.fromOffset(30, 0)
+	label.BackgroundTransparency = 1
+	label.Text = name
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = isTouchDevice and 9 or 11
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = button
+	themeObject(label, "TextColor3", "Text")
+
+	local padding = Instance.new("UIPadding")
+	padding.PaddingLeft = UDim.new(0, 4)
+	padding.PaddingRight = UDim.new(0, 4)
+	padding.Parent = button
+
+	UI.TabButtons[name] = button
+
+	button.MouseButton1Click:Connect(function()
+		UI.SelectTab(name)
+	end)
+end
+
+UI.CreateTab("Main")
+UI.CreateTab("Teleports")
+UI.CreateTab("Items")
+UI.CreateTab("Combat")
+UI.CreateTab("BETA")
+UI.CreateTab("Safety")
+UI.CreateTab("Settings")
+
+tabLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+	tabScroll.CanvasSize = UDim2.fromOffset(tabLayout.AbsoluteContentSize.X + 20, 0)
+end)
+
+function UI.CreatePageTitle(parent, text)
+	local box = Instance.new("Frame")
+	box.Size = UDim2.new(1, -16, 0, isTouchDevice and 46 or 50)
+	box.Position = UDim2.fromOffset(8, 8)
+	box.BorderSizePixel = 0
+	box.Parent = parent
+	themeObject(box, "BackgroundColor3", "ButtonDark")
+	box.BackgroundTransparency = 0.12
+	addCorner(box, 6)
+	local boxStroke = addStroke(box, currentTheme.Stroke, 1)
+	boxStroke.Transparency = 0.55
+	themeObject(boxStroke, "Color", "Stroke")
+
+	local rail = Instance.new("Frame")
+	rail.Size = UDim2.new(0, 4, 1, -14)
+	rail.Position = UDim2.fromOffset(9, 7)
+	rail.BorderSizePixel = 0
+	rail.Parent = box
+	themeObject(rail, "BackgroundColor3", "Button")
+	addCorner(rail, 4)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(24, 24)
+	icon.Position = UDim2.fromOffset(20, isTouchDevice and 11 or 13)
+	icon.BorderSizePixel = 0
+	icon.Text = UI.GetIcon(text)
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 13
+	icon.Parent = box
+	themeObject(icon, "BackgroundColor3", "Panel")
+	themeObject(icon, "TextColor3", "Button")
+	addCorner(icon, 6)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -66, 0, 22)
+	label.Position = UDim2.fromOffset(54, 7)
+	label.BackgroundTransparency = 1
+	label.Text = string.upper(text)
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = isTouchDevice and 12 or 14
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = box
+	themeObject(label, "TextColor3", "Text")
+
+	local description = Instance.new("TextLabel")
+	description.Size = UDim2.new(1, -68, 0, 18)
+	description.Position = UDim2.fromOffset(54, 27)
+	description.BackgroundTransparency = 1
+	description.Text = UI.GetDescription(text)
+	description.Font = Enum.Font.GothamMedium
+	description.TextSize = isTouchDevice and 9 or 10
+	description.TextTruncate = Enum.TextTruncate.AtEnd
+	description.TextXAlignment = Enum.TextXAlignment.Left
+	description.TextYAlignment = Enum.TextYAlignment.Center
+	description.Parent = box
+	themeObject(description, "TextColor3", "SubText")
+end
+
+UI.CreatePageTitle(UI.Pages.Main, "Main")
+UI.CreatePageTitle(UI.Pages.Items, "Items")
+UI.CreatePageTitle(UI.Pages.Teleports, "Teleports")
+UI.CreatePageTitle(UI.Pages.Combat, "Combat")
+UI.CreatePageTitle(UI.Pages.BETA, "BETA")
+UI.CreatePageTitle(UI.Pages.Safety, "Safety")
+UI.CreatePageTitle(UI.Pages.Settings, "Settings")
+
+function UI.CreatePageList(parent)
+	local list = Instance.new("ScrollingFrame")
+	list.Size = UDim2.new(1, -16, 1, -(isTouchDevice and 108 or 114))
+	list.Position = UDim2.fromOffset(8, isTouchDevice and 66 or 72)
+	list.BackgroundTransparency = 1
+	list.BorderSizePixel = 0
+	list.ScrollBarThickness = isTouchDevice and 3 or 5
+	list.CanvasSize = UDim2.fromOffset(0, 0)
+	list.Parent = parent
+
+	local layout = Instance.new("UIListLayout")
+	layout.Padding = UDim.new(0, isTouchDevice and 7 or 9)
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Parent = list
+
+	local function updateCanvas()
+		task.wait()
+		list.CanvasSize = UDim2.fromOffset(0, layout.AbsoluteContentSize.Y + 12)
+	end
+
+	return list, updateCanvas
+end
+
+local mainList, updateMainCanvas = UI.CreatePageList(UI.Pages.Main)
+local itemsList, updateItemsCanvas = UI.CreatePageList(UI.Pages.Items)
+local teleportList, updateTeleportCanvas = UI.CreatePageList(UI.Pages.Teleports)
+local combatList, updateCombatCanvas = UI.CreatePageList(UI.Pages.Combat)
+local betaList, updateBetaCanvas = UI.CreatePageList(UI.Pages.BETA)
+local safetyList, updateSafetyCanvas = UI.CreatePageList(UI.Pages.Safety)
+local settingsList, updateSettingsCanvas = UI.CreatePageList(UI.Pages.Settings)
+
+function UI.CreateSmallButton(parent, text, callback)
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -8, 0, isTouchDevice and 34 or 38)
+	button.Text = ""
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 12
+	button.TextXAlignment = Enum.TextXAlignment.Left
+	button.AutoButtonColor = false
+	button.Parent = parent
+	themeObject(button, "BackgroundColor3", "ButtonDark")
+	styleButton(button)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(18, 18)
+	icon.Position = UDim2.fromOffset(9, isTouchDevice and 8 or 10)
+	icon.BorderSizePixel = 0
+	icon.BackgroundTransparency = 1
+	icon.Text = UI.GetIcon(text)
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 10
+	icon.Parent = button
+	themeObject(icon, "TextColor3", "Button")
+
+	local label = Instance.new("TextLabel")
+	label.Name = "ButtonLabel"
+	label.Size = UDim2.new(1, -42, 1, 0)
+	label.Position = UDim2.fromOffset(33, 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = isTouchDevice and 10 or 12
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = button
+	themeObject(label, "TextColor3", "Text")
+
+	button.MouseButton1Click:Connect(function()
+		callback()
+
+		local closer = UI.DropdownClosers[parent]
+		if closer then
+			closer()
+		end
+
+		if parent:GetAttribute("IsDropdownBody") then
+			UI.CloseActiveSideDropdown()
+		end
+	end)
+
+	return button
+end
+
+function UI.CreateWarningLabel(parent, text)
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -12, 0, 28)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 13
+	label.TextXAlignment = Enum.TextXAlignment.Center
+	label.TextColor3 = Color3.fromRGB(255, 80, 80)
+	label.Parent = parent
+	return label
+end
+
+function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callback)
+	local value = math.clamp(defaultValue, minValue, maxValue)
+
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -8, 0, isTouchDevice and 46 or 52)
+	holder.BorderSizePixel = 0
+	holder.Parent = parent
+	themeObject(holder, "BackgroundColor3", "ButtonDark")
+	addCorner(holder, 8)
+	addStroke(holder, currentTheme.Stroke, 1)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -24, 0, 24)
+	label.Position = UDim2.fromOffset(12, 4)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = isTouchDevice and 9 or 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = holder
+	themeObject(label, "TextColor3", "Text")
+
+	local bar = Instance.new("TextButton")
+	bar.Size = UDim2.new(1, -24, 0, isTouchDevice and 10 or 7)
+	bar.Position = UDim2.fromOffset(12, isTouchDevice and 32 or 36)
+	bar.Text = ""
+	bar.BorderSizePixel = 0
+	bar.AutoButtonColor = false
+	bar.Active = true
+	bar.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+	bar.Parent = holder
+	addCorner(bar, isTouchDevice and 7 or 4)
+
+	local fill = Instance.new("Frame")
+	fill.Size = UDim2.fromScale(0, 1)
+	fill.BorderSizePixel = 0
+	fill.Parent = bar
+	themeObject(fill, "BackgroundColor3", "Button")
+	addCorner(fill, 4)
+
+	local dragging = false
+
+	local function isSliderStart(inputObject)
+		return inputObject.UserInputType == Enum.UserInputType.MouseButton1
+			or inputObject.UserInputType == Enum.UserInputType.Touch
+	end
+
+	local function isSliderMove(inputObject)
+		return inputObject.UserInputType == Enum.UserInputType.MouseMovement
+			or inputObject.UserInputType == Enum.UserInputType.Touch
+	end
+
+	local function setValue(newValue, runCallback)
+		value = math.clamp(newValue, minValue, maxValue)
+		local percent = (value - minValue) / (maxValue - minValue)
+		fill.Size = UDim2.fromScale(math.clamp(percent, 0, 1), 1)
+		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+
+		if runCallback then
+			callback(value)
+
+			if Settings and Settings.OnControlChanged then
+				Settings.OnControlChanged()
+			end
+		end
+	end
+
+	local function setValueFromX(x)
+		local percent = math.clamp((x - bar.AbsolutePosition.X) / bar.AbsoluteSize.X, 0, 1)
+		value = minValue + ((maxValue - minValue) * percent)
+		setValue(value, true)
+	end
+
+	local function refresh()
+		setValue(value, true)
+	end
+
+	bar.InputBegan:Connect(function(inputObject)
+		if isSliderStart(inputObject) then
+			dragging = true
+			setValueFromX(inputObject.Position.X)
+		end
+	end)
+
+	UserInputService.InputEnded:Connect(function(inputObject)
+		if isSliderStart(inputObject) then
+			dragging = false
+		end
+	end)
+
+	UserInputService.InputChanged:Connect(function(inputObject)
+		if dragging and isSliderMove(inputObject) then
+			setValueFromX(inputObject.Position.X)
+		end
+	end)
+
+	refresh()
+	local control = {
+		Holder = holder,
+		Set = setValue,
+		Get = function()
+			return value
+		end
+	}
+
+	if Settings and Settings.RegisterSlider then
+		Settings.RegisterSlider(text, control)
+	end
+
+	return control
+end
+
+function UI.CreateSearchBox(parent, placeholderText, callback)
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -10, 0, isTouchDevice and 46 or 52)
+	holder.BorderSizePixel = 0
+	holder.Parent = parent
+	themeObject(holder, "BackgroundColor3", "ButtonDark")
+	addCorner(holder, 6)
+	addStroke(holder, currentTheme.Stroke, 1)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(24, 24)
+	icon.Position = UDim2.fromOffset(10, isTouchDevice and 11 or 14)
+	icon.BackgroundTransparency = 1
+	icon.Text = "🔎"
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = isTouchDevice and 14 or 16
+	icon.Parent = holder
+	themeObject(icon, "TextColor3", "Button")
+
+	local box = Instance.new("TextBox")
+	box.Size = UDim2.new(1, -48, 1, -10)
+	box.Position = UDim2.fromOffset(40, 5)
+	box.BackgroundTransparency = 1
+	box.ClearTextOnFocus = false
+	box.PlaceholderText = placeholderText
+	box.Text = ""
+	box.Font = Enum.Font.GothamBold
+	box.TextSize = isTouchDevice and 11 or 13
+	box.TextXAlignment = Enum.TextXAlignment.Left
+	box.TextTruncate = Enum.TextTruncate.AtEnd
+	box.Parent = holder
+	themeObject(box, "TextColor3", "Text")
+	themeObject(box, "PlaceholderColor3", "SubText")
+
+	box:GetPropertyChangedSignal("Text"):Connect(function()
+		callback(box.Text)
+	end)
+
+	return holder, box
+end
+
+UI.ToggleDescriptions = {
+	["Early Auto Collect"] = "Must be activated before there are 3 seconds left.",
+	["Auto collect"] = "Collects priority items now without countdown or bunker teleport.",
+	["Auto pick up"] = "Creates an invisible pickup zone around you and presses pickup while items touch it.",
+	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
+	["Auto Sort"] = "Keeps your glove first, priority items next, and healing items grouped.",
+["Auto Use Permanent Items"] = "Uses permanent boost items shortly after they enter your inventory.",
+["Expand Hitbox"] = "Applies your selected hitbox size to other players.",
+["Visualize Hitboxes"] = "Toggles the neon hitbox preview on or off.",
+["Player TP Buttons"] = "Shows big Teleport buttons above players that safely teleport you to them.",
+["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
+	["Auto Slap"] = "Automatically slaps when another player's glove enters your hitbox.",
+	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
+	["Expand crate hitboxes"] = "Expands meteor crate hitboxes to match your player hitbox size.",
+	["Anti-Ragdoll"] = "Briefly boxes your character in when ragdoll or knockback is detected.",
+	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
+	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
+	["Anti-Acid & Lava"] = "Places invisible safety cover parts over acid and lava.",
+	["Hide under map"] = "Moves you straight below the map, then back to safe land above you.",
+	["Anti-Staff"] = "Leaves the server when chat suggests recording, proof, or staff attention.",
+	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
+	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
+	["Early Bus Jump"] = "Automatically fires bus jump once when your character is detected inside the bus.",
+	["Auto Rejoin"] = "Teleports to place 9426795465 when you die or a disconnect prompt appears.",
+	["Infinite jump"] = "Lets each manual jump request jump again while in the air.",
+	["Toggle recommended settings?"] = "Turns on Auto Use Permanents, hitbox, Player ESP, Early Auto Collect, Anti-Ragdoll, Anti-Staff, and Auto Heal."
+}
+
+function UI.CreateToggleButton(parent, text, defaultState, callback, descriptionText)
+	local state = defaultState == true
+	local description = descriptionText or UI.ToggleDescriptions[text] or ""
+
+	local button = Instance.new("TextButton")
+	button.Size = UDim2.new(1, -8, 0, description ~= "" and (isTouchDevice and 56 or 64) or (isTouchDevice and 38 or 44))
+	button.Text = ""
+	button.Font = Enum.Font.GothamBold
+	button.TextSize = 13
+	button.Parent = parent
+
+	UI.TopLevelToggleOrder += 1
+	button.LayoutOrder = -10000 + UI.TopLevelToggleOrder
+
+	themeObject(button, "BackgroundColor3", "ButtonDark")
+	styleButton(button)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -90, 0, description ~= "" and 20 or 38)
+	label.Position = UDim2.fromOffset(42, description ~= "" and 6 or 0)
+	label.BackgroundTransparency = 1
+	label.Text = text
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = isTouchDevice and 10 or 12
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = button
+	themeObject(label, "TextColor3", "Text")
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(21, 21)
+	icon.Position = UDim2.fromOffset(10, description ~= "" and 10 or 9)
+	icon.BorderSizePixel = 0
+	icon.Text = UI.GetIcon(text)
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 10
+	icon.Parent = button
+	themeObject(icon, "BackgroundColor3", "Panel")
+	themeObject(icon, "TextColor3", "Button")
+	addCorner(icon, 6)
+
+	local descriptionLabel = nil
+
+	if description ~= "" then
+		descriptionLabel = Instance.new("TextLabel")
+		descriptionLabel.Size = UDim2.new(1, -100, 0, 26)
+        descriptionLabel.Position = UDim2.fromOffset(43, 28)
+		descriptionLabel.BackgroundTransparency = 1
+		descriptionLabel.Text = description
+		descriptionLabel.Font = Enum.Font.GothamMedium
+		descriptionLabel.TextSize = isTouchDevice and 8 or 10
+		descriptionLabel.TextWrapped = true
+		descriptionLabel.TextXAlignment = Enum.TextXAlignment.Left
+		descriptionLabel.TextYAlignment = Enum.TextYAlignment.Top
+		descriptionLabel.Parent = button
+		themeObject(descriptionLabel, "TextColor3", "SubText")
+	end
+
+	local switch = Instance.new("Frame")
+	switch.Size = UDim2.fromOffset(34, 18)
+	switch.Position = UDim2.new(1, -44, 0, description ~= "" and 14 or 10)
+	switch.BorderSizePixel = 0
+	switch.Parent = button
+	addCorner(switch, 11)
+	addStroke(switch, Color3.fromRGB(0, 0, 0), 1)
+
+	local knob = Instance.new("Frame")
+	knob.Size = UDim2.fromOffset(12, 12)
+	knob.Position = UDim2.fromOffset(3, 3)
+	knob.BorderSizePixel = 0
+	knob.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	knob.Parent = switch
+	addCorner(knob, 8)
+
+	local function setState(newState, runCallback)
+		state = newState == true
+
+		button.BackgroundColor3 = currentTheme.ButtonDark
+		switch.BackgroundColor3 = state and currentTheme.Button or Color3.fromRGB(35, 35, 35)
+
+		label.TextColor3 = currentTheme.Text
+
+		if descriptionLabel then
+			descriptionLabel.TextColor3 = currentTheme.SubText
+		end
+
+		TweenService:Create(
+			knob,
+			TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Position = state and UDim2.fromOffset(19, 3) or UDim2.fromOffset(3, 3) }
+		):Play()
+
+		if runCallback then
+			local success, errorMessage = pcall(function()
+				callback(state)
+			end)
+
+			if not success then
+				Notify.Show("Toggle Error", tostring(errorMessage), "Error", nil, 3, true)
+			end
+		end
+
+		if runCallback and Settings and Settings.OnControlChanged then
+			Settings.OnControlChanged()
+
+			if Settings.SaveNow and not Settings.Loading and Settings.Ready then
+				Settings.SaveDirty = false
+				Settings.SaveNow()
+			end
+		end
+	end
+
+	button.MouseButton1Click:Connect(function()
+		setState(not state, true)
+	end)
+
+	setState(state, false)
+
+	local control = {
+		Button = button,
+		Label = label,
+		Description = descriptionLabel,
+		Set = setState,
+		Get = function()
+			return state
+		end
+	}
+
+	if Settings and Settings.RegisterToggle and text ~= "Toggle recommended settings?" and text ~= "Hide under map" then
+		Settings.RegisterToggle(text, control)
+	end
+
+	return control
+end
+
+function UI.CreateDropdown(list, titleText, updateCanvas)
+	local wrapper = Instance.new("Frame")
+	wrapper.Size = UDim2.new(1, -6, 0, isTouchDevice and 54 or 60)
+	wrapper.BackgroundTransparency = 1
+	wrapper.BorderSizePixel = 0
+	wrapper.ClipsDescendants = false
+	wrapper.Parent = list
+
+	local holder = Instance.new("Frame")
+	holder.Size = UDim2.new(1, -18, 0, isTouchDevice and 50 or 56)
+	holder.Position = UDim2.new(0.5, 0, 0, 3)
+	holder.AnchorPoint = Vector2.new(0.5, 0)
+	holder.BorderSizePixel = 0
+	holder.ClipsDescendants = true
+	holder.Parent = wrapper
+	themeObject(holder, "BackgroundColor3", "ButtonDark")
+	holder.BackgroundTransparency = 0.1
+	addCorner(holder, 6)
+	do
+		local stroke = addStroke(holder, currentTheme.Stroke, 1)
+		stroke.Transparency = 0.78
+		themeObject(stroke, "Color", "Stroke")
+	end
+
+	local header = Instance.new("TextButton")
+	header.Size = UDim2.new(1, 0, 0, isTouchDevice and 50 or 56)
+	header.BackgroundTransparency = 1
+	header.Text = ""
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 14
+	header.TextXAlignment = Enum.TextXAlignment.Center
+	header.Parent = holder
+	themeObject(header, "TextColor3", "Text")
+
+	local headerIcon = Instance.new("TextLabel")
+	headerIcon.Size = UDim2.fromOffset(isTouchDevice and 26 or 30, isTouchDevice and 26 or 30)
+	headerIcon.Position = UDim2.fromOffset(11, isTouchDevice and 12 or 13)
+	headerIcon.BorderSizePixel = 0
+	headerIcon.Text = UI.GetIcon(titleText)
+	headerIcon.Font = Enum.Font.GothamBlack
+	headerIcon.TextSize = isTouchDevice and 11 or 13
+	headerIcon.Parent = holder
+	themeObject(headerIcon, "BackgroundColor3", "Panel")
+	themeObject(headerIcon, "TextColor3", "Button")
+	headerIcon.BackgroundTransparency = 0.22
+	addCorner(headerIcon, 6)
+
+	local headerLabel = Instance.new("TextLabel")
+	headerLabel.Size = UDim2.new(1, -86, 0, 22)
+	headerLabel.Position = UDim2.fromOffset(isTouchDevice and 45 or 50, isTouchDevice and 7 or 9)
+	headerLabel.BackgroundTransparency = 1
+	headerLabel.Text = titleText
+	headerLabel.Font = Enum.Font.GothamBlack
+	headerLabel.TextSize = isTouchDevice and 12 or 14
+	headerLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	headerLabel.Parent = holder
+	themeObject(headerLabel, "TextColor3", "Text")
+
+	local headerDescription = Instance.new("TextLabel")
+	headerDescription.Size = UDim2.new(1, -86, 0, 18)
+	headerDescription.Position = UDim2.fromOffset(isTouchDevice and 45 or 50, isTouchDevice and 28 or 32)
+	headerDescription.BackgroundTransparency = 1
+	headerDescription.Text = UI.GetDescription(titleText)
+	headerDescription.Font = Enum.Font.GothamMedium
+	headerDescription.TextSize = isTouchDevice and 8 or 10
+	headerDescription.TextTruncate = Enum.TextTruncate.AtEnd
+	headerDescription.TextXAlignment = Enum.TextXAlignment.Left
+	headerDescription.Parent = holder
+	themeObject(headerDescription, "TextColor3", "SubText")
+
+	local arrow = Instance.new("TextLabel")
+	arrow.Size = UDim2.fromOffset(24, 24)
+	arrow.Position = UDim2.new(1, -34, 0, isTouchDevice and 13 or 16)
+	arrow.BackgroundTransparency = 1
+	arrow.Active = true
+	arrow.Text = "+"
+	arrow.Font = Enum.Font.GothamBold
+	arrow.TextSize = 14
+	arrow.Parent = holder
+	themeObject(arrow, "TextColor3", "Text")
+
+	local dropdownScale = Instance.new("UIScale")
+	dropdownScale.Scale = 1
+	dropdownScale.Parent = holder
+
+	local body = Instance.new("Frame")
+	body.Size = UDim2.new(1, 0, 0, 0)
+	body.Position = UDim2.fromOffset(0, isTouchDevice and 54 or 60)
+	body.BackgroundTransparency = 1
+	body.Visible = false
+	body.Parent = holder
+	body:SetAttribute("IsDropdownBody", true)
+
+	local bodyLayout = Instance.new("UIListLayout")
+	bodyLayout.Padding = UDim.new(0, isTouchDevice and 6 or 8)
+	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyLayout.Parent = body
+
+	local bodyPadding = Instance.new("UIPadding")
+	bodyPadding.PaddingLeft = UDim.new(0, 6)
+	bodyPadding.PaddingRight = UDim.new(0, 6)
+	bodyPadding.Parent = body
+
+	local open = false
+
+	local function refreshSize(animated)
+		local bodyHeight = bodyLayout.AbsoluteContentSize.Y + 12
+		local closedHeight = isTouchDevice and 50 or 56
+		local targetHeight = open and ((isTouchDevice and 58 or 64) + bodyHeight) or closedHeight
+
+		body.Size = UDim2.new(1, 0, 0, bodyHeight)
+		wrapper.Size = UDim2.new(1, -6, 0, targetHeight + 7)
+
+		if animated then
+			TweenService:Create(
+				holder,
+				TweenInfo.new(0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+				{ Size = UDim2.new(1, -18, 0, targetHeight) }
+			):Play()
+		else
+			holder.Size = UDim2.new(1, -18, 0, targetHeight)
+		end
+
+		updateCanvas()
+		task.delay(0.28, updateCanvas)
+	end
+
+	local function toggle()
+		open = not open
+		body.Visible = open
+		arrow.Text = open and "-" or "+"
+
+		TweenService:Create(
+			dropdownScale,
+			TweenInfo.new(0.12, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{ Scale = 0.985 }
+		):Play()
+
+		task.delay(0.08, function()
+			if dropdownScale.Parent then
+				TweenService:Create(
+					dropdownScale,
+					TweenInfo.new(0.18, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+					{ Scale = 1 }
+				):Play()
+			end
+		end)
+
+		refreshSize(true)
+	end
+
+	header.MouseButton1Click:Connect(toggle)
+	arrow.InputBegan:Connect(function(inputObject)
+		if inputObject.UserInputType == Enum.UserInputType.MouseButton1
+			or inputObject.UserInputType == Enum.UserInputType.Touch
+		then
+			toggle()
+		end
+	end)
+
+			bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		refreshSize(false)
+	end)
+
+	UI.DropdownClosers[body] = function()
+		if open then
+			open = false
+			body.Visible = false
+			arrow.Text = "+"
+			refreshSize(true)
+		end
+	end
+
+	updateCanvas()
+	return body
+end
+
+function UI.CloseActiveSideDropdown()
+	if UI.ActiveSideDropdown and UI.ActiveSideDropdown.Close then
+		UI.ActiveSideDropdown.Close()
+	end
+end
+
+function UI.CloseAllDropdowns()
+	for _, closer in pairs(UI.DropdownClosers) do
+		if closer then
+			closer()
+		end
+	end
+
+	UI.CloseActiveSideDropdown()
+end
+
+function UI.CreateSideDropdown(list, titleText, updateCanvas, descriptionText)
+	local description = descriptionText or ""
+	local viewport = getViewportSize()
+	local flyoutWidth = isTouchDevice and math.clamp(math.floor(viewport.X * 0.76), 220, 292) or 300
+
+	local function refreshFlyoutWidth()
+		local viewportSize = getViewportSize()
+		flyoutWidth = isTouchDevice and math.clamp(math.floor(viewportSize.X * 0.76), 220, 292) or 300
+	end
+
+	local wrapper = Instance.new("Frame")
+	wrapper.Size = UDim2.new(1, -6, 0, description ~= "" and (isTouchDevice and 58 or 64) or (isTouchDevice and 42 or 48))
+	wrapper.BackgroundTransparency = 1
+	wrapper.BorderSizePixel = 0
+	wrapper.Parent = list
+
+	local header = Instance.new("TextButton")
+	header.Size = UDim2.new(1, -18, 0, description ~= "" and (isTouchDevice and 54 or 60) or (isTouchDevice and 38 or 44))
+	header.Position = UDim2.new(0.5, 0, 0, 3)
+	header.AnchorPoint = Vector2.new(0.5, 0)
+	header.BorderSizePixel = 0
+	header.Text = ""
+	header.Font = Enum.Font.GothamBold
+	header.TextSize = 14
+	header.Parent = wrapper
+	themeObject(header, "BackgroundColor3", "ButtonDark")
+	header.BackgroundTransparency = 0.1
+	styleButton(header)
+
+	local headerIcon = Instance.new("TextLabel")
+	headerIcon.Size = UDim2.fromOffset(isTouchDevice and 24 or 28, isTouchDevice and 24 or 28)
+	headerIcon.Position = UDim2.fromOffset(10, description ~= "" and 8 or 8)
+	headerIcon.BorderSizePixel = 0
+	headerIcon.Text = UI.GetIcon(titleText)
+	headerIcon.Font = Enum.Font.GothamBlack
+	headerIcon.TextSize = isTouchDevice and 11 or 13
+	headerIcon.Parent = header
+	themeObject(headerIcon, "BackgroundColor3", "Panel")
+	themeObject(headerIcon, "TextColor3", "Button")
+	headerIcon.BackgroundTransparency = 0.22
+	addCorner(headerIcon, 6)
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -56, 0, 22)
+	label.Position = UDim2.fromOffset(isTouchDevice and 40 or 46, description ~= "" and 5 or 9)
+	label.BackgroundTransparency = 1
+	label.Text = titleText
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = isTouchDevice and 11 or 13
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.Parent = header
+	themeObject(label, "TextColor3", "Text")
+
+	if description ~= "" then
+		local desc = Instance.new("TextLabel")
+		desc.Size = UDim2.new(1, -58, 0, 23)
+		desc.Position = UDim2.fromOffset(isTouchDevice and 40 or 46, 28)
+		desc.BackgroundTransparency = 1
+		desc.Text = description
+		desc.Font = Enum.Font.GothamMedium
+		desc.TextSize = isTouchDevice and 8 or 10
+		desc.TextWrapped = true
+		desc.TextXAlignment = Enum.TextXAlignment.Left
+		desc.TextYAlignment = Enum.TextYAlignment.Top
+		desc.Parent = header
+		themeObject(desc, "TextColor3", "SubText")
+	end
+
+	local flyout = Instance.new("Frame")
+	flyout.Size = UDim2.fromOffset(flyoutWidth, 0)
+	flyout.BackgroundTransparency = 0.04
+	flyout.BorderSizePixel = 0
+	flyout.Visible = false
+	flyout.Active = false
+	flyout.ZIndex = 80
+	flyout.ClipsDescendants = true
+	flyout.Parent = gui
+	themeObject(flyout, "BackgroundColor3", "Panel")
+	addCorner(flyout, 6)
+
+	local flyoutStroke = addStroke(flyout, currentTheme.Stroke, 1)
+	themeObject(flyoutStroke, "Color", "Stroke")
+	flyoutStroke.Transparency = 0.72
+
+	local flyoutTitle = Instance.new("TextLabel")
+	flyoutTitle.Size = UDim2.new(1, -84, 0, 40)
+	flyoutTitle.Position = UDim2.fromOffset(46, 0)
+	flyoutTitle.BackgroundTransparency = 1
+	flyoutTitle.Text = titleText
+	flyoutTitle.Font = Enum.Font.GothamBlack
+	flyoutTitle.TextSize = isTouchDevice and 12 or 14
+	flyoutTitle.TextXAlignment = Enum.TextXAlignment.Left
+	flyoutTitle.Parent = flyout
+	themeObject(flyoutTitle, "TextColor3", "Text")
+
+	local flyoutIcon = Instance.new("TextLabel")
+	flyoutIcon.Size = UDim2.fromOffset(26, 26)
+	flyoutIcon.Position = UDim2.fromOffset(10, 7)
+	flyoutIcon.BorderSizePixel = 0
+	flyoutIcon.Text = UI.GetIcon(titleText)
+	flyoutIcon.Font = Enum.Font.GothamBlack
+	flyoutIcon.TextSize = isTouchDevice and 11 or 13
+	flyoutIcon.Parent = flyout
+	themeObject(flyoutIcon, "BackgroundColor3", "ButtonDark")
+	themeObject(flyoutIcon, "TextColor3", "Button")
+	flyoutIcon.BackgroundTransparency = 0.22
+	addCorner(flyoutIcon, 6)
+
+	local closeFlyout = Instance.new("TextButton")
+	closeFlyout.Size = UDim2.fromOffset(28, 28)
+	closeFlyout.Position = UDim2.new(1, -35, 0, 6)
+	closeFlyout.BorderSizePixel = 0
+	closeFlyout.Text = "X"
+	closeFlyout.Font = Enum.Font.GothamBlack
+	closeFlyout.TextSize = 13
+	closeFlyout.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeFlyout.BackgroundColor3 = Color3.fromRGB(220, 45, 55)
+	closeFlyout.Parent = flyout
+	addCorner(closeFlyout, 8)
+	styleButton(closeFlyout)
+
+	local body = Instance.new("ScrollingFrame")
+	body.Size = UDim2.new(1, -18, 1, -50)
+	body.Position = UDim2.fromOffset(9, 44)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.ScrollBarThickness = isTouchDevice and 3 or 5
+	body.CanvasSize = UDim2.fromOffset(0, 0)
+	body.Parent = flyout
+	body:SetAttribute("IsDropdownBody", true)
+
+	local bodyLayout = Instance.new("UIListLayout")
+	bodyLayout.Padding = UDim.new(0, isTouchDevice and 6 or 8)
+	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyLayout.Parent = body
+
+	local bodyPadding = Instance.new("UIPadding")
+	bodyPadding.PaddingLeft = UDim.new(0, 4)
+	bodyPadding.PaddingRight = UDim.new(0, 4)
+	bodyPadding.Parent = body
+
+	local open = false
+	local flyoutTween = nil
+
+	local function getTargetPosition()
+		refreshFlyoutWidth()
+
+		local viewportSize = getViewportSize()
+		local targetX = mainFrame.AbsolutePosition.X + mainFrame.AbsoluteSize.X + 12
+		local targetY = mainFrame.AbsolutePosition.Y + 58
+
+		if isTouchDevice or targetX + flyoutWidth > viewportSize.X - 8 then
+			targetX = math.clamp(mainFrame.AbsolutePosition.X + 8, 8, math.max(8, viewportSize.X - flyoutWidth - 8))
+			targetY = math.clamp(mainFrame.AbsolutePosition.Y + 66, 8, math.max(8, viewportSize.Y - 160))
+		end
+
+		return UDim2.fromOffset(targetX, targetY)
+	end
+
+	local function getTargetHeight()
+		local viewportSize = getViewportSize()
+		local targetPosition = getTargetPosition()
+	local maxHeight = math.max(120, math.min(math.max(210, mainFrame.AbsoluteSize.Y - 58), viewportSize.Y - targetPosition.Y.Offset - 10))
+
+		return math.clamp(bodyLayout.AbsoluteContentSize.Y + 50, 120, maxHeight)
+	end
+
+	local function refreshBody()
+		body.CanvasSize = UDim2.fromOffset(0, bodyLayout.AbsoluteContentSize.Y + 14)
+	end
+
+	local function repositionFlyout()
+		if open and flyout.Visible then
+			flyout.Position = getTargetPosition()
+			flyout.Size = UDim2.fromOffset(flyoutWidth, getTargetHeight())
+		end
+	end
+
+	local function tweenFlyout(targetSize, targetPosition, targetTransparency, duration)
+		if flyoutTween then
+			flyoutTween:Cancel()
+		end
+
+		flyoutTween = TweenService:Create(
+			flyout,
+			TweenInfo.new(duration or 0.25, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+			{
+				Size = targetSize,
+				Position = targetPosition,
+				BackgroundTransparency = targetTransparency
+			}
+		)
+
+		flyoutTween:Play()
+		return flyoutTween
+	end
+
+	local function closeFlyoutAnimated()
+		if not open then
+			flyout.Visible = false
+			flyout.Active = false
+			return
+		end
+
+		open = false
+		flyout.Active = false
+
+		local targetPosition = getTargetPosition()
+		local outTween = tweenFlyout(
+			UDim2.fromOffset(flyoutWidth, 0),
+			UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset),
+			0.35,
+			0.22
+		)
+
+		outTween.Completed:Connect(function()
+			if not open then
+				flyout.Visible = false
+				flyout.Active = false
+			end
+		end)
+
+		if UI.ActiveSideDropdown and UI.ActiveSideDropdown.Body == body then
+			UI.ActiveSideDropdown = nil
+		end
+	end
+
+	local function openFlyout()
+		if UI.ActiveSideDropdown and UI.ActiveSideDropdown.Body ~= body then
+			UI.ActiveSideDropdown.Close()
+		end
+
+		UI.ActiveSideDropdown = {
+			Body = body,
+			Close = closeFlyoutAnimated,
+			Reposition = repositionFlyout
+		}
+
+		open = true
+		refreshBody()
+
+		local targetPosition = getTargetPosition()
+		local targetHeight = getTargetHeight()
+
+		flyout.Position = UDim2.fromOffset(targetPosition.X.Offset - 18, targetPosition.Y.Offset)
+		flyout.Size = UDim2.fromOffset(flyoutWidth, 0)
+		flyout.BackgroundTransparency = 0.35
+		flyout.Visible = true
+		flyout.Active = true
+
+		tweenFlyout(UDim2.fromOffset(flyoutWidth, targetHeight), targetPosition, 0.04, 0.28)
+	end
+
+	header.MouseButton1Click:Connect(function()
+		if open then
+			closeFlyoutAnimated()
+		else
+			openFlyout()
+		end
+	end)
+
+	closeFlyout.MouseButton1Click:Connect(closeFlyoutAnimated)
+
+	bodyLayout:GetPropertyChangedSignal("AbsoluteContentSize"):Connect(function()
+		refreshBody()
+
+		if open then
+			tweenFlyout(UDim2.fromOffset(flyoutWidth, getTargetHeight()), getTargetPosition(), 0.04, 0.18)
+		end
+	end)
+
+	mainFrame:GetPropertyChangedSignal("Position"):Connect(repositionFlyout)
+	mainFrame:GetPropertyChangedSignal("Size"):Connect(repositionFlyout)
+
+	UI.SideDropdowns[titleText] = {
+		Body = body,
+		Open = openFlyout,
+		Close = closeFlyoutAnimated,
+		IsOpen = function()
+			return open
+		end
+	}
+
+	updateCanvas()
+	return body
+end
+
+local createSmallButton = UI.CreateSmallButton
+local createWarningLabel = UI.CreateWarningLabel
+local createToggleButton = UI.CreateToggleButton
+local createDropdown = UI.CreateDropdown
+local createSideDropdown = UI.CreateSideDropdown
+
+function Notify.GetKind(titleText, kind)
+	if kind and Notify.Presets[kind] then
+		return kind
+	end
+
+	local title = string.lower(tostring(titleText))
+
+	if string.find(title, "error") or string.find(title, "failed") then
+		return "Error"
+	end
+
+	if string.find(title, "warning") or string.find(title, "anti") or string.find(title, "wait") or string.find(title, "cooldown") then
+		return "Warning"
+	end
+
+	if string.find(title, "enabled") or string.find(title, "found") or string.find(title, "success") then
+		return "Success"
+	end
+
+	return "Info"
+end
+
+local notificationStack = Instance.new("Frame")
+notificationStack.Name = "NotificationStack"
+notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
+notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
+notificationStack.BackgroundTransparency = 1
+notificationStack.Active = false
+notificationStack.ZIndex = 100
+notificationStack.Parent = gui
+
+local notificationLayout = Instance.new("UIListLayout")
+notificationLayout.FillDirection = Enum.FillDirection.Vertical
+notificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+notificationLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notificationLayout.Padding = UDim.new(0, Notify.Gap)
+notificationLayout.Parent = notificationStack
+
+function Notify.RefreshLayout()
+	applyMobileMetrics()
+
+	notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
+	notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
+
+	for _, slot in ipairs(Notify.Active) do
+		if slot and slot.Parent then
+			slot.Size = UDim2.fromOffset(Notify.Width, slot.Size.Y.Offset)
+
+			local popup = slot:FindFirstChild("Popup")
+			if popup then
+				popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
+			end
+		end
+	end
+end
+
+function Notify.Trim()
+	while #Notify.Active > Notify.MaxVisible do
+		local oldest = table.remove(Notify.Active, 1)
+		if oldest and oldest.Parent then
+			oldest:Destroy()
+		end
+	end
+end
+
+function Notify.Clear()
+	for _, slot in ipairs(Notify.Active) do
+		if slot and slot.Parent then
+			slot:Destroy()
+		end
+	end
+
+	Notify.Active = {}
+end
+
+function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forceShow)
+	if Notify.Muted and not forceShow then
+		return
+	end
+
+	Notify.RefreshLayout()
+	Notify.Order += 1
+	lifeTime = lifeTime or Notify.LifeTime
+
+	local preset = Notify.Presets[Notify.GetKind(titleText, kind)]
+
+	local slot = Instance.new("Frame")
+	slot.Size = UDim2.fromOffset(Notify.Width, 0)
+	slot.BackgroundTransparency = 1
+	slot.LayoutOrder = Notify.Order
+	slot.ClipsDescendants = true
+	slot.Active = false
+	slot.ZIndex = 100
+	slot.Parent = notificationStack
+
+	table.insert(Notify.Active, slot)
+	Notify.Trim()
+
+	local hasClickAction = clickCallback ~= nil
+
+	local popup = Instance.new("Frame")
+	popup.Name = "Popup"
+	popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
+	popup.Position = UDim2.fromOffset(Notify.Width + 42, 0)
+	popup.BackgroundTransparency = 0.04
+	popup.BorderSizePixel = 0
+	popup.ClipsDescendants = true
+	popup.Active = false
+	popup.ZIndex = 101
+	popup.Parent = slot
+	themeObject(popup, "BackgroundColor3", "Panel")
+	addCorner(popup, 12)
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.92
+	scale.Parent = popup
+
+	local stroke = addStroke(popup, preset.Color, 1)
+	stroke.Transparency = 0.18
+
+	local glow = Instance.new("UIStroke")
+	glow.Thickness = 4
+	glow.Transparency = 0.76
+	glow.Color = preset.Color
+	glow.Parent = popup
+
+	local iconBubble = Instance.new("Frame")
+	iconBubble.Size = UDim2.fromOffset(28, 28)
+	iconBubble.Position = UDim2.fromOffset(12, 10)
+	iconBubble.BorderSizePixel = 0
+	iconBubble.BackgroundColor3 = preset.Color
+	iconBubble.Parent = popup
+	addCorner(iconBubble, 17)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromScale(1, 1)
+	icon.BackgroundTransparency = 1
+	icon.Text = preset.Icon
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 18
+	icon.TextColor3 = Color3.fromRGB(10, 12, 18)
+	icon.Parent = iconBubble
+
+	local noteTitle = Instance.new("TextLabel")
+	noteTitle.Size = UDim2.new(1, -58, 0, 24)
+	noteTitle.Position = UDim2.fromOffset(48, 10)
+	noteTitle.BackgroundTransparency = 1
+	noteTitle.Text = tostring(titleText)
+	noteTitle.Font = Enum.Font.GothamBlack
+	noteTitle.TextSize = isTouchDevice and 14 or 15
+	noteTitle.TextXAlignment = Enum.TextXAlignment.Left
+	noteTitle.TextTruncate = Enum.TextTruncate.AtEnd
+	noteTitle.Parent = popup
+	themeObject(noteTitle, "TextColor3", "Text")
+
+	local message = Instance.new("TextLabel")
+	message.Size = UDim2.new(1, -58, 0, 38)
+	message.Position = UDim2.fromOffset(48, 36)
+	message.BackgroundTransparency = 1
+	message.Text = tostring(messageText)
+	message.Font = Enum.Font.GothamMedium
+	message.TextSize = isTouchDevice and 12 or 13
+	message.TextWrapped = true
+	message.TextXAlignment = Enum.TextXAlignment.Left
+	message.TextYAlignment = Enum.TextYAlignment.Top
+	message.Parent = popup
+	themeObject(message, "TextColor3", "SubText")
+
+	local progressBack = Instance.new("Frame")
+	progressBack.Size = UDim2.new(1, -28, 0, 4)
+	progressBack.Position = UDim2.new(0, 14, 1, -9)
+	progressBack.BorderSizePixel = 0
+	progressBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	progressBack.BackgroundTransparency = 0.88
+	progressBack.Parent = popup
+	addCorner(progressBack, 3)
+
+	local progress = Instance.new("Frame")
+	progress.Size = UDim2.fromScale(1, 1)
+	progress.BorderSizePixel = 0
+	progress.BackgroundColor3 = preset.Color
+	progress.Parent = progressBack
+	addCorner(progress, 3)
+
+	local dismissed = false
+	local dismiss = nil
+
+	if hasClickAction then
+		local clickButton = Instance.new("TextButton")
+		clickButton.Size = UDim2.fromOffset(44, 28)
+		clickButton.Position = UDim2.new(1, -54, 0, 10)
+		clickButton.BorderSizePixel = 0
+		clickButton.Text = "GO"
+		clickButton.Font = Enum.Font.GothamBlack
+		clickButton.TextSize = 12
+		clickButton.TextColor3 = Color3.fromRGB(10, 12, 18)
+		clickButton.BackgroundColor3 = preset.Color
+		clickButton.AutoButtonColor = false
+		clickButton.ZIndex = popup.ZIndex + 1
+		clickButton.Parent = popup
+		addCorner(clickButton, 6)
+
+		clickButton.MouseButton1Click:Connect(function()
+			clickCallback()
+			dismiss()
+		end)
+	end
+
+	dismiss = function()
+		if dismissed then
+			return
+		end
+
+		dismissed = true
+
+		TweenService:Create(
+			scale,
+			TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+			{ Scale = 0.94 }
+		):Play()
+
+		TweenService:Create(
+			slot,
+			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+			{ Size = UDim2.fromOffset(Notify.Width, 0) }
+		):Play()
+
+		local outTween = TweenService:Create(
+			popup,
+			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
+			{
+				Position = UDim2.fromOffset(Notify.Width + 46, 0),
+				BackgroundTransparency = 0.25
+			}
+		)
+
+		outTween:Play()
+		outTween.Completed:Connect(function()
+			for index, item in ipairs(Notify.Active) do
+				if item == slot then
+					table.remove(Notify.Active, index)
+					break
+				end
+			end
+
+			if slot.Parent then
+				slot:Destroy()
+			end
+		end)
+	end
+
+	TweenService:Create(
+		slot,
+		TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromOffset(Notify.Width, Notify.Height) }
+	):Play()
+
+	TweenService:Create(
+		popup,
+		TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
+		{
+			Position = UDim2.fromOffset(0, 0),
+			BackgroundTransparency = 0.02
+		}
+	):Play()
+
+	TweenService:Create(
+		scale,
+		TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Scale = 1 }
+	):Play()
+
+	TweenService:Create(
+		progress,
+		TweenInfo.new(lifeTime, Enum.EasingStyle.Linear),
+		{ Size = UDim2.new(0, 0, 1, 0) }
+	):Play()
+
+	popup.MouseEnter:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Scale = 1.018 }):Play()
+		TweenService:Create(glow, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Transparency = 0.48 }):Play()
+	end)
+
+	popup.MouseLeave:Connect(function()
+		TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Scale = 1 }):Play()
+		TweenService:Create(glow, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 0.76 }):Play()
+	end)
+
+	task.delay(lifeTime, function()
+		if popup.Parent then
+			dismiss()
+		end
+	end)
+end
+
+local createNotification = Notify.Show
 local Combat = nil
 
 Settings = {
@@ -3017,7 +4767,6 @@ local autoSortQueued = false
 local autoPermanentEnabled = false
 local autoPermanentThread = nil
 local autoPermanentToggle = nil
-local autoPermanentSyncing = false
 local runAutoUsePermanentItems = nil
 local lastAutoPermanentUseAt = 0
 local autoPermanentSeenAt = {}
@@ -4238,34 +5987,6 @@ local function setAutoPermanentItems(state, silent)
 	end
 end
 
-function Items.SetAutoPermanentItems(state, silent)
-	if autoPermanentToggle and autoPermanentToggle.Get and autoPermanentToggle.Get() ~= (state == true) then
-		autoPermanentToggle.Set(state, false)
-	end
-
-	setAutoPermanentItems(state, silent)
-end
-
-function Items.SyncAutoPermanentWindToggle(state)
-	if not _windToggles or not _windToggles["Auto Use Permanent Items"] then
-		return
-	end
-
-	local toggle = _windToggles["Auto Use Permanent Items"]
-	autoPermanentSyncing = true
-	local ok = pcall(function()
-		toggle:SetValue(state == true)
-	end)
-
-	if not ok then
-		pcall(function()
-			toggle:Set(state == true)
-		end)
-	end
-
-	autoPermanentSyncing = false
-end
-
 function Items.DisableEarlyAutoCollectConflicts()
 	Items.EarlyAutoCollectRestoreAutoPickup = false
 	Items.EarlyAutoCollectRestoreAutoPermanent = false
@@ -4276,11 +5997,9 @@ function Items.DisableEarlyAutoCollectConflicts()
 		if autoPermanentToggle then
 			autoPermanentToggle.Set(false, false)
 		end
-
-		Items.SyncAutoPermanentWindToggle(false)
 	end
 
-	Items.SetAutoPermanentItems(false, true)
+	setAutoPermanentItems(false, true)
 end
 
 function Items.RestoreEarlyAutoCollectConflicts()
@@ -4289,8 +6008,7 @@ function Items.RestoreEarlyAutoCollectConflicts()
 			autoPermanentToggle.Set(true, false)
 		end
 
-		Items.SyncAutoPermanentWindToggle(true)
-		Items.SetAutoPermanentItems(true, true)
+		setAutoPermanentItems(true, true)
 	end
 
 	Items.EarlyAutoCollectRestoreAutoPickup = false
@@ -5674,7 +7392,7 @@ do
 end
 
 autoPermanentToggle = createToggleButton(itemsList, "Auto Use Permanent Items", false, function(state)
-	Items.SetAutoPermanentItems(state, false)
+	setAutoPermanentItems(state, false)
 end)
 UI.ToggleRefs.AutoPermanent = autoPermanentToggle
 autoPermanentToggle.Button.LayoutOrder = -9970
@@ -8477,16 +10195,8 @@ UI.ToggleRefs.AntiStaff = createToggleButton(safetyList, "Anti-Staff", false, fu
 end)
 
 createToggleButton(mainList, "Toggle recommended settings?", false, function(state)
-	if UI.SetAutoRejoin then
-		UI.SetAutoRejoin(state)
-	end
-
 	if state and UI.ToggleRefs.AutoPermanent then
 		UI.ToggleRefs.AutoPermanent.Set(state, true)
-	end
-
-	if UI.ToggleRefs.QuickMenuHotkeys then
-		UI.ToggleRefs.QuickMenuHotkeys.Set(state, true)
 	end
 
 	if UI.ToggleRefs.PlayerESP then
@@ -8522,7 +10232,7 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on Auto Rejoin, hotkeys, Auto Use Permanents, hitbox, Player ESP, Early Auto Collect, Anti-Ragdoll, Anti-Staff, and Auto Heal.")
+end, "Turns on Auto Use Permanents, hitbox, Player ESP, Early Auto Collect, Anti-Ragdoll, Anti-Staff, and Auto Heal.")
 
 do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
@@ -9206,1315 +10916,3 @@ do
 end
 
 -- End of OP Slap Royale UI.
-
--- WindUI shell from e - Copy
-pcall(function()
-    WindUI:AddTheme({
-        Name = "Neon Orchid",
-        Toggle = "#33C759",
-        Accent = "#D860FF",
-        Outline = "#FA96FF",
-        Text = "#FDF8FF",
-        PlaceholderText = "#CCB5DE",
-        Background = "#0D0A18",
-        Dialog = "#15112A",
-        Icon = "#D860FF",
-    })
-    WindUI:AddTheme({
-        Name = "Cyber Lime",
-        Toggle = "#33C759",
-        Accent = "#8EFF5C",
-        Outline = "#C3FF8B",
-        Text = "#F4FFF2",
-        PlaceholderText = "#B0D8AE",
-        Background = "#080F0D",
-        Dialog = "#0D1A17",
-        Icon = "#8EFF5C",
-    })
-    WindUI:AddTheme({
-        Name = "Solar Flare",
-        Toggle = "#33C759",
-        Accent = "#FFAE40",
-        Outline = "#FFD670",
-        Text = "#FFF8EE",
-        PlaceholderText = "#E8BE92",
-        Background = "#140C09",
-        Dialog = "#251611",
-        Icon = "#FFAE40",
-    })
-    WindUI:AddTheme({
-        Name = "Ocean Sync",
-        Toggle = "#33C759",
-        Accent = "#3AD2FF",
-        Outline = "#84EAFF",
-        Text = "#F1FCFF",
-        PlaceholderText = "#A6D0E0",
-        Background = "#071018",
-        Dialog = "#0C1E2B",
-        Icon = "#3AD2FF",
-    })
-    WindUI:AddTheme({
-        Name = "Rose Terminal",
-        Toggle = "#33C759",
-        Accent = "#FF5C9C",
-        Outline = "#FFA2CC",
-        Text = "#FFF6FA",
-        PlaceholderText = "#E2AEC8",
-        Background = "#160910",
-        Dialog = "#25101C",
-        Icon = "#FF5C9C",
-    })
-    WindUI:AddTheme({
-        Name = "Midnight Purple",
-        Toggle = "#33C759",
-        Accent = "#9B59FF",
-        Outline = "#C49BFF",
-        Text = "#F3EEFF",
-        PlaceholderText = "#B8A0D9",
-        Background = "#0A0814",
-        Dialog = "#140F24",
-        Icon = "#9B59FF",
-    })
-    WindUI:AddTheme({
-        Name = "Sakura",
-        Toggle = "#33C759",
-        Accent = "#FFB7C5",
-        Outline = "#FFD6E0",
-        Text = "#FFF5F7",
-        PlaceholderText = "#D9B0BA",
-        Background = "#1A0F14",
-        Dialog = "#2A1920",
-        Icon = "#FFB7C5",
-    })
-    WindUI:AddTheme({
-        Name = "Arctic",
-        Toggle = "#33C759",
-        Accent = "#A8E6FF",
-        Outline = "#D0F0FF",
-        Text = "#F0FAFF",
-        PlaceholderText = "#94C4D6",
-        Background = "#0A1218",
-        Dialog = "#101C24",
-        Icon = "#A8E6FF",
-    })
-    WindUI:AddTheme({
-        Name = "Ember",
-        Toggle = "#33C759",
-        Accent = "#FF4D4D",
-        Outline = "#FF8080",
-        Text = "#FFF2F2",
-        PlaceholderText = "#D9A0A0",
-        Background = "#180808",
-        Dialog = "#281010",
-        Icon = "#FF4D4D",
-    })
-    WindUI:AddTheme({
-        Name = "Toxic",
-        Toggle = "#33C759",
-        Accent = "#39FF14",
-        Outline = "#7FFF5C",
-        Text = "#EFFFEA",
-        PlaceholderText = "#90C985",
-        Background = "#050D04",
-        Dialog = "#0A1808",
-        Icon = "#39FF14",
-    })
-    WindUI:AddTheme({
-        Name = "Phantom",
-        Toggle = "#33C759",
-        Accent = "#8888AA",
-        Outline = "#AAAACC",
-        Text = "#E8E8F0",
-        PlaceholderText = "#808098",
-        Background = "#0C0C14",
-        Dialog = "#14141E",
-        Icon = "#8888AA",
-    })
-    WindUI:AddTheme({
-        Name = "Cotton Candy",
-        Toggle = "#33C759",
-        Accent = "#FF99DD",
-        Outline = "#FFBBEE",
-        Text = "#FFF5FB",
-        PlaceholderText = "#D4A0C6",
-        Background = "#180D18",
-        Dialog = "#241524",
-        Icon = "#FF99DD",
-    })
-    WindUI:AddTheme({
-        Name = "Void",
-        Toggle = "#33C759",
-        Accent = "#6644CC",
-        Outline = "#8866EE",
-        Text = "#E6E0F8",
-        PlaceholderText = "#8878B0",
-        Background = "#06040E",
-        Dialog = "#0E0A1A",
-        Icon = "#6644CC",
-    })
-    WindUI:AddTheme({
-        Name = "Sunset",
-        Toggle = "#33C759",
-        Accent = "#FF6B35",
-        Outline = "#FF9966",
-        Text = "#FFF4EE",
-        PlaceholderText = "#D4A888",
-        Background = "#140A06",
-        Dialog = "#22120A",
-        Icon = "#FF6B35",
-    })
-    WindUI:AddTheme({
-        Name = "Matrix",
-        Toggle = "#33C759",
-        Accent = "#00FF41",
-        Outline = "#33FF66",
-        Text = "#E0FFE8",
-        PlaceholderText = "#66CC77",
-        Background = "#000A02",
-        Dialog = "#001405",
-        Icon = "#00FF41",
-    })
-end)
-
-local WindUIWindow = WindUI:CreateWindow({
-    Title       = "OP Slap Royale",
-    Icon        = "crown",
-    Author      = "by InterScription",
-    Folder      = "OPSlapRoyale",
-    Size        = UDim2.fromOffset(580, 460),
-    Transparent = true,
-    Theme       = "Dark",
-    SideBarWidth = 200,
-})
-
-local TabMain      = WindUIWindow:Tab({ Title="Main",      Icon="star" })
-local TabItems     = WindUIWindow:Tab({ Title="Items",     Icon="box" })
-local TabTeleports = WindUIWindow:Tab({ Title="Teleports", Icon="map-pin" })
-local TabCombat    = WindUIWindow:Tab({ Title="Combat",    Icon="swords" })
-local TabBETA      = WindUIWindow:Tab({ Title="BETA",      Icon="flask-conical" })
-local TabSafety    = WindUIWindow:Tab({ Title="Safety",    Icon="shield" })
-local TabSettings  = WindUIWindow:Tab({ Title="Settings",  Icon="settings" })
-local TabSocials   = WindUIWindow:Tab({ Title="Socials",   Icon="users" })
-
-_windToggles = {}
-local _windSliders = {}
-local _windCallbacks = {}
-local _currentThemeName = "Dark"
-local _windThemeDropdown = nil
-
-local TOGGLE_ON_COLOR = Color3.fromRGB(76, 195, 80)
-
-local function createPopupWindow(title, icon)
-    return WindUI:CreateWindow({
-        Title = title,
-        Icon = icon,
-        Author = "OP Slap Royale",
-        Folder = "OPSlapRoyale",
-        Size = UDim2.fromOffset(430, 420),
-        Transparent = true,
-        Theme = _currentThemeName,
-        SideBarWidth = 160,
-    })
-end
-
-local function openItemTeleportPopup()
-    local popup = createPopupWindow("Item Teleports", "package-search")
-    local tab = popup:Tab({ Title = "Items", Icon = "box" })
-
-    tab:Button({
-        Title = "Meteor Crate",
-        Desc = "Teleports to the nearest meteor crate",
-        Icon = "package",
-        Callback = function()
-            if Items and Items.TeleportToCrate then
-                Items.TeleportToCrate()
-            end
-        end,
-    })
-
-    for _, itemName in ipairs(itemNames or {}) do
-        tab:Button({
-            Title = itemName,
-            Desc = "Teleport to this item",
-            Icon = "gift",
-            Callback = function()
-                if Items and Items.TeleportTo then
-                    Items.TeleportTo(itemName)
-                end
-            end,
-        })
-    end
-end
-
-local function openPlayerTeleportPopup()
-    local popup = createPopupWindow("Player Teleports", "users")
-    local tab = popup:Tab({ Title = "Players", Icon = "users" })
-
-    tab:Button({
-        Title = "Teleport To Nearest",
-        Desc = "Teleports to the nearest player",
-        Icon = "crosshair",
-        Callback = function()
-            if Combat and Combat.TeleportToNearestPlayer then
-                Combat.TeleportToNearestPlayer()
-            end
-        end,
-    })
-
-    tab:Button({
-        Title = "Teleport To Lowest Health",
-        Desc = "Teleports to the lowest-health player",
-        Icon = "heart-pulse",
-        Callback = function()
-            if Combat and Combat.TeleportToLowestHealthPlayer then
-                Combat.TeleportToLowestHealthPlayer()
-            end
-        end,
-    })
-
-    for _, targetPlayer in ipairs(Players:GetPlayers()) do
-        if targetPlayer ~= player then
-            tab:Button({
-                Title = targetPlayer.DisplayName ~= targetPlayer.Name and (targetPlayer.DisplayName .. " (@" .. targetPlayer.Name .. ")") or targetPlayer.Name,
-                Desc = "Teleport to this player",
-                Icon = "user",
-                Callback = function()
-                    if Combat and Combat.TeleportToPlayer then
-                        Combat.TeleportToPlayer(targetPlayer)
-                    end
-                end,
-            })
-        end
-    end
-end
-
-local function openMapLocationPopup()
-    local popup = createPopupWindow("Map Locations", "map")
-    local tab = popup:Tab({ Title = "Map", Icon = "map-pin" })
-
-    for _, location in ipairs(Teleport.Locations or {}) do
-        tab:Button({
-            Title = location.Name,
-            Desc = "Teleport to this map location",
-            Icon = "map-pin",
-            Callback = function()
-                if Teleport and Teleport.ToLocation then
-                    Teleport.ToLocation(location.Name, location.Position)
-                end
-            end,
-        })
-    end
-end
-
-local function activateToggle(name)
-    local t = _windToggles[name]
-    if t then
-        local ok = pcall(function() t:SetValue(true) end)
-        if not ok then
-            pcall(function() t:Set(true) end)
-        end
-    else
-        local cb = _windCallbacks[name]
-        if cb then pcall(cb, true) end
-    end
-end
-
-TabMain:Button({
-    Title = "Get Code + Go Barn",
-    Desc = "Teleports to Barn and scans for puzzle code",
-    Icon = "hash",
-    Callback = function()
-        if Main and Main.GetCodeGoBarn then
-            Main.GetCodeGoBarn()
-        end
-    end,
-})
-
-TabMain:Button({
-    Title = "Recommended Settings",
-    Desc = "Anti slap + staff + perms + heal + ESP + hitboxes + early collect",
-    Icon = "zap",
-    Callback = function()
-        local targets = {
-            "Anti Slap",
-            "Anti-Staff",
-            "Auto Use Permanent Items",
-            "Auto Heal",
-            "Auto Slap",
-            "Auto Rejoin",
-            "Player Stats ESP",
-            "Item ESP",
-            "Expand Hitbox",
-            "Visualize Hitboxes",
-            "Quick Menu Hotkeys",
-            "Early Auto Collect",
-            "Early Bus Jump",
-        }
-
-        for _, name in ipairs(targets) do
-            activateToggle(name)
-        end
-        notify("Settings", "Recommended settings applied!", "Success")
-    end,
-})
-
-do
-    local grp = TabMain:Group({})
-    grp:Button({
-        Title = "Open Item Teleports",
-        Justify = "Center",
-        Icon = "package-search",
-        Callback = openItemTeleportPopup,
-    })
-    grp:Space()
-    grp:Button({
-        Title = "Open Player Teleports",
-        Justify = "Center",
-        Icon = "users",
-        Callback = openPlayerTeleportPopup,
-    })
-end
-
-TabMain:Button({
-    Title = "Open Map Locations",
-    Desc = "Opens the live map locations window",
-    Icon = "map",
-    Callback = openMapLocationPopup,
-})
-
-do
-    local cb = function(state)
-        if state then
-            if ESP and ESP.Enable then ESP.Enable() end
-        else
-            if ESP and ESP.Disable then ESP.Disable() end
-        end
-    end
-    _windCallbacks["Player Stats ESP"] = cb
-    _windToggles["Player Stats ESP"] = TabMain:Toggle({
-        Title = "Player Stats ESP",
-        Desc = "Health, kills, player info above heads",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if ItemESP and ItemESP.SetEnabled then ItemESP.SetEnabled(state) end
-    end
-    _windCallbacks["Item ESP"] = cb
-    _windToggles["Item ESP"] = TabMain:Toggle({
-        Title = "Item ESP",
-        Desc = "Highlights dropped items with color tags",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if UI and UI.SetAutoEarlyBusJump then UI.SetAutoEarlyBusJump(state) end
-    end
-    _windCallbacks["Early Bus Jump"] = cb
-    _windToggles["Early Bus Jump"] = TabMain:Toggle({
-        Title = "Early Bus Jump",
-        Desc = "Auto-jumps from the school bus early",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if UI and UI.SetAutoRejoin then UI.SetAutoRejoin(state) end
-    end
-    _windCallbacks["Auto Rejoin"] = cb
-    _windToggles["Auto Rejoin"] = TabMain:Toggle({
-        Title = "Auto Rejoin",
-        Desc = "Rejoins the server after death or disconnect",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if UI and UI.SetInfiniteJump then UI.SetInfiniteJump(state) end
-    end
-    _windCallbacks["Infinite jump"] = cb
-    _windToggles["Infinite jump"] = TabMain:Toggle({
-        Title = "Infinite jump",
-        Desc = "Lets manual jump requests work while airborne",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetAutoCollect then
-            Items.SetAutoCollect(state)
-        end
-    end
-    _windCallbacks["Auto Collect"] = cb
-    _windCallbacks["Auto collect"] = cb
-    _windToggles["Auto collect"] = TabItems:Toggle({
-        Title = "Auto collect",
-        Desc = "Collects priority items without waiting for the round countdown",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-    _windToggles["Auto Collect"] = _windToggles["Auto collect"]
-    Items.AutoCollectToggle = _windToggles["Auto collect"]
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetAutoPickup then
-            Items.SetAutoPickup(state)
-        end
-    end
-    _windCallbacks["Auto pick up"] = cb
-    _windToggles["Auto pick up"] = TabItems:Toggle({
-        Title = "Auto pick up",
-        Desc = "Creates an invisible pickup zone around you",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-    Items.AutoPickupToggle = _windToggles["Auto pick up"]
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetAutoHeal then
-            Items.SetAutoHeal(state, false)
-        end
-    end
-    _windCallbacks["Auto Heal"] = cb
-    _windToggles["Auto Heal"] = TabItems:Toggle({
-        Title = "Auto Heal",
-        Desc = "Uses healing items when HP drops",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetAutoSort then
-            Items.SetAutoSort(state)
-        end
-    end
-    _windCallbacks["Auto Sort"] = cb
-    _windToggles["Auto Sort"] = TabItems:Toggle({
-        Title = "Auto Sort",
-        Desc = "Glove in slot 1, priority items next",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetAutoPermanentItems then
-            Items.SetAutoPermanentItems(state, autoPermanentSyncing == true)
-        end
-    end
-    _windCallbacks["Auto Use Permanent Items"] = cb
-    _windToggles["Auto Use Permanent Items"] = TabItems:Toggle({
-        Title = "Auto Use Permanent Items",
-        Desc = "Uses permanent boosts on pickup",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-TabItems:Button({
-    Title = "Meteor Crate",
-    Desc = "Teleports to nearest meteor crate",
-    Icon = "box",
-    Callback = function()
-        if Items and Items.TeleportToCrate then Items.TeleportToCrate() end
-    end,
-})
-TabItems:Button({
-    Title = "Item Teleports",
-    Desc = "Live item window with left/total counts",
-    Icon = "package-search",
-    Callback = function()
-        openItemTeleportPopup()
-    end,
-})
-
-TabTeleports:Button({
-    Title = "Teleport On School Bus",
-    Desc = "Teleports you on top of the school bus",
-    Icon = "bus-front",
-    Callback = function()
-        if Teleport and Teleport.ToSchoolBusTop then Teleport.ToSchoolBusTop() end
-    end,
-})
-
-do
-    local locs = Teleport.Locations
-    for i = 1, #locs, 2 do
-        local grp = TabTeleports:Group({})
-        grp:Button({
-            Title = locs[i].Name,
-            Justify = "Center",
-            Icon = "",
-            Callback = function()
-                if Teleport and Teleport.ToLocation then
-                    Teleport.ToLocation(locs[i].Name, locs[i].Position)
-                end
-            end,
-        })
-        if locs[i + 1] then
-            grp:Space()
-            grp:Button({
-                Title = locs[i + 1].Name,
-                Justify = "Center",
-                Icon = "",
-                Callback = function()
-                    if Teleport and Teleport.ToLocation then
-                        Teleport.ToLocation(locs[i + 1].Name, locs[i + 1].Position)
-                    end
-                end,
-            })
-        end
-    end
-end
-
-_windSliders["Hitbox Size"] = TabCombat:Slider({
-    Title = "Hitbox Size",
-    Desc = "Adjust hitbox size (10-20)",
-    Step = 1,
-    Value = {
-        Min = 10,
-        Max = 20,
-        Default = 10,
-    },
-    Callback = function(v)
-        if Combat and Combat.SetHitboxSize then Combat.SetHitboxSize(v) end
-    end,
-})
-
-do
-    local cb = function(state)
-        if Combat then
-            Combat.HitboxExpanded = state
-            if Combat.RefreshHitboxes then Combat.RefreshHitboxes() end
-        end
-    end
-    _windCallbacks["Expand Hitbox"] = cb
-    _windToggles["Expand Hitbox"] = TabCombat:Toggle({
-        Title = "Expand Hitbox",
-        Desc = "Applies expanded hitbox to players",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat then
-            Combat.HitboxVisible = state
-            if Combat.HitboxExpanded and Combat.RefreshHitboxes then
-                Combat.RefreshHitboxes()
-            end
-        end
-    end
-    _windCallbacks["Visualize Hitboxes"] = cb
-    _windToggles["Visualize Hitboxes"] = TabCombat:Toggle({
-        Title = "Visualize Hitboxes",
-        Desc = "Shows neon hitbox preview",
-        Color = TOGGLE_ON_COLOR,
-        Value = true,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetAutoGloveTap then Combat.SetAutoGloveTap(state) end
-    end
-    _windCallbacks["Auto Slap"] = cb
-    _windToggles["Auto Slap"] = TabCombat:Toggle({
-        Title = "Auto Slap",
-        Desc = "Taps when enemy enters hitbox",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-TabCombat:Button({
-    Title = "Teleport To Lowest Health",
-    Desc = "Teleports you behind the player with the lowest HP",
-    Callback = function()
-        if Combat and Combat.TeleportToLowestHealthPlayer then Combat.TeleportToLowestHealthPlayer() end
-    end,
-})
-
-TabCombat:Button({
-    Title = "Teleport To Nearest",
-    Desc = "Teleports you behind the closest player",
-    Callback = function()
-        if Combat and Combat.TeleportToNearestPlayer then Combat.TeleportToNearestPlayer() end
-    end,
-})
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetPlayerTpButtons then Combat.SetPlayerTpButtons(state) end
-    end
-    _windCallbacks["Player TP Buttons"] = cb
-    _windToggles["Player TP Buttons"] = TabCombat:Toggle({
-        Title = "Player TP Buttons",
-        Desc = "Shows huge teleport buttons on players in the world",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetAntiSlap then Combat.SetAntiSlap(state) end
-    end
-    _windCallbacks["Anti Slap"] = cb
-    _windToggles["Anti Slap"] = TabCombat:Toggle({
-        Title = "Anti Slap",
-        Desc = "Invisible cage on knockback",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetGloveTpSlap then Combat.SetGloveTpSlap(state) end
-    end
-    _windCallbacks["Glove TP Slap"] = cb
-    _windToggles["Glove TP Slap"] = TabBETA:Toggle({
-        Title = "Glove TP Slap",
-        Desc = "Teleports glove to nearest player on click",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetExpandCrateHitboxes then Combat.SetExpandCrateHitboxes(state) end
-    end
-    _windCallbacks["Expand crate hitboxes"] = cb
-    _windToggles["Expand crate hitboxes"] = TabBETA:Toggle({
-        Title = "Expand crate hitboxes",
-        Desc = "Expands and highlights meteor crate hitboxes",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Items and Items.SetEarlyAutoCollect then Items.SetEarlyAutoCollect(state) end
-    end
-    _windCallbacks["Early Auto Collect"] = cb
-    _windToggles["Early Auto Collect"] = TabBETA:Toggle({
-        Title = "Early Auto Collect",
-        Desc = "Starts collecting items before round begins",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-    Items.EarlyAutoCollectToggle = _windToggles["Early Auto Collect"]
-end
-
-do
-    local cb = function(state)
-        if state then
-            local removedCount = Anti and Anti.EnableAcidLava and Anti.EnableAcidLava() or 0
-            notify("Anti-Acid", "Removed " .. tostring(removedCount or 0) .. " hazard objects.", "Success")
-        else
-            if Anti and Anti.ClearParts then Anti.ClearParts() end
-        end
-    end
-    _windCallbacks["Anti-Acid & Lava"] = cb
-    _windCallbacks["Anti Acid & Lava"] = cb
-    _windToggles["Anti-Acid & Lava"] = TabSafety:Toggle({
-        Title = "Anti-Acid & Lava",
-        Desc = "Invisible floors over acid and lava",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Anti and Anti.SetStaffEnabled then Anti.SetStaffEnabled(state) end
-    end
-    _windCallbacks["Anti-Staff"] = cb
-    _windCallbacks["Anti Staff"] = cb
-    _windToggles["Anti-Staff"] = TabSafety:Toggle({
-        Title = "Anti-Staff",
-        Desc = "Leaves when recording keywords detected",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Anti and Anti.SetHideUnderMap then Anti.SetHideUnderMap(state) end
-    end
-    _windCallbacks["Hide under map"] = cb
-    _windToggles["Hide under map"] = TabSafety:Toggle({
-        Title = "Hide under map",
-        Desc = "Hides your character below the map",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        if Combat and Combat.SetAntiSlap then Combat.SetAntiSlap(state) end
-    end
-    _windCallbacks["Anti-Ragdoll"] = cb
-    _windToggles["Anti-Ragdoll"] = TabSafety:Toggle({
-        Title = "Anti-Ragdoll",
-        Desc = "Prevents ragdoll on knockback",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-local uiLockConnection = nil
-do
-    local cb = function(state)
-        pcall(function() WindUIWindow.Draggable = not state end)
-
-        local coreGui = game:GetService("CoreGui")
-        local mainFrame
-        for _, gui in ipairs(coreGui:GetChildren()) do
-            if gui:IsA("ScreenGui") and (gui.Name == "WindUI" or gui.Name == "WindUI_Test" or gui:FindFirstChild("Main") or gui:FindFirstChild("Window")) then
-                mainFrame = gui:FindFirstChild("Main") or gui:FindFirstChild("Window") or gui:FindFirstChildWhichIsA("Frame")
-                break
-            end
-        end
-
-        if uiLockConnection then
-            uiLockConnection:Disconnect()
-            uiLockConnection = nil
-        end
-
-        if state and mainFrame then
-            local lockedPos = mainFrame.Position
-            uiLockConnection = mainFrame:GetPropertyChangedSignal("Position"):Connect(function()
-                if mainFrame.Position ~= lockedPos then
-                    mainFrame.Position = lockedPos
-                end
-            end)
-        end
-    end
-    _windCallbacks["Lock UI"] = cb
-    _windToggles["Lock UI"] = TabSettings:Toggle({
-        Title = "Lock UI",
-        Desc = "Stops accidental dragging",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        State._NotifyMuted = state
-    end
-    _windCallbacks["Disable Notifications"] = cb
-    _windToggles["Disable Notifications"] = TabSettings:Toggle({
-        Title = "Disable Notifications",
-        Desc = "Disables normal notifications",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-do
-    local cb = function(state)
-        quickMenuHotkeysEnabled = state
-    end
-    _windCallbacks["Quick Menu Hotkeys"] = cb
-    _windToggles["Quick Menu Hotkeys"] = TabSettings:Toggle({
-        Title = "Quick Menu Hotkeys",
-        Desc = "R = items, Q = players, G = map",
-        Color = TOGGLE_ON_COLOR,
-        Value = false,
-        Callback = cb,
-    })
-end
-
-TabSettings:Keybind({
-    Title = "Toggle Menu Key",
-    Desc = "Change the key to show/hide the menu",
-    Value = "RightShift",
-    Callback = function(v)
-        WindUIWindow:SetToggleKey(Enum.KeyCode[v])
-    end,
-})
-
-_windSliders["UI Transparency"] = TabSettings:Slider({
-    Title = "UI Transparency",
-    Desc = "Adjust window transparency (0-100%)",
-    Step = 1,
-    IsTooltip = true,
-    Value = {
-        Min = 15,
-        Max = 100,
-        Default = 50,
-    },
-    Callback = function(v)
-        local target = 1 - (v / 100)
-        pcall(function() WindUIWindow:SetBackgroundTransparency(target) end)
-        pcall(function() WindUIWindow.SetBackgroundTransparency(target) end)
-        pcall(function() WindUI:SetBackgroundTransparency(target) end)
-        pcall(function() WindUIWindow.Root.BackgroundTransparency = target end)
-        pcall(function() WindUIWindow.Main.BackgroundTransparency = target end)
-        pcall(function() WindUIWindow.Frame.BackgroundTransparency = target end)
-        pcall(function() WindUIWindow.Instance.BackgroundTransparency = target end)
-        pcall(function() WindUI.BackgroundTransparency = target end)
-        pcall(function()
-            local coreGui = game:GetService("CoreGui")
-            for _, gui in ipairs(coreGui:GetChildren()) do
-                if gui:IsA("ScreenGui") and (gui.Name == "WindUI" or gui.Name == "WindUI_Test" or gui:FindFirstChild("Main") or gui:FindFirstChild("Window")) then
-                    local frame = gui:FindFirstChild("Main") or gui:FindFirstChild("Window") or gui:FindFirstChildWhichIsA("Frame")
-                    if frame and frame:IsA("Frame") then
-                        frame.BackgroundTransparency = target
-                    end
-                end
-            end
-        end)
-    end,
-})
-
-do
-
-    local allThemeNames = {
-        "Dark", "Light", "Rose", "Crimson",
-        "Plant", "Indigo", "Sky", "Violet", "Amber",
-        "Neon Orchid", "Cyber Lime", "Solar Flare", "Ocean Sync",
-        "Rose Terminal", "Midnight Purple", "Sakura", "Arctic",
-        "Ember", "Toxic", "Phantom", "Cotton Candy",
-        "Void", "Sunset", "Matrix",
-    }
-
-    pcall(function()
-        local realThemes = WindUI:GetThemes()
-        if realThemes then
-            local seen = {}
-            for _, name in ipairs(allThemeNames) do
-                seen[name] = true
-            end
-            for name in pairs(realThemes) do
-                if not seen[name] then
-                    table.insert(allThemeNames, name)
-                    seen[name] = true
-                end
-            end
-        end
-    end)
-
-    _windThemeDropdown = TabSettings:Dropdown({
-        Title = "Theme",
-        Desc = "Change the color theme (" .. #allThemeNames .. " themes)",
-        Values = allThemeNames,
-        Value = "Dark",
-        Callback = function(sel)
-            _currentThemeName = sel
-            pcall(function() WindUI:SetTheme(sel) end)
-            pcall(function() WindUIWindow:SetTheme(sel) end)
-        end,
-    })
-end
-
-local _currentConfigName = "Default"
-Settings.FileName = "OPSlapRoyale/Default.json"
-
-function Settings.CaptureAll()
-    local toggles = {}
-    for name, toggle in pairs(_windToggles) do
-        local ok, val = pcall(function() return toggle.Value end)
-        if ok and val ~= nil then
-            toggles[name] = val
-        end
-    end
-
-    local sliders = {}
-    for name, slider in pairs(_windSliders) do
-        local ok, val = pcall(function() return slider.Value end)
-        if ok and val ~= nil then
-            sliders[name] = val
-        end
-    end
-
-    return {
-        Version = 2,
-        Theme = _currentThemeName,
-        Toggles = toggles,
-        Sliders = sliders,
-    }
-end
-
-function Settings.ApplyAll(data)
-    if type(data) ~= "table" then return end
-
-    Settings.Loading = true
-
-    if type(data.Theme) == "string" and data.Theme ~= "" then
-        _currentThemeName = data.Theme
-        pcall(function() WindUI:SetTheme(data.Theme) end)
-        pcall(function() WindUIWindow:SetTheme(data.Theme) end)
-        if _windThemeDropdown then
-            pcall(function() _windThemeDropdown:SetValue(data.Theme) end)
-        end
-    end
-
-    if type(data.Toggles) == "table" then
-        local toggles = table.clone(data.Toggles)
-        toggles["Early Auto Collect"] = nil
-        toggles["Auto collect"] = nil
-        toggles["Auto Collect"] = nil
-        toggles["Early Bus Jump"] = nil
-
-        for name, value in pairs(toggles) do
-            local toggle = _windToggles[name]
-            if toggle then
-                pcall(function() toggle:SetValue(value) end)
-            end
-        end
-    end
-
-    if type(data.Sliders) == "table" then
-        for name, value in pairs(data.Sliders) do
-            local slider = _windSliders[name]
-            if slider then
-                pcall(function() slider:SetValue(value) end)
-            end
-        end
-    end
-
-    if type(data.Toggles) ~= "table" and type(data.Version) ~= "number" then
-        for key, value in pairs(data) do
-            if type(value) == "boolean" then
-                if key ~= "Early Auto Collect" and key ~= "Auto collect" and key ~= "Auto Collect" and key ~= "Early Bus Jump" then
-                    local toggle = _windToggles[key]
-                    if toggle then
-                        pcall(function() toggle:SetValue(value) end)
-                    end
-                end
-            end
-        end
-    end
-
-    Settings.Loading = false
-end
-
-function Settings.SaveConfig()
-    if not Settings.HasFileSupport() then
-        notify("Config", "File system not available.", "Error")
-        return false
-    end
-
-    Settings.EnsureFolder()
-    local data = Settings.CaptureAll()
-    local ok = Settings.Write(data)
-    return ok
-end
-
-function Settings.LoadConfig()
-    if not Settings.HasFileSupport() then
-        return false
-    end
-
-    local data = Settings.Read()
-    if type(data) == "table" and next(data) then
-        Settings.ApplyAll(data)
-        return true
-    end
-
-    return false
-end
-
-local configsDropdown = TabSettings:Dropdown({
-    Title = "Config Selection",
-    Desc = "Choose a configuration preset",
-    Values = {"Default"},
-    Value = "Default",
-    Callback = function(sel)
-        _currentConfigName = sel
-        Settings.FileName = "OPSlapRoyale/" .. sel .. ".json"
-    end,
-})
-
-TabSettings:Input({
-    Title = "Create New Config",
-    Desc = "Type a name and press Enter",
-    PlaceholderText = "MyConfig",
-    ClearTextOnFocus = true,
-    Callback = function(txt)
-        if txt and txt ~= "" then
-            _currentConfigName = txt
-            Settings.FileName = "OPSlapRoyale/" .. txt .. ".json"
-            if Settings.SaveConfig() then
-                notify("Config", "Created and saved: " .. txt, "Success")
-            end
-        end
-    end,
-})
-
-TabSettings:Button({
-    Title = "Save Config",
-    Desc = "Saves ALL current settings (toggles, sliders, theme) to file",
-    Icon = "save",
-    Callback = function()
-        if Settings.SaveConfig() then
-            notify("Config", "Saved config: " .. _currentConfigName, "Success")
-        else
-            notify("Config", "Failed to save!", "Error")
-        end
-    end,
-})
-
-TabSettings:Button({
-    Title = "Load Config",
-    Desc = "Loads ALL settings from selected config file",
-    Icon = "folder-open",
-    Callback = function()
-        if Settings.LoadConfig() then
-            notify("Config", "Loaded config: " .. _currentConfigName, "Success")
-        else
-            notify("Config", "No saved config found for: " .. _currentConfigName, "Warning")
-        end
-    end,
-})
-
-TabSettings:Button({
-    Title = "Delete Config",
-    Desc = "Deletes the currently selected config file",
-    Icon = "trash-2",
-    Callback = function()
-        if _currentConfigName == "Default" then
-            notify("Config", "Cannot delete Default config!", "Warning")
-            return
-        end
-        local path = "OPSlapRoyale/" .. _currentConfigName .. ".json"
-        local ok = pcall(function()
-            if type(delfile) == "function" then
-                delfile(path)
-            end
-        end)
-        if ok then
-            notify("Config", "Deleted: " .. _currentConfigName, "Success")
-            _currentConfigName = "Default"
-            Settings.FileName = "OPSlapRoyale/Default.json"
-        else
-            notify("Config", "Failed to delete!", "Error")
-        end
-    end,
-})
-
-TabSettings:Button({
-    Title = "Reset Window Position",
-    Desc = "Resets window to center of screen",
-    Icon = "monitor",
-    Callback = function()
-        notify("Window", "Position reset!", "Success")
-    end,
-})
-
-task.spawn(function()
-    while task.wait(2) do
-        local success, files = pcall(function() return listfiles("OPSlapRoyale") end)
-        if success and files then
-            local newValues = {}
-            for _, f in ipairs(files) do
-                if f:match("%.json$") then
-                    local name = f:match("([^/%\\]+)%.json$")
-                    if name then table.insert(newValues, name) end
-                end
-            end
-            if #newValues == 0 then table.insert(newValues, "Default") end
-            if configsDropdown and configsDropdown.Refresh then
-                pcall(function() configsDropdown:Refresh(newValues) end)
-            end
-        end
-    end
-end)
-
-do
-    local InviteCode = "dphGYaym8"
-    local DiscordAPI = "https://discord.com/api/v10/invites/" .. InviteCode .. "?with_counts=true&with_expiration=true"
-
-    local s, Response = pcall(function()
-        return game:GetService("HttpService"):JSONDecode(
-            request({
-                Url = DiscordAPI,
-                Method = "GET",
-                Headers = {
-                    ["User-Agent"] = "WindUI/OPSlapRoyale",
-                    ["Accept"] = "application/json",
-                },
-            }).Body or "{}"
-        )
-    end)
-
-    if s and Response and Response.guild then
-        TabSocials:Paragraph({
-            Title = tostring(Response.guild.name),
-            Desc = "Join the community for updates!",
-            Image = "https://cdn.discordapp.com/icons/" .. Response.guild.id .. "/" .. Response.guild.icon .. ".png?size=1024",
-            ImageSize = 48,
-            Buttons = {
-                {
-                    Title = "Copy Discord",
-                    Icon = "link",
-                    Callback = function()
-                        if setclipboard then setclipboard("https://discord.gg/" .. InviteCode) end
-                        notify("Discord", "Link copied!", "Success")
-                    end,
-                },
-            },
-        })
-    else
-        TabSocials:Paragraph({
-            Title = "OP Slap Royale",
-            Desc = "Join the community for updates!",
-            Image = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png",
-            ImageSize = 48,
-            Buttons = {
-                {
-                    Title = "Copy Discord",
-                    Icon = "link",
-                    Callback = function()
-                        if setclipboard then setclipboard("https://discord.gg/dphGYaym8") end
-                        notify("Discord", "Link copied!", "Success")
-                    end,
-                },
-            },
-        })
-    end
-
-    TabSocials:Paragraph({
-        Title = "InterScription",
-        Desc = "Support my YouTube channel!",
-        Image = "https://cdn-icons-png.flaticon.com/512/1384/1384060.png",
-        ImageSize = 48,
-        Buttons = {
-            {
-                Title = "Copy YouTube",
-                Icon = "link",
-                Callback = function()
-                    if setclipboard then setclipboard("https://www.youtube.com/@InterScription") end
-                    notify("YouTube", "Link copied!", "Success")
-                end,
-            },
-        },
-    })
-
-    do
-        local InviteCode2 = "xDD6KtsuG"
-        local DiscordAPI2 = "https://discord.com/api/v10/invites/" .. InviteCode2 .. "?with_counts=true&with_expiration=true"
-
-        local s2, Response2 = pcall(function()
-            return game:GetService("HttpService"):JSONDecode(
-                request({
-                    Url = DiscordAPI2,
-                    Method = "GET",
-                    Headers = {
-                        ["User-Agent"] = "WindUI/OPSlapRoyale",
-                        ["Accept"] = "application/json",
-                    },
-                }).Body or "{}"
-            )
-        end)
-
-        if s2 and Response2 and Response2.guild then
-            TabSocials:Paragraph({
-                Title = tostring(Response2.guild.name),
-                Desc = "Helped with UI. Mastery farm / slap farm / badge farm scripts creator",
-                Image = "https://cdn.discordapp.com/icons/" .. Response2.guild.id .. "/" .. Response2.guild.icon .. ".png?size=1024",
-                ImageSize = 48,
-                Buttons = {
-                    {
-                        Title = "Copy Discord",
-                        Icon = "link",
-                        Callback = function()
-                            if setclipboard then setclipboard("https://discord.gg/" .. InviteCode2) end
-                            notify("Discord", "Link copied!", "Success")
-                        end,
-                    },
-                },
-            })
-        else
-            TabSocials:Paragraph({
-                Title = "Script Helper",
-                Desc = "Helped with UI. Mastery farm / slap farm / badge farm scripts creator",
-                Image = "https://cdn-icons-png.flaticon.com/512/3670/3670157.png",
-                ImageSize = 48,
-                Buttons = {
-                    {
-                        Title = "Copy Discord",
-                        Icon = "link",
-                        Callback = function()
-                            if setclipboard then setclipboard("https://discord.gg/xDD6KtsuG") end
-                            notify("Discord", "Link copied!", "Success")
-                        end,
-                    },
-                },
-            })
-        end
-    end
-end
-
-task.defer(function()
-    task.wait(0.5)
-    pcall(function()
-        Settings.LoadConfig()
-    end)
-
-    pcall(function()
-        if Items and Items.SetAutoPermanentItems and not Items.EarlyAutoCollectEnabled then
-            Items.SyncAutoPermanentWindToggle(true)
-            Items.SetAutoPermanentItems(true, true)
-        end
-    end)
-end)
-
-WindUI:Notify({
-    Title    = "OP Slap Royale",
-    Content  = "Script loaded! Press RightShift to toggle.",
-    Duration = 5,
-    Icon     = "star",
-})
