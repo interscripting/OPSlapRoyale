@@ -2288,8 +2288,8 @@ Main.KeypadSearchRadius = 170
 
 Teleport.MaxStrikes = 4
 Teleport.Cooldown = 2
-Teleport.Debounce = 0.7
-Teleport.PostFLock = 0.5
+Teleport.Debounce = 0.5
+Teleport.PostFLock = 0.2
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -3952,7 +3952,7 @@ function Items.TeleportTo(itemName)
 	Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
 	Teleport.StabilizeItemView(root, itemPart)
 	Teleport.AddStrike()
-	Teleport.StartFBlock(0.5)
+	Teleport.StartFBlock(0.2)
 	createNotification("Items", "Teleported to " .. itemName)
 end
 
@@ -5392,8 +5392,8 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 				Teleport.AddStrike()
 				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
-				Teleport.PostFLock = 0.5
-				Items.TeleportDebounce = 0.7
+				Teleport.PostFLock = 0.2
+				Items.TeleportDebounce = 0.5
 				createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 			end
 		else
@@ -5650,14 +5650,6 @@ end
 function Items.UsePickupInput(itemObject, itemPart, skipPickupLock)
 	if not skipPickupLock and Items.IsPickupInputLocked() then
 		return false
-	end
-
-	if isTouchDevice then
-		local usedPrompt = Items.TryPickupPrompt(itemObject, itemPart)
-		local tappedIcon = Items.TapMobilePickupIcon(itemObject, itemPart)
-		local pressedKey = pressF(skipPickupLock) == true
-
-		return usedPrompt or tappedIcon or pressedKey
 	end
 
 	return pressF(skipPickupLock) == true
@@ -6001,8 +5993,8 @@ function Items.ResetPriorityCollectState(mode)
 	invalidateCollectibleSearchPool()
 	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.5
-	Items.TeleportDebounce = 0.7
+	Teleport.PostFLock = 0.2
+	Items.TeleportDebounce = 0.5
 end
 
 function Items.RunPriorityAutoCollect(mode)
@@ -6040,8 +6032,8 @@ function Items.RunPriorityAutoCollect(mode)
 
 	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.5
-	Items.TeleportDebounce = 0.7
+	Teleport.PostFLock = 0.2
+	Items.TeleportDebounce = 0.5
 	createNotification(title, isEarly and "Timer hit 3. Starting priority collection." or "Starting priority collection.", "Success")
 
 	while Items.IsPriorityCollectEnabled(mode) do
@@ -6072,7 +6064,7 @@ function Items.RunPriorityAutoCollect(mode)
 		local teleportWait = Teleport.GetWaitBeforeTeleport(Items.TeleportDebounce)
 
 		if teleportWait > 0 then
-			task.wait(math.clamp(teleportWait, 0.1, 0.7))
+			task.wait(math.clamp(teleportWait, 0.1, 0.5))
 			continue
 		end
 
@@ -6120,7 +6112,7 @@ function Items.RunPriorityAutoCollect(mode)
 			Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
 			Teleport.StabilizeItemView(root, itemPart)
 			Teleport.AddStrike()
-			Teleport.StartFBlock(0.5)
+			Teleport.StartFBlock(0.2)
 			createNotification(title, "Collected " .. itemName)
 
 			task.delay(0.05, function()
