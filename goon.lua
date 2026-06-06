@@ -5580,7 +5580,7 @@ function Items.TapMobilePickupButton()
 	return tapped
 end
 
-function Items.TapMobilePickupIcon(itemPart)
+function Items.TapMobilePickupIcon(itemObject, itemPart)
 	if not itemPart or not itemPart.Parent then
 		return false
 	end
@@ -5591,10 +5591,25 @@ function Items.TapMobilePickupIcon(itemPart)
 		return false
 	end
 
+	local basePosition = itemPart.Position
 	local halfHeight = itemPart:IsA("BasePart") and (itemPart.Size.Y * 0.5) or 1
+
+	if itemObject and itemObject.Parent and itemObject:IsA("Model") then
+		local ok, modelCFrame, modelSize = pcall(function()
+			return itemObject:GetBoundingBox()
+		end)
+
+		if ok and modelCFrame and modelSize then
+			basePosition = modelCFrame.Position
+			halfHeight = math.max(halfHeight, modelSize.Y * 0.5)
+		end
+	end
+
 	local tapPositions = {
 		itemPart.Position + Vector3.new(0, halfHeight + 2.5, 0),
 		itemPart.Position + Vector3.new(0, halfHeight + 1.4, 0),
+		basePosition + Vector3.new(0, halfHeight + 2.5, 0),
+		basePosition + Vector3.new(0, halfHeight + 1.4, 0),
 		itemPart.Position,
 	}
 	local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -5643,7 +5658,7 @@ function Items.UsePickupInput(itemObject, itemPart, skipPickupLock)
 
 	if isTouchDevice then
 		local usedPrompt = Items.TryPickupPrompt(itemObject, itemPart)
-		local tappedIcon = Items.TapMobilePickupIcon(itemPart)
+		local tappedIcon = Items.TapMobilePickupIcon(itemObject, itemPart)
 
 		return usedPrompt or tappedIcon
 	end
