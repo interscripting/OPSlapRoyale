@@ -2500,7 +2500,7 @@ Main.CodeSearchOrigin = Vector3.new(464, 29, 323)
 Main.CodeSearchRadius = 180
 Main.KeypadSearchRadius = 170
 
-Teleport.MaxStrikes = 3
+Teleport.MaxStrikes = 4
 Teleport.Cooldown = 2
 Teleport.Debounce = 1
 Teleport.PostFLock = 0.5
@@ -5486,7 +5486,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 					Teleport.StabilizeItemView(root, itemPart)
 				end)
 				Teleport.AddStrike()
-				Teleport.MaxStrikes = 3
+				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
 				Teleport.PostFLock = 0.3
 				Items.TeleportDebounce = 0.5
@@ -5905,7 +5905,7 @@ function Items.RunEarlyAutoCollect()
 		return
 	end
 
-	Teleport.MaxStrikes = 3
+	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
 	Teleport.PostFLock = 0.3
 	Items.TeleportDebounce = 0.5
@@ -6015,7 +6015,7 @@ function Items.SetEarlyAutoCollect(state)
 		Items.EarlyAutoCollectConfirmAt = 0
 		Items.EarlyAutoCollectConfirmCount = 0
 		visitedCollectPositions = {}
-		Teleport.MaxStrikes = 3
+		Teleport.MaxStrikes = 4
 		Teleport.Cooldown = 2
 		Teleport.PostFLock = 0.3
 		Items.TeleportDebounce = 0.5
