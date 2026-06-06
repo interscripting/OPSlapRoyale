@@ -6608,11 +6608,13 @@ do
 end
 
 do
-	Items.AutoPickupToggle = createToggleButton(itemsList, "Auto pick up", false, function(state)
-		Items.SetAutoPickup(state)
-	end)
+	if not isTouchDevice then
+		Items.AutoPickupToggle = createToggleButton(itemsList, "Auto pick up", false, function(state)
+			Items.SetAutoPickup(state)
+		end)
 
-	Items.AutoPickupToggle.Button.LayoutOrder = -9989
+		Items.AutoPickupToggle.Button.LayoutOrder = -9989
+	end
 end
 
 do
@@ -10121,16 +10123,6 @@ function Anti.SetHideUnderMap(state)
 	Teleport.MoveRoot(root, targetCFrame)
 end
 
-UI.ToggleRefs.AntiAcidLava = createToggleButton(safetyList, "Anti-Acid & Lava", false, function(state)
-	if state then
-		local coverCount = Anti.EnableAcidLava()
-		createNotification("Anti-Acid", "Placed " .. tostring(coverCount or 0) .. " safety covers.", "Success")
-	else
-		Anti.DisableAcidLava()
-		createNotification("Anti-Acid", "Anti-Acid & Lava disabled.")
-	end
-end)
-
 UI.ToggleRefs.HideUnderMap = createToggleButton(safetyList, "Hide under map", false, function(state)
 	Anti.SetHideUnderMap(state)
 end)
@@ -10160,16 +10152,12 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		UI.ToggleRefs.QuickMenuHotkeys.Set(state, true)
 	end
 
-	if UI.ToggleRefs.AntiAcidLava then
-		UI.ToggleRefs.AntiAcidLava.Set(state, true)
-	end
-
 	createNotification(
 		"Recommended Settings",
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on ESP, hitbox, Auto Slap, teleport hotkeys, and hazard covers.")
+end, "Turns on ESP, hitbox, Auto Slap, and teleport hotkeys.")
 
 do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
