@@ -5897,7 +5897,7 @@ function Items.RunEarlyAutoCollect()
 		return
 	end
 
-	Teleport.MaxStrikes = 5
+	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
 	Teleport.PostFLock = 0.3
 	Items.TeleportDebounce = 0.5
