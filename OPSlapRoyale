@@ -1,4 +1,4 @@
-Qlocal Services = {
+local Services = {
 	Players = game:GetService("Players"),
 	RunService = game:GetService("RunService"),
 	TweenService = game:GetService("TweenService"),
