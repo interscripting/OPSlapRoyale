@@ -42,12 +42,16 @@ end
 
 local function clearUnderMapSafetyPlatform()
 	if UnderMapSafetyPlatform and UnderMapSafetyPlatform.Parent then
-		UnderMapSafetyPlatform:Destroy()
+		UnderMapSafetyPlatform.CanCollide = false
+		UnderMapSafetyPlatform.CanTouch = false
+		UnderMapSafetyPlatform.CanQuery = false
 	end
 
 	for _, object in ipairs(workspace:GetChildren()) do
 		if isUnderMapSafetyPlatform(object) then
-			object:Destroy()
+			object.CanCollide = false
+			object.CanTouch = false
+			object.CanQuery = false
 		end
 	end
 
@@ -71,7 +75,7 @@ local function ensureUnderMapSafetyPlatform()
 	platform.Size = UNDER_MAP_PLATFORM_SIZE
 	platform.Position = Vector3.new(0, UNDER_MAP_PLATFORM_Y, 0)
 	platform.Anchored = true
-	platform.CanCollide = true
+	platform.CanCollide = false
 	platform.CanTouch = false
 	platform.CanQuery = false
 	platform.Transparency = 1
@@ -100,224 +104,6 @@ do
 end
 
 clearUnderMapSafetyPlatform()
-
-local SCHOOL_BUS_CLEANUP_POSITION = Vector3.new(494, 47, -322)
-local SCHOOL_BUS_CLEANUP_RADIUS = 220
-
-local function isPlayerCharacterDescendant(object)
-	for _, targetPlayer in ipairs(Players:GetPlayers()) do
-		local character = targetPlayer.Character
-
-		if character and object:IsDescendantOf(character) then
-			return true
-		end
-	end
-
-	return false
-end
-
-local function getObjectWorldPosition(object)
-	if object:IsA("BasePart") then
-		return object.Position
-	end
-
-	if object:IsA("Model") then
-		local ok, pivot = pcall(function()
-			return object:GetPivot()
-		end)
-
-		if ok and pivot then
-			return pivot.Position
-		end
-
-		local boxOk, cframe = pcall(function()
-			return object:GetBoundingBox()
-		end)
-
-		if boxOk and cframe then
-			return cframe.Position
-		end
-	end
-
-	return nil
-end
-
-local function getChairCleanupCandidate(object)
-	if not object or not object.Parent or isPlayerCharacterDescendant(object) then
-		return nil
-	end
-
-	local current = object
-	local candidate = nil
-	local busRelated = false
-
-	while current and current ~= workspace do
-		local lowerName = string.lower(current.Name)
-
-		if string.find(lowerName, "bus", 1, true) then
-			busRelated = true
-			break
-		end
-
-		if current:IsA("Seat")
-			or current:IsA("VehicleSeat")
-			or ((string.find(lowerName, "chair", 1, true)
-				or string.find(lowerName, "seat", 1, true)
-				or string.find(lowerName, "stool", 1, true)
-				or string.find(lowerName, "bench", 1, true))
-				and (current:IsA("Model") or current:IsA("BasePart"))) then
-			candidate = current
-		end
-
-		current = current.Parent
-	end
-
-	if busRelated then
-		return nil
-	end
-
-	return candidate
-end
-
-local function hasChairCleanupHint(object)
-	if not object then
-		return false
-	end
-
-	local lowerName = string.lower(object.Name)
-
-	return object:IsA("Seat")
-		or object:IsA("VehicleSeat")
-		or string.find(lowerName, "chair", 1, true) ~= nil
-		or string.find(lowerName, "seat", 1, true) ~= nil
-		or string.find(lowerName, "stool", 1, true) ~= nil
-		or string.find(lowerName, "bench", 1, true) ~= nil
-end
-
-local function cleanupChairs()
-	local removed = {}
-	local removedCount = 0
-	local scanned = 0
-	local queue = workspace:GetChildren()
-	local index = 1
-
-	while index <= #queue do
-		local object = queue[index]
-		index += 1
-
-		for _, child in ipairs(object:GetChildren()) do
-			table.insert(queue, child)
-		end
-
-		local candidate = getChairCleanupCandidate(object)
-
-		if candidate and candidate.Parent and not removed[candidate] then
-			removed[candidate] = true
-			removedCount += 1
-
-			pcall(function()
-				candidate:Destroy()
-			end)
-		end
-
-		scanned += 1
-
-		if scanned % 150 == 0 then
-			task.wait(0.03)
-		end
-	end
-
-	return removedCount
-end
-
-local function getSchoolBusCleanupCandidate(object)
-	local current = object
-	local candidate = nil
-
-	while current and current ~= workspace do
-		local lowerName = string.lower(current.Name)
-
-		if string.find(lowerName, "bus", 1, true) and (current:IsA("Model") or current:IsA("BasePart")) then
-			candidate = current
-		end
-
-		current = current.Parent
-	end
-
-	return candidate
-end
-
-local function cleanupSchoolBusNearSchoolHouse()
-	local removed = {}
-	local ok, nearbyParts = pcall(function()
-		return workspace:GetPartBoundsInBox(
-			CFrame.new(SCHOOL_BUS_CLEANUP_POSITION),
-			Vector3.new(SCHOOL_BUS_CLEANUP_RADIUS * 2, 160, SCHOOL_BUS_CLEANUP_RADIUS * 2)
-		)
-	end)
-
-	if not ok then
-		return false
-	end
-
-	for _, object in ipairs(nearbyParts) do
-		local candidate = getSchoolBusCleanupCandidate(object)
-
-		if candidate and candidate.Parent and not removed[candidate] then
-			local position = getObjectWorldPosition(candidate)
-
-			if position and (position - SCHOOL_BUS_CLEANUP_POSITION).Magnitude <= SCHOOL_BUS_CLEANUP_RADIUS then
-				removed[candidate] = true
-				pcall(function()
-					candidate:Destroy()
-				end)
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
-task.spawn(function()
-	local chairCleanupEndsAt = os.clock() + 20
-	local chairAddedConnection = nil
-
-	chairAddedConnection = workspace.DescendantAdded:Connect(function(object)
-		if os.clock() > chairCleanupEndsAt then
-			if chairAddedConnection then
-				chairAddedConnection:Disconnect()
-				chairAddedConnection = nil
-			end
-
-			return
-		end
-
-		if not hasChairCleanupHint(object) then
-			return
-		end
-
-		task.defer(function()
-			local candidate = getChairCleanupCandidate(object)
-
-			if candidate and candidate.Parent then
-				pcall(function()
-					candidate:Destroy()
-				end)
-			end
-		end)
-	end)
-
-	task.delay(20, function()
-		if chairAddedConnection then
-			chairAddedConnection:Disconnect()
-			chairAddedConnection = nil
-		end
-	end)
-
-	cleanupChairs()
-	cleanupSchoolBusNearSchoolHouse()
-end)
 
 local Settings = nil
 local Config = {}
@@ -379,6 +165,7 @@ local UI = {
 	WindowTransparency = 0.45,
 	ThemedObjects = {},
 	TabButtons = {},
+	ToggleRefs = {},
 	Pages = {},
 	SelectedTab = "Main",
 	TopLevelToggleOrder = 0
@@ -583,7 +370,8 @@ UI.Descriptions = {
 	["Theme Creator"] = "Tune the accent color for your current theme.",
 	["Get Code + Go Barn"] = "Moves to barn, scans puzzle assets, and reports the code.",
 	["Early Bus Jump"] = "Auto-fires bus jump when the script detects your character inside the bus.",
-	["Early Auto Collect"] = "Starts collecting at timer 3; after Early Bus Jump, waits 10 seconds before collecting.",
+	["Early Auto Collect"] = "Must be activated before there are 3 seconds left.",
+	["Auto collect"] = "Collects priority items without waiting for the round countdown.",
 	["Auto Rejoin"] = "Teleports to place 9426795465 when you die or a disconnect prompt appears.",
 	["Infinite jump"] = "Lets each manual jump request jump again while in the air.",
 	["Toggle recommended settings?"] = "Turns on the useful defaults without enabling auto heal."
@@ -954,9 +742,6 @@ function UI.SelectTab(tabName)
 	end
 end
 
-local applyTheme = UI.ApplyTheme
-local selectTab = UI.SelectTab
-
 function UI.CreateTab(name)
 	local button = Instance.new("TextButton")
 	button.Name = name .. "Tab"
@@ -1008,7 +793,7 @@ function UI.CreateTab(name)
 	UI.TabButtons[name] = button
 
 	button.MouseButton1Click:Connect(function()
-		selectTab(name)
+		UI.SelectTab(name)
 	end)
 end
 
@@ -1341,7 +1126,8 @@ function UI.CreateSearchBox(parent, placeholderText, callback)
 end
 
 UI.ToggleDescriptions = {
-	["Early Auto Collect"] = "Starts at timer 3, but waits 10 seconds after Early Bus Jump before collecting.",
+	["Early Auto Collect"] = "Must be activated before there are 3 seconds left.",
+	["Auto collect"] = "Collects priority items now without countdown or bunker teleport.",
 	["Auto pick up"] = "Creates an invisible pickup zone around you and presses pickup while items touch it.",
 	["Auto Heal"] = "Uses healing tools when health drops below the set threshold.",
 	["Auto Sort"] = "Keeps your glove first, priority items next, and healing items grouped.",
@@ -1356,7 +1142,7 @@ UI.ToggleDescriptions = {
 	["Anti-Ragdoll"] = "Briefly boxes your character in when ragdoll or knockback is detected.",
 	["Player Stats ESP"] = "Shows health, kills, strength, and speed above players.",
 	["Item ESP"] = "Highlights real item drops by category color with matching name tags.",
-	["Anti-Acid & Lava"] = "Deletes hazard parts with acid, lava, kill, damage, or death names.",
+	["Anti-Acid & Lava"] = "Places invisible safety cover parts over acid and lava.",
 	["Hide under map"] = "Moves you straight below the map, then back to safe land above you.",
 	["Anti-Staff"] = "Leaves the server when chat suggests recording, proof, or staff attention.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
@@ -1986,7 +1772,6 @@ end
 local createSmallButton = UI.CreateSmallButton
 local createWarningLabel = UI.CreateWarningLabel
 local createToggleButton = UI.CreateToggleButton
-local createSearchBox = UI.CreateSearchBox
 local createDropdown = UI.CreateDropdown
 local createSideDropdown = UI.CreateSideDropdown
 
@@ -2382,7 +2167,7 @@ function Settings.Capture()
 			local success, value = pcall(control.Get)
 
 			if success then
-				if name ~= "Hide under map" and name ~= "Early Auto Collect" then
+				if name ~= "Hide under map" and name ~= "Early Auto Collect" and name ~= "Auto collect" then
 					toggles[name] = value
 				end
 			end
@@ -2438,7 +2223,7 @@ function Settings.Apply(data)
 	Settings.Loading = true
 
 	if type(data.Theme) == "string" and themes[data.Theme] then
-		applyTheme(data.Theme)
+		UI.ApplyTheme(data.Theme)
 	end
 
 	if type(data.HitboxSize) == "number" and Combat then
@@ -2457,6 +2242,7 @@ function Settings.Apply(data)
 	toggles["Auto Glove Tap"] = nil
 	toggles["Hide under map"] = nil
 	toggles["Early Auto Collect"] = nil
+	toggles["Auto collect"] = nil
 
 	for name, value in pairs(toggles) do
 		local control = Settings.Controls[name]
@@ -2502,8 +2288,8 @@ Main.KeypadSearchRadius = 170
 
 Teleport.MaxStrikes = 4
 Teleport.Cooldown = 2
-Teleport.Debounce = 1
-Teleport.PostFLock = 0.5
+Teleport.PostFLock = 0.2
+Items.TeleportDebounce = 0.6
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -2511,9 +2297,13 @@ Teleport.BlockFUntil = 0
 Teleport.BusTopRidePlatform = nil
 Teleport.BusTopRideConnection = nil
 Teleport.BusTopRideLastCFrame = nil
+Teleport.StabilityWait = 4
 Teleport.LastJumpAt = 0
 Teleport.LastRagdolledAt = 0
 Teleport.LastBusLandingAt = 0
+Teleport.StabilityConnection = nil
+Teleport.StabilityCheckInterval = 0.15
+Teleport.LastStabilityCheckAt = 0
 
 Items.SearchRootName = "Items"
 Items.SearchText = ""
@@ -2521,6 +2311,9 @@ Items.TeleportDebounce = Teleport.Debounce
 Items.EarlyAutoCollectEnabled = false
 Items.EarlyAutoCollectThread = nil
 Items.EarlyAutoCollectToggle = nil
+Items.AutoCollectEnabled = false
+Items.AutoCollectThread = nil
+Items.AutoCollectToggle = nil
 Items.EarlyAutoCollectAutoStarted = false
 Items.EarlyAutoCollectNotInLobby = false
 Items.EarlyAutoCollectPauseUntil = 0
@@ -3060,6 +2853,17 @@ function Teleport.ShowWarning(secondsText)
 	)
 end
 
+function Teleport.ShowStabilityWarning(reason, secondsLeft)
+	Notify.Show(
+		"Teleport",
+		reason .. " Wait " .. tostring(math.max(1, math.ceil(secondsLeft))) .. " seconds.",
+		"Warning",
+		nil,
+		2.2,
+		true
+	)
+end
+
 function Teleport.IsLocalRagdolled(character, humanoid)
 	if not character or not humanoid then
 		return false
@@ -3103,6 +2907,78 @@ function Teleport.IsLocalRagdolled(character, humanoid)
 		or state == Enum.HumanoidStateType.FallingDown
 end
 
+function Teleport.UpdateLocalStability()
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	local now = os.clock()
+
+	if not humanoid or not root or humanoid.Health <= 0 then
+		Teleport.LastRagdolledAt = now
+		return
+	end
+
+	local state = humanoid:GetState()
+
+	if state == Enum.HumanoidStateType.Jumping or state == Enum.HumanoidStateType.Freefall then
+		Teleport.LastJumpAt = now
+	end
+
+	if Teleport.IsLocalRagdolled(character, humanoid) then
+		Teleport.LastRagdolledAt = now
+	end
+end
+
+function Teleport.StartStabilityWatcher()
+	if Teleport.StabilityConnection then
+		return
+	end
+
+	Teleport.StabilityConnection = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+		if now - Teleport.LastStabilityCheckAt < Teleport.StabilityCheckInterval then
+			return
+		end
+
+		Teleport.LastStabilityCheckAt = now
+		Teleport.UpdateLocalStability()
+	end)
+end
+
+function Teleport.StopStabilityWatcher()
+	if Teleport.StabilityConnection then
+		Teleport.StabilityConnection:Disconnect()
+		Teleport.StabilityConnection = nil
+	end
+end
+
+function Teleport.CanPassStabilityGate()
+	local now = os.clock()
+	local waitTime = Teleport.StabilityWait or 4
+	local jumpLeft = waitTime - (now - (Teleport.LastJumpAt or 0))
+
+	if jumpLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after jumping before teleporting.", jumpLeft)
+		return false
+	end
+
+	local ragdollLeft = waitTime - (now - (Teleport.LastRagdolledAt or now))
+
+	if ragdollLeft > 0 then
+		Teleport.ShowStabilityWarning("Recover from ragdoll before teleporting.", ragdollLeft)
+		return false
+	end
+
+	local busLandingLeft = waitTime - (now - (Teleport.LastBusLandingAt or 0))
+
+	if busLandingLeft > 0 then
+		Teleport.ShowStabilityWarning("Wait after landing from the bus.", busLandingLeft)
+		return false
+	end
+
+	return true
+end
+
 function Teleport.GetWaitBeforeTeleport(debounceOverride)
 	local now = os.clock()
 
@@ -3119,7 +2995,10 @@ function Teleport.GetWaitBeforeTeleport(debounceOverride)
 	return 0
 end
 
-function Teleport.CanTeleport(debounceOverride, silent)
+function Teleport.CanTeleport(debounceOverride, ignoreStability, silent)
+	if not ignoreStability and not Teleport.CanPassStabilityGate() then
+		return false
+	end
 
 	if Teleport.IsLocked() then
 		if not silent then
@@ -3143,6 +3022,8 @@ function Teleport.CanTeleport(debounceOverride, silent)
 	return true
 end
 
+Teleport.StartStabilityWatcher()
+
 function Teleport.AddStrike()
 	Teleport.LastClickAt = os.clock()
 	Teleport.Strikes += 1
@@ -3153,14 +3034,14 @@ function Teleport.AddStrike()
 	end
 end
 
-function Teleport.StartFBlock()
-	Teleport.BlockFUntil = os.clock() + Teleport.PostFLock
+function Teleport.StartFBlock(duration)
+	Teleport.BlockFUntil = os.clock() + (duration or Teleport.PostFLock)
 	Teleport.RefreshPickupLock()
 end
 
 function Teleport.StartBusLandingLock(duration)
 	local now = os.clock()
-	local unlockAt = now + (duration or 4)
+	local unlockAt = now + (duration or Teleport.StabilityWait or 4)
 
 	Teleport.LastBusLandingAt = now
 	Teleport.LockedUntil = math.max(Teleport.LockedUntil, unlockAt)
@@ -3217,107 +3098,6 @@ function Teleport.MoveRoot(root, targetCFrame, lookAtPosition)
 			root.CFrame = CFrame.new(targetCFrame.Position)
 		end
 
-		local camera = workspace.CurrentCamera
-		if camera then
-			local ignore = {}
-			if player.Character then
-				table.insert(ignore, player.Character)
-			end
-
-			local params = RaycastParams.new()
-			params.FilterType = Enum.RaycastFilterType.Exclude
-			params.FilterDescendantsInstances = ignore
-
-			local overlapParams = OverlapParams.new()
-			overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-			overlapParams.FilterDescendantsInstances = ignore
-
-			local itemFocus = lookAtPosition + Vector3.new(0, 1.2, 0)
-			local away = targetCFrame.Position - itemFocus
-
-			if away.Magnitude < 1 then
-				away = root.CFrame.LookVector * -1
-			end
-
-			away = away.Unit
-			local right = Vector3.new(away.Z, 0, -away.X)
-
-			local function isTreePart(part)
-				if not part then
-					return false
-				end
-
-				local current = part
-
-				while current and current ~= workspace do
-					local name = string.lower(current.Name)
-
-					if string.find(name, "tree", 1, true)
-						or string.find(name, "leaf", 1, true)
-						or string.find(name, "leaves", 1, true)
-						or string.find(name, "branch", 1, true)
-						or string.find(name, "trunk", 1, true)
-					then
-						return true
-					end
-
-					current = current.Parent
-				end
-
-				return false
-			end
-
-			local cameraPositions = {
-				targetCFrame.Position + away * 11 + Vector3.new(0, 4, 0),
-				targetCFrame.Position + away * 8 + Vector3.new(0, 5, 0),
-				targetCFrame.Position + right * 8 + Vector3.new(0, 4, 0),
-				targetCFrame.Position - right * 8 + Vector3.new(0, 4, 0),
-				targetCFrame.Position + (away + right).Unit * 10 + Vector3.new(0, 5, 0),
-				targetCFrame.Position + (away - right).Unit * 10 + Vector3.new(0, 5, 0),
-				targetCFrame.Position + (-away + right).Unit * 9 + Vector3.new(0, 5, 0),
-				targetCFrame.Position + (-away - right).Unit * 9 + Vector3.new(0, 5, 0)
-			}
-
-			local cameraSet = false
-
-			for _, cameraPosition in ipairs(cameraPositions) do
-				local touching = workspace:GetPartBoundsInBox(CFrame.new(cameraPosition), Vector3.new(1.4, 1.4, 1.4), overlapParams)
-				local insideWall = false
-
-				for _, part in ipairs(touching) do
-					if part.CanCollide and part.Transparency < 0.95 then
-						insideWall = true
-						break
-					end
-				end
-
-				if insideWall then
-					continue
-				end
-
-				local direction = itemFocus - cameraPosition
-				local hit = workspace:Raycast(cameraPosition, direction, params)
-
-				if not hit or ((hit.Position - itemFocus).Magnitude <= 2 and not isTreePart(hit.Instance)) then
-					camera.CFrame = CFrame.lookAt(cameraPosition, itemFocus)
-					cameraSet = true
-					break
-				end
-			end
-
-			if not cameraSet then
-				local fallbackPosition = targetCFrame.Position - root.CFrame.LookVector * 10 + Vector3.new(0, 4, 0)
-				camera.CFrame = CFrame.lookAt(fallbackPosition, itemFocus)
-			end
-
-			local character = player.Character
-			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-			if humanoid then
-				camera.CameraSubject = humanoid
-				camera.CameraType = Enum.CameraType.Custom
-			end
-		end
 	else
 		local _, yRotation, _ = root.CFrame:ToOrientation()
 		root.CFrame = CFrame.new(targetCFrame.Position) * CFrame.Angles(0, yRotation, 0)
@@ -3419,19 +3199,12 @@ function Teleport.StabilizeItemView(root, itemPart)
 			end
 		end
 
-		camera.CameraType = Enum.CameraType.Scriptable
-		camera.CFrame = CFrame.lookAt(cameraPosition, focus)
-
 		if humanoid then
 			camera.CameraSubject = humanoid
-
-			task.delay(0.65, function()
-				if camera and camera.Parent and humanoid and humanoid.Parent then
-					camera.CameraSubject = humanoid
-					camera.CameraType = Enum.CameraType.Custom
-				end
-			end)
 		end
+
+		camera.CameraType = Enum.CameraType.Custom
+		camera.CFrame = CFrame.lookAt(cameraPosition, focus)
 	end
 end
 
@@ -3708,10 +3481,36 @@ function Teleport.GetBusParts(candidate)
 	return parts
 end
 
-function Teleport.IsSchoolHouseBusCandidate(candidate)
-	local position = getObjectWorldPosition(candidate)
+function Teleport.GetObjectWorldPosition(object)
+	if object:IsA("BasePart") then
+		return object.Position
+	end
 
-	return position and (position - SCHOOL_BUS_CLEANUP_POSITION).Magnitude <= SCHOOL_BUS_CLEANUP_RADIUS
+	if object:IsA("Model") then
+		local ok, pivot = pcall(function()
+			return object:GetPivot()
+		end)
+
+		if ok and pivot then
+			return pivot.Position
+		end
+
+		local boxOk, cframe = pcall(function()
+			return object:GetBoundingBox()
+		end)
+
+		if boxOk and cframe then
+			return cframe.Position
+		end
+	end
+
+	return nil
+end
+
+function Teleport.IsSchoolHouseBusCandidate(candidate)
+	local position = Teleport.GetObjectWorldPosition(candidate)
+
+	return position and (position - Vector3.new(494, 47, -322)).Magnitude <= 220
 end
 
 function Teleport.FindSchoolBusTopTarget()
@@ -3729,7 +3528,7 @@ function Teleport.FindSchoolBusTopTarget()
 			seen[candidate] = true
 
 			local parts = Teleport.GetBusParts(candidate)
-			local position = getObjectWorldPosition(candidate)
+			local position = Teleport.GetObjectWorldPosition(candidate)
 
 			if #parts > 0 and position then
 				local distance = root and (root.Position - position).Magnitude or 0
@@ -4146,11 +3945,9 @@ function Items.TeleportTo(itemName)
 	local groundCFrame = Teleport.GetItemCFrame(itemPart, { character, itemObject })
 
 	Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
-	task.delay(0.05, function()
-		Teleport.StabilizeItemView(root, itemPart)
-	end)
+	Teleport.StabilizeItemView(root, itemPart)
 	Teleport.AddStrike()
-	Teleport.StartFBlock()
+	Teleport.StartFBlock(0.5)
 	createNotification("Items", "Teleported to " .. itemName)
 end
 
@@ -4324,7 +4121,7 @@ ContextActionService:BindActionAtPriority(
 	"BlockFAfterTeleport",
 	function(_, inputState)
 		if inputState == Enum.UserInputState.Begin and os.clock() < Teleport.BlockFUntil then
-			if not Items.EarlyAutoCollectEnabled and not Items.EarlyBusFBlockActive and not Items.BusLandingFBlockActive then
+			if not Items.EarlyAutoCollectEnabled and not Items.AutoCollectEnabled and not Items.EarlyBusFBlockActive and not Items.BusLandingFBlockActive then
 				Teleport.BlockFUntil = 0
 				return Enum.ContextActionResult.Pass
 			end
@@ -4750,7 +4547,7 @@ function UI.StartBusLandingWatcher()
 				end
 			end
 
-			
+			UI.BusLandingWasInBus = skipBusLandingLock and false or inBus
 			task.wait(0.15)
 		end
 	end)
@@ -4856,13 +4653,13 @@ do
 		end
 	end
 
-local CollectionService = Services.CollectionService
-
 local COLLECTIBLE_TAG = "CollectibleItem"
 
 local AUTO_COLLECT_POSITION_RADIUS = 8
 
 local visitedCollectPositions = {}
+local ignoredCollectTargets = {}
+local ignoredCollectPositions = {}
 local movementSave = nil
 local autoSortEnabled = false
 local autoSortConnections = {}
@@ -4879,7 +4676,8 @@ local autoPermanentSeenAt = {}
 local toolUseBusy = false
 local lastToolUseAt = 0
 local TOOL_USE_SPACING = 0.1
-local AUTO_PERMANENT_USE_DEBOUNCE = 0.1
+local AUTO_PERMANENT_USE_DEBOUNCE = 0.02
+local AUTO_PERMANENT_SCAN_INTERVAL = 0.03
 
 local itemNames = {
 	"Apple",
@@ -4962,6 +4760,26 @@ local function itemNameMatches(object, wantedName)
 end
 
 local function isItemMarkedGone(object)
+	if not object then
+		return true
+	end
+
+	local now = os.clock()
+
+	if ignoredCollectTargets[object] and ignoredCollectTargets[object] > now then
+		return true
+	end
+
+	local current = object
+
+	while current and current ~= workspace do
+		if ignoredCollectTargets[current] and ignoredCollectTargets[current] > now then
+			return true
+		end
+
+		current = current.Parent
+	end
+
 	return object:GetAttribute("Collected") == true
 		or object:GetAttribute("PickedUp") == true
 		or object:GetAttribute("Available") == false
@@ -5000,7 +4818,19 @@ local function setMovementPaused(paused)
 	end
 
 	if paused then
-		return
+		if not movementSave then
+			movementSave = {
+				WalkSpeed = humanoid.WalkSpeed,
+				JumpPower = humanoid.JumpPower,
+				JumpHeight = humanoid.JumpHeight,
+				AutoRotate = humanoid.AutoRotate
+			}
+		end
+
+		humanoid.WalkSpeed = 0
+		humanoid.JumpPower = 0
+		humanoid.JumpHeight = 0
+		humanoid.AutoRotate = false
 	elseif movementSave then
 		humanoid.WalkSpeed = movementSave.WalkSpeed
 		humanoid.JumpPower = movementSave.JumpPower
@@ -5011,6 +4841,18 @@ local function setMovementPaused(paused)
 end
 
 local function isVisitedCollectPosition(position)
+	local now = os.clock()
+
+	for index = #ignoredCollectPositions, 1, -1 do
+		local entry = ignoredCollectPositions[index]
+
+		if not entry or entry.Until <= now then
+			table.remove(ignoredCollectPositions, index)
+		elseif (entry.Position - position).Magnitude <= AUTO_COLLECT_POSITION_RADIUS * 1.75 then
+			return true
+		end
+	end
+
 	for _, visitedPosition in ipairs(visitedCollectPositions) do
 		if (visitedPosition - position).Magnitude <= AUTO_COLLECT_POSITION_RADIUS then
 			return true
@@ -5026,7 +4868,41 @@ end
 
 local collectibleSearchPoolCache = {}
 local collectibleSearchPoolCacheAt = 0
-local COLLECTIBLE_POOL_CACHE_TIME = 0.2
+local COLLECTIBLE_POOL_CACHE_TIME = 0.05
+
+local function invalidateCollectibleSearchPool()
+	collectibleSearchPoolCache = {}
+	collectibleSearchPoolCacheAt = 0
+	Items.SearchCacheDirty = true
+end
+
+local function ignoreCollectedTarget(itemObject, itemPart, itemPosition)
+	local ignoreUntil = os.clock() + 8
+
+	if itemObject then
+		ignoredCollectTargets[itemObject] = ignoreUntil
+	end
+
+	if itemPart then
+		ignoredCollectTargets[itemPart] = ignoreUntil
+	end
+
+	if itemPosition then
+		table.insert(ignoredCollectPositions, {
+			Position = itemPosition,
+			Until = ignoreUntil
+		})
+		markVisitedCollectPosition(itemPosition)
+	elseif itemPart then
+		table.insert(ignoredCollectPositions, {
+			Position = itemPart.Position,
+			Until = ignoreUntil
+		})
+		markVisitedCollectPosition(itemPart.Position)
+	end
+
+	invalidateCollectibleSearchPool()
+end
 
 local function getCollectibleSearchPool()
 	local now = os.clock()
@@ -5035,7 +4911,7 @@ local function getCollectibleSearchPool()
 		return collectibleSearchPoolCache
 	end
 
-	local taggedItems = CollectionService:GetTagged(COLLECTIBLE_TAG)
+	local taggedItems = Services.CollectionService:GetTagged(COLLECTIBLE_TAG)
 
 	if #taggedItems > 0 then
 		collectibleSearchPoolCache = taggedItems
@@ -5054,7 +4930,7 @@ local function getFullCollectibleSearchPool()
 	local results = {}
 	local seen = {}
 
-	for _, object in ipairs(CollectionService:GetTagged(COLLECTIBLE_TAG)) do
+	for _, object in ipairs(Services.CollectionService:GetTagged(COLLECTIBLE_TAG)) do
 		if not seen[object] then
 			seen[object] = true
 			table.insert(results, object)
@@ -5082,7 +4958,7 @@ local function getImmediateCollectibleSearchPool()
 		end
 	end
 
-	for _, object in ipairs(CollectionService:GetTagged(COLLECTIBLE_TAG)) do
+	for _, object in ipairs(Services.CollectionService:GetTagged(COLLECTIBLE_TAG)) do
 		add(object)
 	end
 
@@ -5395,7 +5271,27 @@ local function isSameItemStillThere(itemObject, itemPart, wantedName)
 		return false
 	end
 
-	return getLiveItemPart(itemObject) == itemPart
+	if itemObject:GetAttribute("Collected") == true
+		or itemObject:GetAttribute("PickedUp") == true
+		or itemObject:GetAttribute("Available") == false
+		or itemObject:GetAttribute("Enabled") == false then
+		return false
+	end
+
+	if not itemPart:IsDescendantOf(workspace)
+		or itemPart.Transparency >= 0.95
+		or itemPart.Size.X <= 0
+		or itemPart.Size.Y <= 0
+		or itemPart.Size.Z <= 0 then
+		return false
+	end
+
+	local characterModel = itemPart:FindFirstAncestorOfClass("Model")
+	if characterModel and Players:GetPlayerFromCharacter(characterModel) then
+		return false
+	end
+
+	return true
 end
 
 local pressF
@@ -5466,30 +5362,33 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 							return
 						end
 
-						if isSameItemStillThere(itemObject, itemPart, itemName) then
-							Items.TryPickupPrompt(itemObject, itemPart)
-						end
-
-						pressF(true)
 						Items.EarlyBusFBlockActive = false
 						if Teleport.BlockFUntil <= pressAt + 1 then
 							Teleport.BlockFUntil = 0
 						end
-						Teleport.RefreshPickupLock()
+						pcall(function()
+							ProximityPromptService.Enabled = true
+						end)
+
+						if isSameItemStillThere(itemObject, itemPart, itemName) then
+							Items.UsePickupInput(itemObject, itemPart)
+							Teleport.StartFBlock()
+						else
+							Teleport.RefreshPickupLock()
+						end
+
 						createNotification("Early Bus Jump", "Pressed F. Next item teleport starts in 1 second.", "Info")
 					end)
 				else
 					createNotification("Early Bus Jump", "Could not compute item landing position.", "Error")
 				end
 
-				task.delay(0.05, function()
-					Teleport.StabilizeItemView(root, itemPart)
-				end)
+				Teleport.StabilizeItemView(root, itemPart)
 				Teleport.AddStrike()
 				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
-				Teleport.PostFLock = 0.3
-				Items.TeleportDebounce = 0.5
+				Teleport.PostFLock = 0.2
+				Items.TeleportDebounce = 0.6
 				createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 			end
 		else
@@ -5509,17 +5408,25 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 end
 
 function pressF(skipPickupLock)
+	if isTouchDevice then
+		return false
+	end
+
 	local VirtualInputManager = game:GetService("VirtualInputManager")
+	local pressed = false
 
 	pcall(function()
-		while not skipPickupLock and Items.EarlyAutoCollectEnabled and os.clock() < Teleport.BlockFUntil do
+		while not skipPickupLock and os.clock() < (Teleport.BlockFUntil or 0) do
 			task.wait(0.03)
 		end
 
 		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
 		task.wait(0.05)
 		VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.F, false, game)
+		pressed = true
 	end)
+
+	return pressed
 end
 
 function Items.TryPickupPrompt(itemObject, itemPart)
@@ -5558,6 +5465,25 @@ function Items.TryPickupPrompt(itemObject, itemPart)
 			end)
 		end
 	end
+end
+
+function Items.IsPickupInputLocked()
+	return os.clock() < (Teleport.BlockFUntil or 0)
+		or Items.EarlyBusFBlockActive == true
+		or Items.BusLandingFBlockActive == true
+end
+
+function Items.UsePickupInput(itemObject, itemPart, skipPickupLock)
+	if not skipPickupLock and Items.IsPickupInputLocked() then
+		return false
+	end
+
+	if isTouchDevice then
+		Items.TryPickupPrompt(itemObject, itemPart)
+		return true
+	end
+
+	return pressF(skipPickupLock) == true
 end
 
 function Items.GetAutoPickupRoot()
@@ -5736,16 +5662,20 @@ function Items.StartAutoPickupThread()
 					shouldPressPickup = true
 					entry.Part = itemPart
 
-					pcall(function()
-						ProximityPromptService.Enabled = true
-					end)
+					if not Items.IsPickupInputLocked() then
+						pcall(function()
+							ProximityPromptService.Enabled = true
+						end)
+					end
 
-					Items.TryPickupPrompt(itemObject, itemPart)
+					if isTouchDevice then
+						Items.UsePickupInput(itemObject, itemPart)
+					end
 				end
 			end
 
-			if shouldPressPickup then
-				pressF(true)
+			if shouldPressPickup and not isTouchDevice then
+				Items.UsePickupInput(nil, nil)
 			end
 
 			task.wait(0.1)
@@ -5779,6 +5709,7 @@ local function setAutoPermanentItems(state, silent)
 
 	if autoPermanentEnabled then
 		autoPermanentSeenAt = {}
+		lastAutoPermanentUseAt = 0
 
 		if not silent then
 			createNotification("Auto Use", "Auto Use Permanent Items enabled.", "Success")
@@ -5799,16 +5730,6 @@ function Items.DisableEarlyAutoCollectConflicts()
 	Items.EarlyAutoCollectRestoreAutoPickup = false
 	Items.EarlyAutoCollectRestoreAutoPermanent = false
 
-	if Items.AutoPickupEnabled then
-		Items.EarlyAutoCollectRestoreAutoPickup = true
-
-		if Items.AutoPickupToggle then
-			Items.AutoPickupToggle.Set(false, false)
-		end
-
-		Items.SetAutoPickup(false, true)
-	end
-
 	if autoPermanentEnabled then
 		Items.EarlyAutoCollectRestoreAutoPermanent = true
 
@@ -5821,14 +5742,6 @@ function Items.DisableEarlyAutoCollectConflicts()
 end
 
 function Items.RestoreEarlyAutoCollectConflicts()
-	if Items.EarlyAutoCollectRestoreAutoPickup then
-		if Items.AutoPickupToggle then
-			Items.AutoPickupToggle.Set(true, false)
-		end
-
-		Items.SetAutoPickup(true, true)
-	end
-
 	if Items.EarlyAutoCollectRestoreAutoPermanent then
 		if autoPermanentToggle then
 			autoPermanentToggle.Set(true, false)
@@ -5841,20 +5754,41 @@ function Items.RestoreEarlyAutoCollectConflicts()
 	Items.EarlyAutoCollectRestoreAutoPermanent = false
 end
 
-function Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, duration)
+function Items.IsPriorityCollectEnabled(mode)
+	if mode == "Auto" then
+		return Items.AutoCollectEnabled == true
+	end
+
+	return Items.EarlyAutoCollectEnabled == true
+end
+
+function Items.SetPriorityCollectEnabled(mode, state)
+	if mode == "Auto" then
+		Items.AutoCollectEnabled = state == true
+	else
+		Items.EarlyAutoCollectEnabled = state == true
+	end
+end
+
+function Items.GetPriorityCollectTitle(mode)
+	return mode == "Auto" and "Auto collect" or "Early Auto Collect"
+end
+
+function Items.SpamPickupForPriorityCollect(mode, itemObject, itemPart, itemName, duration)
 	local stopAt = os.clock() + duration
 
 	task.spawn(function()
-		while Items.EarlyAutoCollectEnabled and os.clock() < stopAt and isSameItemStillThere(itemObject, itemPart, itemName) do
-			Items.TryPickupPrompt(itemObject, itemPart)
-			pressF()
+		while Items.IsPriorityCollectEnabled(mode) and os.clock() < stopAt and isSameItemStillThere(itemObject, itemPart, itemName) do
+			Items.UsePickupInput(itemObject, itemPart)
 			task.wait(0.08)
 		end
 	end)
 end
 
-function Items.StopEarlyAutoCollect(message, notInLobby)
-	Items.EarlyAutoCollectEnabled = false
+function Items.StopPriorityCollect(mode, message, notInLobby)
+	local title = Items.GetPriorityCollectTitle(mode)
+
+	Items.SetPriorityCollectEnabled(mode, false)
 	setMovementPaused(false)
 	Items.RestoreEarlyAutoCollectConflicts()
 
@@ -5862,53 +5796,85 @@ function Items.StopEarlyAutoCollect(message, notInLobby)
 		Items.EarlyAutoCollectNotInLobby = true
 	end
 
-	if Items.EarlyAutoCollectToggle then
+	if mode == "Auto" and Items.AutoCollectToggle then
+		Items.AutoCollectToggle.Set(false, false)
+	elseif Items.EarlyAutoCollectToggle then
 		Items.EarlyAutoCollectToggle.Set(false, false)
 	end
 
 	if message then
-		createNotification("Early Auto Collect", message)
+		createNotification(title, message)
 	end
 end
 
-function Items.RunEarlyAutoCollect()
+function Items.StopEarlyAutoCollect(message, notInLobby)
+	Items.StopPriorityCollect("Early", message, notInLobby)
+end
+
+function Items.ResetPriorityCollectState(mode)
+	Items.SetPriorityCollectEnabled(mode, true)
+	Items.EarlyAutoCollectPauseUntil = 0
+	Items.EarlyAutoCollectPermanentSeen = false
+	Items.EarlyAutoCollectConfirmingPermanents = false
+	Items.EarlyAutoCollectConfirmAt = 0
+	Items.EarlyAutoCollectConfirmCount = 0
+	visitedCollectPositions = {}
+	ignoredCollectTargets = {}
+	ignoredCollectPositions = {}
+	invalidateCollectibleSearchPool()
+	Teleport.MaxStrikes = 4
+	Teleport.Cooldown = 2
+	Teleport.PostFLock = 0.2
+	Items.TeleportDebounce = 0.6
+end
+
+function Items.RunPriorityAutoCollect(mode)
+	local isEarly = mode ~= "Auto"
+	local title = Items.GetPriorityCollectTitle(mode)
+	local emptyTargetCount = 0
+
 	setMovementPaused(true)
-	Items.EarlyAutoCollectSawTimer = false
 
-	while Items.EarlyAutoCollectEnabled do
-		local number = Main.FindSlapRoyaleTimer()
+	if isEarly then
+		Items.EarlyAutoCollectSawTimer = false
 
-		if number then
-			Items.EarlyAutoCollectSawTimer = true
-			Main.TimerPrinterLastNumber = number
+		while Items.EarlyAutoCollectEnabled do
+			local number = Main.FindSlapRoyaleTimer()
 
-			if number <= 3 then
+			if number then
+				Items.EarlyAutoCollectSawTimer = true
+				Main.TimerPrinterLastNumber = number
+
+				if number <= 3 then
+					break
+				end
+			elseif Items.EarlyAutoCollectSawTimer then
 				break
 			end
-		elseif Items.EarlyAutoCollectSawTimer then
-			break
-		end
 
-		task.wait(0.05)
+			task.wait(0.05)
+		end
 	end
 
-	if not Items.EarlyAutoCollectEnabled then
+	if not Items.IsPriorityCollectEnabled(mode) then
 		setMovementPaused(false)
 		return
 	end
 
 	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.3
-	Items.TeleportDebounce = 0.5
-	createNotification("Early Auto Collect", "Timer hit 3. Starting priority collection.", "Success")
+	Teleport.PostFLock = 0.2
+	Items.TeleportDebounce = 0.6
+	createNotification(title, isEarly and "Timer hit 3. Starting priority collection." or "Starting priority collection.", "Success")
 
-	while Items.EarlyAutoCollectEnabled do
-		while Items.EarlyAutoCollectEnabled and os.clock() < (Items.EarlyAutoCollectPauseUntil or 0) do
+	while Items.IsPriorityCollectEnabled(mode) do
+		setMovementPaused(true)
+
+		while isEarly and Items.IsPriorityCollectEnabled(mode) and os.clock() < (Items.EarlyAutoCollectPauseUntil or 0) do
 			task.wait(0.05)
 		end
 
-		if Items.EarlyAutoCollectEnabled and Items.ShouldFinishEarlyAutoCollectPermanents() then
+		if isEarly and Items.EarlyAutoCollectEnabled and Items.ShouldFinishEarlyAutoCollectPermanents() then
 			Items.EarlyAutoCollectEnabled = false
 			setMovementPaused(false)
 			Items.RestoreEarlyAutoCollectConflicts()
@@ -5929,7 +5895,7 @@ function Items.RunEarlyAutoCollect()
 		local teleportWait = Teleport.GetWaitBeforeTeleport(Items.TeleportDebounce)
 
 		if teleportWait > 0 then
-			task.wait(math.clamp(teleportWait, 0.1, 0.5))
+			task.wait(math.clamp(teleportWait, 0.1, 0.7))
 			continue
 		end
 
@@ -5941,12 +5907,27 @@ function Items.RunEarlyAutoCollect()
 		local itemName, itemCFrame, itemPosition, itemObject, itemPart = findNextCollectTarget()
 
 		if not itemName then
-			task.wait(isItemScanLoading() and 0.05 or 0.1)
+			if isItemScanLoading() then
+				emptyTargetCount = 0
+				task.wait(0.05)
+				continue
+			end
+
+			emptyTargetCount += 1
+
+			if emptyTargetCount >= 8 then
+				Items.StopPriorityCollect(mode, "Priority list finished.", false)
+				break
+			end
+
+			task.wait(0.1)
 			continue
 		end
 
+		emptyTargetCount = 0
+
 		if not isSameItemStillThere(itemObject, itemPart, itemName) then
-			markVisitedCollectPosition(itemPosition)
+			ignoreCollectedTarget(itemObject, itemPart, itemPosition)
 			task.wait(0.05)
 			continue
 		end
@@ -5955,21 +5936,19 @@ function Items.RunEarlyAutoCollect()
 		local root = character:WaitForChild("HumanoidRootPart", 5)
 
 		if root then
-			markVisitedCollectPosition(itemPosition)
+			ignoreCollectedTarget(itemObject, itemPart, itemPosition)
 
 			local groundCFrame = Teleport.GetItemCFrame(itemPart, { character, itemObject })
 
 			Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
-			task.delay(0.05, function()
-				Teleport.StabilizeItemView(root, itemPart)
-			end)
+			Teleport.StabilizeItemView(root, itemPart)
 			Teleport.AddStrike()
-			Teleport.StartFBlock()
-			createNotification("Early Auto Collect", "Collected " .. itemName)
+			Teleport.StartFBlock(0.5)
+			createNotification(title, "Collected " .. itemName)
 
-			task.delay(0.1, function()
-				if Items.EarlyAutoCollectEnabled and isSameItemStillThere(itemObject, itemPart, itemName) then
-					Items.SpamPickupForEarlyAutoCollect(itemObject, itemPart, itemName, 0.45)
+			task.delay(0.05, function()
+				if Items.IsPriorityCollectEnabled(mode) and isSameItemStillThere(itemObject, itemPart, itemName) then
+					Items.SpamPickupForPriorityCollect(mode, itemObject, itemPart, itemName, 1.35)
 				end
 			end)
 		end
@@ -5978,6 +5957,14 @@ function Items.RunEarlyAutoCollect()
 	end
 
 	setMovementPaused(false)
+end
+
+function Items.RunEarlyAutoCollect()
+	Items.RunPriorityAutoCollect("Early")
+end
+
+function Items.RunAutoCollect()
+	Items.RunPriorityAutoCollect("Auto")
 end
 
 function Items.SetEarlyAutoCollect(state)
@@ -5994,22 +5981,62 @@ function Items.SetEarlyAutoCollect(state)
 			return
 		end
 
+		if UI.IsLocalPlayerInBus and UI.IsLocalPlayerInBus() then
+			createNotification("Early Auto Collect", "You cannot start this while already in the bus.", "Warning")
+
+			task.defer(function()
+				if Items.EarlyAutoCollectToggle then
+					Items.EarlyAutoCollectToggle.Set(false, false)
+				end
+			end)
+
+			return
+		end
+
+		local timerNumber = Main.FindSlapRoyaleTimer()
+
+		if not timerNumber then
+			createNotification("Early Auto Collect", "No countdown detected.", "Warning")
+
+			task.defer(function()
+				if Items.EarlyAutoCollectToggle then
+					Items.EarlyAutoCollectToggle.Set(false, false)
+				end
+			end)
+
+			return
+		end
+
+		if timerNumber <= 3 then
+			createNotification("Early Auto Collect", "Must be activated before there are 3 seconds left.", "Warning")
+
+			task.defer(function()
+				if Items.EarlyAutoCollectToggle then
+					Items.EarlyAutoCollectToggle.Set(false, false)
+				end
+			end)
+
+			return
+		end
+
 		if Items.EarlyAutoCollectEnabled then
 			return
 		end
 
+		if Items.AutoCollectEnabled then
+			createNotification("Early Auto Collect", "Turn Auto collect off first.", "Warning")
+
+			task.defer(function()
+				if Items.EarlyAutoCollectToggle then
+					Items.EarlyAutoCollectToggle.Set(false, false)
+				end
+			end)
+
+			return
+		end
+
 		Items.DisableEarlyAutoCollectConflicts()
-		Items.EarlyAutoCollectEnabled = true
-		Items.EarlyAutoCollectPauseUntil = 0
-		Items.EarlyAutoCollectPermanentSeen = false
-		Items.EarlyAutoCollectConfirmingPermanents = false
-		Items.EarlyAutoCollectConfirmAt = 0
-		Items.EarlyAutoCollectConfirmCount = 0
-		visitedCollectPositions = {}
-		Teleport.MaxStrikes = 4
-		Teleport.Cooldown = 2
-		Teleport.PostFLock = 0.3
-		Items.TeleportDebounce = 0.5
+		Items.ResetPriorityCollectState("Early")
 		createNotification("Early Auto Collect", "Waiting for countdown to end.", "Info")
 
 		if not Items.EarlyAutoCollectThread then
@@ -6023,6 +6050,42 @@ function Items.SetEarlyAutoCollect(state)
 		setMovementPaused(false)
 		Items.RestoreEarlyAutoCollectConflicts()
 		createNotification("Early Auto Collect", "Early Auto Collect disabled.")
+	end
+end
+
+function Items.SetAutoCollect(state)
+	if state then
+		if Items.AutoCollectEnabled then
+			return
+		end
+
+		if Items.EarlyAutoCollectEnabled then
+			createNotification("Auto collect", "Turn Early Auto Collect off first.", "Warning")
+
+			task.defer(function()
+				if Items.AutoCollectToggle then
+					Items.AutoCollectToggle.Set(false, false)
+				end
+			end)
+
+			return
+		end
+
+		Items.DisableEarlyAutoCollectConflicts()
+		Items.ResetPriorityCollectState("Auto")
+		createNotification("Auto collect", "Starting priority collection.", "Info")
+
+		if not Items.AutoCollectThread then
+			Items.AutoCollectThread = task.spawn(function()
+				Items.RunAutoCollect()
+				Items.AutoCollectThread = nil
+			end)
+		end
+	else
+		Items.AutoCollectEnabled = false
+		setMovementPaused(false)
+		Items.RestoreEarlyAutoCollectConflicts()
+		createNotification("Auto collect", "Auto collect disabled.")
 	end
 end
 
@@ -6348,6 +6411,18 @@ function Items.CleanupAutomation()
 end
 
 do
+	Items.EarlyAutoCollectToggle = createToggleButton(itemsList, "Early Auto Collect", false, function(state)
+		Items.SetEarlyAutoCollect(state)
+	end)
+
+	Items.EarlyAutoCollectToggle.Button.LayoutOrder = -9992
+
+	Items.AutoCollectToggle = createToggleButton(itemsList, "Auto collect", false, function(state)
+		Items.SetAutoCollect(state)
+	end)
+
+	Items.AutoCollectToggle.Button.LayoutOrder = -9991
+
 	local autoSortToggle = createToggleButton(itemsList, "Auto Sort", false, function(state)
 		setAutoSort(state)
 	end)
@@ -6373,13 +6448,14 @@ do
 	Items.RefreshCrates()
 end
 
-local function useTool(tool)
+local function useTool(tool, fastMode)
 	if toolUseBusy then
 		return false
 	end
 
 	local now = os.clock()
-	if now - lastToolUseAt < TOOL_USE_SPACING then
+	local spacing = fastMode and AUTO_PERMANENT_USE_DEBOUNCE or TOOL_USE_SPACING
+	if now - lastToolUseAt < spacing then
 		return false
 	end
 
@@ -6411,7 +6487,7 @@ local function useTool(tool)
 
 	if backpack and tool.Parent == backpack then
 		humanoid:EquipTool(tool)
-		task.wait(0.35)
+		task.wait(fastMode and 0.06 or 0.35)
 	end
 
 	if tool.Parent == character then
@@ -6424,7 +6500,7 @@ local function useTool(tool)
 			tool:Activate()
 		end)
 
-		task.wait(0.45)
+		task.wait(fastMode and 0.08 or 0.45)
 
 		if root then
 			root.AssemblyAngularVelocity = Vector3.zero
@@ -6436,7 +6512,7 @@ local function useTool(tool)
 		humanoid:ChangeState(Enum.HumanoidStateType.Running)
 
 		lastToolUseAt = os.clock()
-		task.wait(0.3)
+		task.wait(fastMode and 0.03 or 0.3)
 		toolUseBusy = false
 		return used
 	end
@@ -6501,22 +6577,19 @@ local function tryAutoUsePermanentItem()
 
 	for _, candidate in ipairs(getInventoryTools()) do
 		if candidate:IsA("Tool") and matchesItem(candidate.Name, permanentUseItems) then
-			autoPermanentSeenAt[candidate] = autoPermanentSeenAt[candidate] or now
-
-			if now - autoPermanentSeenAt[candidate] >= AUTO_PERMANENT_USE_DEBOUNCE then
-				tool = candidate
-				break
-			end
+			tool = candidate
+			break
 		end
 	end
 
 	if not tool then
+		autoPermanentSeenAt = {}
 		return false
 	end
 
 	lastAutoPermanentUseAt = now
 	autoPermanentSeenAt[tool] = nil
-	if useTool(tool) then
+	if useTool(tool, true) then
 		return true
 	end
 
@@ -6526,8 +6599,8 @@ end
 
 runAutoUsePermanentItems = function()
 	while autoPermanentEnabled do
-		tryAutoUsePermanentItem()
-		task.wait(0.35)
+		local used = tryAutoUsePermanentItem()
+		task.wait(used and AUTO_PERMANENT_SCAN_INTERVAL or 0.08)
 	end
 end
 
@@ -6618,6 +6691,16 @@ end
 
 function Items.HasAvailableTeleportItems()
 	return #itemChecklistOrder > 0
+end
+
+local function clearItemTeleportChecklist()
+	for _, row in pairs(ItemTeleportChecklist.Rows) do
+		if row and row.Parent then
+			row:Destroy()
+		end
+	end
+
+	ItemTeleportChecklist.Rows = {}
 end
 
 local function createItemChecklistRow(itemName, layoutOrder, showCount, leftCount, totalCount)
@@ -7185,8 +7268,14 @@ function Combat.ApplyHitbox(otherPlayer)
 		return
 	end
 
+	local character = otherPlayer.Character
 	local humanoid = Combat.GetPlayerHumanoid(otherPlayer)
 	if not humanoid or humanoid.Health <= 0 then
+		Combat.ResetHitbox(otherPlayer)
+		return
+	end
+
+	if Combat.IsRagdolledTarget(character, humanoid) then
 		Combat.ResetHitbox(otherPlayer)
 		return
 	end
@@ -9092,10 +9181,8 @@ local function toggleSideDropdown(menuName)
 	end
 end
 
-local quickMenuHotkeysToggle = nil
-
 if not isTouchDevice then
-	quickMenuHotkeysToggle = createToggleButton(settingsList, "Quick Menu Hotkeys", false, function(state)
+	UI.ToggleRefs.QuickMenuHotkeys = createToggleButton(settingsList, "Quick Menu Hotkeys", false, function(state)
 		quickMenuHotkeysEnabled = state
 		createNotification("Hotkeys", state and "Quick menu hotkeys enabled." or "Quick menu hotkeys disabled.")
 	end, "R opens items. Q opens players. G opens map locations.")
@@ -9138,9 +9225,6 @@ if isTouchDevice then
 		toggleSideDropdown("Map Locations")
 	end)
 end
-
-local expandHitboxToggle
-local autoGloveTapToggle
 
 do
 	local hitboxDropdown = createDropdown(combatList, "Hitboxes", updateCombatCanvas)
@@ -9185,7 +9269,7 @@ do
 
 	Combat.SetHitboxSize(Combat.HitboxSize)
 
-	expandHitboxToggle = createToggleButton(hitboxDropdown, "Expand Hitbox", false, function(state)
+	UI.ToggleRefs.ExpandHitbox = createToggleButton(hitboxDropdown, "Expand Hitbox", false, function(state)
 		Combat.HitboxExpanded = state
 		Combat.RefreshHitboxes()
 	end)
@@ -9198,16 +9282,12 @@ do
 		end
 	end)
 
-	autoGloveTapToggle = createToggleButton(combatList, "Auto Slap", false, function(state)
+	UI.ToggleRefs.AutoSlap = createToggleButton(combatList, "Auto Slap", false, function(state)
 		Combat.SetAutoGloveTap(state)
 	end)
 
 	createToggleButton(combatList, "Player TP Buttons", false, function(state)
 		Combat.SetPlayerTpButtons(state)
-	end)
-
-	Items.EarlyAutoCollectToggle = createToggleButton(betaList, "Early Auto Collect", false, function(state)
-		Items.SetEarlyAutoCollect(state)
 	end)
 
 	createToggleButton(betaList, "Glove TP Slap", false, function(state)
@@ -9549,7 +9629,7 @@ function ESP.Disable()
 	end
 end
 
-local playerEspToggle = createToggleButton(mainList, "Player Stats ESP", false, function(state)
+UI.ToggleRefs.PlayerESP = createToggleButton(mainList, "Player Stats ESP", false, function(state)
 	if state then
 		ESP.Enable()
 		createNotification("ESP", "Player Stats ESP enabled.", "Success")
@@ -9559,7 +9639,7 @@ local playerEspToggle = createToggleButton(mainList, "Player Stats ESP", false, 
 	end
 end)
 
-local itemEspToggle = createToggleButton(itemsList, "Item ESP", false, function(state)
+createToggleButton(itemsList, "Item ESP", false, function(state)
 	ItemESP.SetEnabled(state)
 	createNotification("Item ESP", state and "Item ESP enabled." or "Item ESP disabled.", state and "Success" or "Info")
 end)
@@ -9567,6 +9647,8 @@ end)
 local Anti = {
 	StaffEnabled = false,
 	HideUnderMapEnabled = false,
+	AcidLavaEnabled = false,
+	AcidLavaParts = {},
 	StaffConnections = {},
 	StaffKeywords = {
 		"record", "recording", "rec", "clip", "proof", "evidence", "caught", "exposed",
@@ -9655,21 +9737,53 @@ function Anti.IsHazardPart(object)
 end
 
 function Anti.EnableAcidLava()
-	local removed = {}
-	local removedCount = 0
+	local covers = {
+		{
+			CFrame = CFrame.new(-113, 16, -625),
+			Size = Vector3.new(155, 1, 155),
+		},
+		{
+			CFrame = CFrame.new(-304, -21, 379),
+			Size = Vector3.new(190, 1, 190),
+		},
+	}
 
-	for _, object in ipairs(workspace:GetDescendants()) do
-		if Anti.IsHazardPart(object) and object.Parent and not removed[object] then
-			removed[object] = true
-			removedCount += 1
+	Anti.AcidLavaEnabled = true
 
-			pcall(function()
-				object:Destroy()
-			end)
+	for index, cover in ipairs(covers) do
+		local part = Anti.AcidLavaParts[index]
+
+		if not part or not part.Parent then
+			part = Instance.new("Part")
+			part.Name = "Part"
+			part.Anchored = true
+			part.Transparency = 1
+			part.CanTouch = false
+			part.CanQuery = false
+			part.Material = Enum.Material.SmoothPlastic
+			part.Parent = workspace
+			Anti.AcidLavaParts[index] = part
 		end
+
+		part.Size = cover.Size
+		part.CFrame = cover.CFrame
+		part.CanCollide = true
 	end
 
-	return removedCount
+	return #covers
+end
+
+function Anti.DisableAcidLava()
+	Anti.AcidLavaEnabled = false
+
+	for _, part in ipairs(Anti.AcidLavaParts) do
+		if part and part.Parent then
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+			part.Transparency = 1
+		end
+	end
 end
 
 function Anti.ClearStaffConnections()
@@ -9780,74 +9894,97 @@ function Anti.SetHideUnderMap(state)
 		return
 	end
 
+	if state and movementSave then
+		createNotification("Hide under map", "Wait until the current auto collect movement lock ends.", "Warning")
+
+		task.defer(function()
+			if UI.ToggleRefs.HideUnderMap then
+				UI.ToggleRefs.HideUnderMap.Set(false, false)
+			end
+		end)
+
+		return
+	end
+
+	if state and not Teleport.CanPassStabilityGate() then
+		task.defer(function()
+			if UI.ToggleRefs.HideUnderMap then
+				UI.ToggleRefs.HideUnderMap.Set(false, false)
+			end
+		end)
+
+		return
+	end
+
 	local targetCFrame = nil
-	local clearPlatformAfterMove = false
 
 	if state then
 		local platform = ensureUnderMapSafetyPlatform()
 
+		platform.CanCollide = true
+		platform.CanTouch = false
+		platform.CanQuery = false
 		Anti.HideUnderMapEnabled = true
 		targetCFrame = CFrame.new(root.Position.X, platform.Position.Y + (platform.Size.Y * 0.5) + UNDER_MAP_SAFE_OFFSET, root.Position.Z)
 		createNotification("Hide under map", "Moved under the map.", "Success")
 	else
+		local platform = UnderMapSafetyPlatform
+
 		Anti.HideUnderMapEnabled = false
 		targetCFrame = Anti.GetGroundReturnCFrame(root)
-		clearPlatformAfterMove = true
 		createNotification("Hide under map", "Moved back above ground.", "Info")
+
+		if platform and platform.Parent then
+			platform.CanCollide = false
+			platform.CanTouch = false
+			platform.CanQuery = false
+		end
 	end
 
 	Teleport.MoveRoot(root, targetCFrame)
-
-	if clearPlatformAfterMove then
-		clearUnderMapSafetyPlatform()
-	end
 end
 
-local antiAcidLavaToggle
-local antiStaffToggle
-local antiRagdollToggle
-local hideUnderMapToggle
-
-antiAcidLavaToggle = createToggleButton(safetyList, "Anti-Acid & Lava", false, function(state)
+UI.ToggleRefs.AntiAcidLava = createToggleButton(safetyList, "Anti-Acid & Lava", false, function(state)
 	if state then
-		local removedCount = Anti.EnableAcidLava()
-		createNotification("Anti-Acid", "Removed " .. tostring(removedCount or 0) .. " hazard objects.", "Success")
+		local coverCount = Anti.EnableAcidLava()
+		createNotification("Anti-Acid", "Placed " .. tostring(coverCount or 0) .. " safety covers.", "Success")
 	else
+		Anti.DisableAcidLava()
 		createNotification("Anti-Acid", "Anti-Acid & Lava disabled.")
 	end
 end)
 
-hideUnderMapToggle = createToggleButton(safetyList, "Hide under map", false, function(state)
+UI.ToggleRefs.HideUnderMap = createToggleButton(safetyList, "Hide under map", false, function(state)
 	Anti.SetHideUnderMap(state)
 end)
 
-antiRagdollToggle = createToggleButton(safetyList, "Anti-Ragdoll", false, function(state)
+createToggleButton(safetyList, "Anti-Ragdoll", false, function(state)
 	Combat.SetAntiSlap(state)
 end)
 
-antiStaffToggle = createToggleButton(safetyList, "Anti-Staff", false, function(state)
+createToggleButton(safetyList, "Anti-Staff", false, function(state)
 	Anti.SetStaffEnabled(state)
 end)
 
 createToggleButton(mainList, "Toggle recommended settings?", false, function(state)
-	if playerEspToggle then
-		playerEspToggle.Set(state, true)
+	if UI.ToggleRefs.PlayerESP then
+		UI.ToggleRefs.PlayerESP.Set(state, true)
 	end
 
-	if expandHitboxToggle then
-		expandHitboxToggle.Set(state, true)
+	if UI.ToggleRefs.ExpandHitbox then
+		UI.ToggleRefs.ExpandHitbox.Set(state, true)
 	end
 
-	if autoGloveTapToggle then
-		autoGloveTapToggle.Set(state, true)
+	if UI.ToggleRefs.AutoSlap then
+		UI.ToggleRefs.AutoSlap.Set(state, true)
 	end
 
-	if quickMenuHotkeysToggle then
-		quickMenuHotkeysToggle.Set(state, true)
+	if UI.ToggleRefs.QuickMenuHotkeys then
+		UI.ToggleRefs.QuickMenuHotkeys.Set(state, true)
 	end
 
-	if antiAcidLavaToggle then
-		antiAcidLavaToggle.Set(state, true)
+	if UI.ToggleRefs.AntiAcidLava then
+		UI.ToggleRefs.AntiAcidLava.Set(state, true)
 	end
 
 	createNotification(
@@ -9855,7 +9992,7 @@ createToggleButton(mainList, "Toggle recommended settings?", false, function(sta
 		state and "Recommended settings enabled." or "Recommended settings disabled.",
 		state and "Success" or "Info"
 	)
-end, "Turns on ESP, hitbox, Auto Slap, teleport hotkeys, and hazard deletion.")
+end, "Turns on ESP, hitbox, Auto Slap, teleport hotkeys, and hazard covers.")
 
 do
 	local dropdown = createDropdown(settingsList, "Themes", updateSettingsCanvas)
@@ -9878,13 +10015,13 @@ do
 		end
 
 		local nextTheme = themeOrder[(currentIndex % #themeOrder) + 1]
-		applyTheme(nextTheme)
+		UI.ApplyTheme(nextTheme)
 		createNotification("Theme", "Switched to " .. nextTheme .. ".", "Success")
 	end)
 
 	for _, themeName in ipairs(themeOrder) do
 		createSmallButton(dropdown, themeName, function()
-			applyTheme(themeName)
+			UI.ApplyTheme(themeName)
 		end)
 	end
 end
@@ -10400,8 +10537,8 @@ if workspace.CurrentCamera then
 	end)
 end
 
-selectTab("Main")
-applyTheme("Neon Orchid")
+UI.SelectTab("Main")
+UI.ApplyTheme("Neon Orchid")
 Settings.LoadAll()
 Items.StartCrateWatcher()
 
@@ -10437,6 +10574,7 @@ do
 
 		pcall(function()
 			Items.EarlyAutoCollectEnabled = false
+			Items.AutoCollectEnabled = false
 			UI.AutoEarlyBusJumpEnabled = false
 			UI.AutoRejoinEnabled = false
 			UI.InfiniteJumpEnabled = false
@@ -10484,6 +10622,7 @@ do
 		pcall(function()
 			if Teleport then
 				Teleport.ClearBusTopRidePlatform()
+				Teleport.StopStabilityWatcher()
 			end
 		end)
 
