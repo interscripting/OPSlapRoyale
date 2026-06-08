@@ -205,8 +205,22 @@ local UI = {
 	LastAutoEarlyBusJumpAt = 0,
 	LastJumpBusSeenAt = 0,
 	JumpBusSearchActive = false,
-	ToggleRefs = {}
+	ToggleRefs = {},
+	InputRefs = {}
 }
+
+UI.Movement = {
+	SpeedMin = 20,
+	JumpMin = 50,
+	SpeedMax = 20,
+	JumpMax = 50,
+	LastObservedSpeed = nil,
+	LastObservedJump = nil,
+	Applying = false,
+	Connections = {},
+	CharacterConnection = nil,
+}
+
 local gui = nil
 local isTouchDevice = UserInputService.TouchEnabled
 local function getViewportSize()
@@ -230,10 +244,14 @@ Main.CodeSearchOrigin = Vector3.new(464, 29, 323)
 Main.CodeSearchRadius = 180
 Main.KeypadSearchRadius = 170
 
-Teleport.MaxStrikes = 4
-Teleport.Cooldown = 2
-Teleport.Debounce = 0.5
-Teleport.PostFLock = 0.2
+Teleport.DefaultMaxStrikes = 4
+Teleport.DefaultCooldown = 3.5
+Teleport.DefaultDebounce = 0.5
+Teleport.DefaultPostFLock = 0.2
+Teleport.MaxStrikes = Teleport.DefaultMaxStrikes
+Teleport.Cooldown = Teleport.DefaultCooldown
+Teleport.Debounce = Teleport.DefaultDebounce
+Teleport.PostFLock = Teleport.DefaultPostFLock
 Teleport.Strikes = 0
 Teleport.LockedUntil = 0
 Teleport.LastClickAt = 0
@@ -246,7 +264,7 @@ Teleport.LastJumpAt = 0
 Teleport.LastRagdolledAt = 0
 Teleport.LastBusLandingAt = 0
 Teleport.StabilityConnection = nil
-Teleport.StabilityCheckInterval = 0.15
+Teleport.StabilityCheckInterval = 0.3
 Teleport.LastStabilityCheckAt = 0
 
 Items.SearchRootName = "Items"
@@ -274,6 +292,9 @@ Items.AutoPickupTouchedConnection = nil
 Items.AutoPickupTouchEndedConnection = nil
 Items.AutoPickupThread = nil
 Items.AutoPickupTouching = {}
+Items.AutoPickupScanInterval = 0.25
+Items.AutoPickupFollowInterval = 0.05
+Items.LastAutoPickupFollowAt = 0
 Items.Crates = {}
 Items.KnownCrates = {}
 Items.CrateButtonLabel = nil
@@ -714,6 +735,25 @@ function Main.GetTimerCandidateScore(object, number)
 end
 
 function Main.FindSlapRoyaleTimer()
+	local now = os.clock()
+	local cachedObject = Main.TimerCachedObject
+
+	if cachedObject and cachedObject.Parent then
+		local number = Main.GetCountdownNumber(cachedObject.Text)
+
+		if number then
+			Main.TimerLastScanAt = now
+			Main.TimerCachedNumber = number
+			return number, cachedObject
+		end
+	end
+
+	if Main.TimerLastScanAt and now - Main.TimerLastScanAt < (Main.TimerScanInterval or 0.22) then
+		return Main.TimerCachedNumber, Main.TimerCachedObject
+	end
+
+	Main.TimerLastScanAt = now
+
 	local bestObject = nil
 	local bestNumber = nil
 	local bestScore = -1
@@ -736,6 +776,8 @@ function Main.FindSlapRoyaleTimer()
 		end
 	end
 
+	Main.TimerCachedObject = bestObject
+	Main.TimerCachedNumber = bestNumber
 	return bestNumber, bestObject
 end
 
@@ -764,7 +806,7 @@ function Main.StartSlapRoyaleTimerPrinter()
 				end
 			end
 
-			task.wait(0.1)
+			task.wait(0.25)
 		end
 
 		Main.TimerPrinterRunning = false
@@ -983,15 +1025,27 @@ function Teleport.AddStrike()
 	end
 end
 
+function Teleport.AddFixedStrike(maxStrikes, cooldown)
+	Teleport.LastClickAt = os.clock()
+	Teleport.Strikes += 1
+
+	if Teleport.Strikes >= (maxStrikes or Teleport.DefaultMaxStrikes) then
+		Teleport.LockedUntil = os.clock() + (cooldown or Teleport.DefaultCooldown)
+		Teleport.Strikes = 0
+	end
+end
+
 function Teleport.StartFBlock(duration)
-	local unlockAt = os.clock() + (duration or Teleport.PostFLock)
+	local fLockDuration = Teleport.GetCustomFLockDuration and Teleport.GetCustomFLockDuration(duration) or (duration or Teleport.PostFLock)
+	local unlockAt = os.clock() + fLockDuration
 	Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, unlockAt)
 	Teleport.RefreshPickupLock()
 end
 
 function Teleport.StartBusLandingFBlock(duration)
 	local now = os.clock()
-	local unlockAt = now + (duration or 10)
+	local fLockDuration = Teleport.GetCustomFLockDuration and Teleport.GetCustomFLockDuration(duration or 10) or (duration or 10)
+	local unlockAt = now + fLockDuration
 
 	Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, unlockAt)
 	Items.BusLandingFBlockActive = true
@@ -1006,10 +1060,13 @@ end
 
 function Teleport.StartBusLandingLock(duration)
 	local now = os.clock()
-	local unlockAt = now + (duration or Teleport.StabilityWait or 4)
+	local lockDuration = duration or Teleport.StabilityWait or 4
+	local fLockDuration = Teleport.GetCustomFLockDuration and Teleport.GetCustomFLockDuration(lockDuration) or lockDuration
+	local lockUntil = now + lockDuration
+	local unlockAt = now + fLockDuration
 
 	Teleport.LastBusLandingAt = now
-	Teleport.LockedUntil = math.max(Teleport.LockedUntil, unlockAt)
+	Teleport.LockedUntil = math.max(Teleport.LockedUntil, lockUntil)
 	Teleport.BlockFUntil = math.max(Teleport.BlockFUntil, unlockAt)
 	Items.BusLandingFBlockActive = true
 	Teleport.RefreshPickupLock()
@@ -1625,6 +1682,7 @@ function Teleport.CreateBusTopRidePlatform(candidate, parts, platformCFrame, top
 
 	if topPart and topPart.Parent then
 		local weld = Instance.new("WeldConstraint")
+		weld.Name = "Part"
 		weld.Part0 = platform
 		weld.Part1 = topPart
 		weld.Parent = platform
@@ -1666,7 +1724,7 @@ function Teleport.CreateBusTopRidePlatform(candidate, parts, platformCFrame, top
 end
 
 function Teleport.ToSchoolBusTop()
-	if not Teleport.CanTeleport() then
+	if not Teleport.CanTeleport(Teleport.DefaultDebounce) then
 		return
 	end
 
@@ -1693,15 +1751,16 @@ function Teleport.ToSchoolBusTop()
 		UI.BusLandingWasInBus = false
 	end
 	Teleport.MoveRoot(root, targetCFrame)
-	Teleport.AddStrike()
+	Teleport.AddFixedStrike(Teleport.DefaultMaxStrikes, Teleport.DefaultCooldown)
 	Teleport.StartFBlock()
 	createNotification("School Bus", "Teleported on top of the bus.", "Success")
 end
 
 Items.SearchCache = {}
+Items.SearchChildrenCache = {}
 Items.SearchCacheBusy = false
 Items.LastSearchCacheAt = 0
-Items.SearchCacheCooldown = 1
+Items.SearchCacheCooldown = 60
 Items.SearchCacheDirty = true
 Items.SearchCacheRoot = nil
 Items.SearchCacheRootConnections = {}
@@ -1750,8 +1809,8 @@ function Items.WatchSearchRoot(root)
 		return
 	end
 
-	table.insert(Items.SearchCacheRootConnections, root.DescendantAdded:Connect(Items.MarkSearchCacheDirty))
-	table.insert(Items.SearchCacheRootConnections, root.DescendantRemoving:Connect(Items.MarkSearchCacheDirty))
+	table.insert(Items.SearchCacheRootConnections, root.ChildAdded:Connect(Items.MarkSearchCacheDirty))
+	table.insert(Items.SearchCacheRootConnections, root.ChildRemoved:Connect(Items.MarkSearchCacheDirty))
 end
 
 function Items.RebuildSearchCache()
@@ -1761,48 +1820,33 @@ function Items.RebuildSearchCache()
 
 	Items.SearchCacheBusy = true
 
-	task.spawn(function()
-		local root = Items.GetSearchRoot()
-		Items.WatchSearchRoot(root)
+	local root = Items.GetSearchRoot()
+	Items.WatchSearchRoot(root)
 
-		if not root then
-			Items.SearchCache = {}
-			Items.LastSearchCacheAt = os.clock()
-			Items.SearchCacheDirty = false
-			Items.SearchCacheBusy = false
-			return
-		end
-
-		local queue = root:GetChildren()
-		local results = {}
-		local scanned = 0
-		local lookup = Items.SearchNameLookup
-
-		while #queue > 0 do
-			local object = table.remove(queue)
-
-			local displayName = object.Name
-
-			if not lookup or lookup[Utility.NormalizeName(displayName)] then
-				table.insert(results, object)
-			end
-
-			for _, child in ipairs(object:GetChildren()) do
-				table.insert(queue, child)
-			end
-
-			scanned += 1
-
-			if scanned % 45 == 0 then
-				task.wait()
-			end
-		end
-
-		Items.SearchCache = results
+	if not root then
+		Items.SearchCache = {}
+		Items.SearchChildrenCache = {}
 		Items.LastSearchCacheAt = os.clock()
 		Items.SearchCacheDirty = false
 		Items.SearchCacheBusy = false
-	end)
+		return
+	end
+
+	local children = root:GetChildren()
+	local results = {}
+	local lookup = Items.SearchNameLookup
+
+	for _, object in ipairs(children) do
+		if not lookup or lookup[Utility.NormalizeName(object.Name)] then
+			table.insert(results, object)
+		end
+	end
+
+	Items.SearchCache = results
+	Items.SearchChildrenCache = children
+	Items.LastSearchCacheAt = os.clock()
+	Items.SearchCacheDirty = false
+	Items.SearchCacheBusy = false
 end
 
 function Items.GetSearchDescendants()
@@ -1811,6 +1855,14 @@ function Items.GetSearchDescendants()
 	end
 
 	return Items.SearchCache
+end
+
+function Items.GetSearchChildren()
+	if Items.SearchCacheDirty or os.clock() - Items.LastSearchCacheAt > Items.SearchCacheCooldown then
+		Items.RebuildSearchCache()
+	end
+
+	return Items.SearchChildrenCache
 end
 
 local itemNameAliases = {
@@ -1934,7 +1986,7 @@ function Items.TeleportTo(itemName)
 	Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
 	Teleport.StabilizeItemView(root, itemPart)
 	Teleport.AddStrike()
-	Teleport.StartFBlock(0.2)
+	Teleport.StartFBlock()
 	createNotification("Items", "Teleported to " .. itemName)
 end
 
@@ -2171,8 +2223,13 @@ function Items.StartCrateWatcher()
 	end
 
 	Items.CrateWatcherStarted = true
+	local root = Items.GetSearchRoot()
 
-	workspace.DescendantAdded:Connect(function(object)
+	if not root then
+		return
+	end
+
+	root.ChildAdded:Connect(function(object)
 		task.defer(function()
 			Items.TrackCrate(object, true)
 		end)
@@ -2181,13 +2238,8 @@ function Items.StartCrateWatcher()
 	task.spawn(function()
 		Items.CrateWatcherBooting = true
 
-		local descendants = workspace:GetDescendants()
-		for index, object in ipairs(descendants) do
+		for _, object in ipairs(root:GetChildren()) do
 			Items.TrackCrate(object, false)
-
-			if index % 80 == 0 then
-				task.wait()
-			end
 		end
 
 		Items.CrateWatcherBooting = false
@@ -2320,7 +2372,6 @@ local visitedCollectPositions = {}
 local ignoredCollectTargets = {}
 local ignoredCollectPositions = {}
 local AUTO_COLLECT_POSITION_RADIUS = 7
-local COLLECTIBLE_TAG = "Collectible"
 
 local function isItemMarkedGone(object)
 	if not object then
@@ -2474,14 +2525,6 @@ local function getCollectibleSearchPool()
 		return collectibleSearchPoolCache
 	end
 
-	local taggedItems = Services.CollectionService:GetTagged(COLLECTIBLE_TAG)
-
-	if #taggedItems > 0 then
-		collectibleSearchPoolCache = taggedItems
-		collectibleSearchPoolCacheAt = now
-		return collectibleSearchPoolCache
-	end
-
 	collectibleSearchPoolCache = Items.GetSearchDescendants()
 	collectibleSearchPoolCacheAt = now
 	return collectibleSearchPoolCache
@@ -2490,58 +2533,11 @@ end
 local primaryCollectOrder
 
 function getFullCollectibleSearchPool()
-	local results = {}
-	local seen = {}
-
-	for _, object in ipairs(Services.CollectionService:GetTagged(COLLECTIBLE_TAG)) do
-		if not seen[object] then
-			seen[object] = true
-			table.insert(results, object)
-		end
-	end
-
-	for _, object in ipairs(Items.GetSearchDescendants()) do
-		if not seen[object] then
-			seen[object] = true
-			table.insert(results, object)
-		end
-	end
-
-	return results
+	return Items.GetSearchChildren()
 end
 
 local function getImmediateCollectibleSearchPool()
-	local results = {}
-	local seen = {}
-
-	local function add(object)
-		if object and not seen[object] then
-			seen[object] = true
-			table.insert(results, object)
-		end
-	end
-
-	for _, object in ipairs(Services.CollectionService:GetTagged(COLLECTIBLE_TAG)) do
-		add(object)
-	end
-
-	for _, rootName in ipairs({ "Items", "ItemDrops", "Drops", "Loot" }) do
-		local root = workspace:FindFirstChild(rootName)
-
-		if root then
-			add(root)
-
-			for _, object in ipairs(root:GetDescendants()) do
-				add(object)
-			end
-		end
-	end
-
-	for _, object in ipairs(Items.GetSearchDescendants()) do
-		add(object)
-	end
-
-	return results
+	return Items.GetSearchChildren()
 end
 
 primaryCollectOrder = autoCollectPriority
@@ -3238,6 +3234,14 @@ function Items.EnsureAutoPickupPart()
 	end)
 
 	Items.AutoPickupFollowConnection = RunService.Heartbeat:Connect(function()
+		local now = os.clock()
+
+		if now - (Items.LastAutoPickupFollowAt or 0) < (Items.AutoPickupFollowInterval or 0.05) then
+			return
+		end
+
+		Items.LastAutoPickupFollowAt = now
+
 		local currentRoot = Items.GetAutoPickupRoot()
 
 		if currentRoot and pickupPart.Parent then
@@ -3289,7 +3293,7 @@ function Items.StartAutoPickupThread()
 				Items.UsePickupInput(nil, nil)
 			end
 
-			task.wait(0.1)
+			task.wait(Items.AutoPickupScanInterval or 0.25)
 		end
 
 		Items.AutoPickupThread = nil
@@ -3473,10 +3477,15 @@ function Items.ResetPriorityCollectState(mode)
 	ignoredCollectTargets = {}
 	ignoredCollectPositions = {}
 	invalidateCollectibleSearchPool()
-	Teleport.MaxStrikes = 4
-	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.5
+	Teleport.Cooldown = Teleport.DefaultCooldown
+	if Teleport.ApplyCustomSettings then
+		Teleport.ApplyCustomSettings()
+	else
+		Teleport.MaxStrikes = Teleport.DefaultMaxStrikes
+		Teleport.Debounce = Teleport.DefaultDebounce
+		Teleport.PostFLock = Teleport.DefaultPostFLock
+		Items.TeleportDebounce = Teleport.DefaultDebounce
+	end
 end
 
 function Items.UnlockFullPriorityCollect()
@@ -3522,7 +3531,7 @@ function Items.StartEarlyAutoCollectZeroPauseWatcher()
 				break
 			end
 
-			task.wait(0.05)
+			task.wait(0.1)
 		end
 
 		if Items.EarlyAutoCollectEnabled and not Items.EarlyAutoCollectZeroPauseTriggered then
@@ -3531,10 +3540,11 @@ function Items.StartEarlyAutoCollectZeroPauseWatcher()
 			task.wait(1)
 
 			if Items.EarlyAutoCollectEnabled then
-				local resumeAt = os.clock() + 11
+				local resumeDelay = Teleport.GetEarlyAutoCollectResumeDelay and Teleport.GetEarlyAutoCollectResumeDelay() or 11
+				local resumeAt = os.clock() + resumeDelay
 				Items.EarlyAutoCollectPauseUntil = math.max(Items.EarlyAutoCollectPauseUntil or 0, resumeAt)
 				setMovementPaused(false)
-				createNotification("Early Auto Collect", "Round started. Pausing collection for 11 seconds.", "Info")
+				createNotification("Early Auto Collect", "Round started. Pausing collection for " .. string.format("%.1f", resumeDelay) .. " seconds.", "Info")
 			end
 		end
 
@@ -3567,7 +3577,7 @@ function Items.RunPriorityAutoCollect(mode)
 				break
 			end
 
-			task.wait(0.05)
+			task.wait(0.1)
 		end
 	end
 
@@ -3576,10 +3586,15 @@ function Items.RunPriorityAutoCollect(mode)
 		return
 	end
 
-	Teleport.MaxStrikes = 4
-	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.5
+	Teleport.Cooldown = Teleport.DefaultCooldown
+	if Teleport.ApplyCustomSettings then
+		Teleport.ApplyCustomSettings()
+	else
+		Teleport.MaxStrikes = Teleport.DefaultMaxStrikes
+		Teleport.Debounce = Teleport.DefaultDebounce
+		Teleport.PostFLock = Teleport.DefaultPostFLock
+		Items.TeleportDebounce = Teleport.DefaultDebounce
+	end
 	createNotification(title, isEarly and "Timer hit 3. Starting priority collection." or "Starting priority collection.", "Success")
 
 	while Items.IsPriorityCollectEnabled(mode) do
@@ -3656,7 +3671,7 @@ function Items.RunPriorityAutoCollect(mode)
 			Teleport.MoveRoot(root, groundCFrame, itemPart.Position)
 			Teleport.StabilizeItemView(root, itemPart)
 			Teleport.AddStrike()
-			Teleport.StartFBlock(0.2)
+			Teleport.StartFBlock()
 			createNotification(title, "Collected " .. itemName)
 
 			task.delay(0.05, function()
@@ -3996,6 +4011,7 @@ local function sortInventory(showNotification)
 	autoSortSuppressUntil = os.clock() + 2
 	local tools = {}
 	local holdingFolder = Instance.new("Folder")
+	holdingFolder.Name = "Part"
 
 	for _, tool in ipairs(backpack:GetChildren()) do
 		if tool:IsA("Tool") and not isLikelyGloveTool(tool) then
@@ -4307,7 +4323,7 @@ end
 runAutoUsePermanentItems = function()
 	while autoPermanentEnabled do
 		local used = tryAutoUsePermanentItem()
-		task.wait(used and AUTO_PERMANENT_SCAN_INTERVAL or 0.08)
+		task.wait(used and AUTO_PERMANENT_SCAN_INTERVAL or 0.25)
 	end
 end
 
@@ -4332,7 +4348,7 @@ local function runAutoHeal()
 
 	while autoHealEnabled do
 		tryAutoHeal()
-		task.wait(0.15)
+		task.wait(0.5)
 	end
 
 	autoHealThread = nil
@@ -4395,7 +4411,7 @@ Combat = {
 	HitboxConnection = nil,
 	HitboxCharacterConnections = {},
 	HitboxStatusConnections = {},
-	HitboxRefreshInterval = 0.15,
+	HitboxRefreshInterval = 0.35,
 	LastHitboxRefresh = 0,
 	PlayerTpButtonsEnabled = false,
 	PlayerTpButtonGuis = {},
@@ -4406,13 +4422,13 @@ Combat = {
 	AutoGloveTapConnection = nil,
 	AutoGloveTapThread = nil,
 	AutoGloveTapDebounce = 0.12,
-	AutoGloveTapScanInterval = 0.12,
+	AutoGloveTapScanInterval = 0.22,
 	LastAutoGloveTap = 0,
 	LastAutoGloveScan = 0,
 	SlapAuraEnabled = false,
 	SlapAuraThread = nil,
 	SlapAuraRange = 20,
-	SlapAuraInterval = 0.3,
+	SlapAuraInterval = 0.45,
 	GloveTpSlapEnabled = false,
 	GloveTpSlapConnections = {},
 	GloveTpSlapCharacterConnections = {},
@@ -4437,7 +4453,7 @@ Combat = {
 	AntiSlapActiveUntil = 0,
 	LastAntiSlapBoxAt = 0,
 	LastAntiSlapCheckAt = 0,
-	AntiSlapCheckInterval = 0.12,
+	AntiSlapCheckInterval = 0.35,
 	AntiSlapBoxDuration = 1,
 	GloveSizeScale = 1,
 	GloveSizeMin = 1,
@@ -5591,7 +5607,7 @@ function Combat.ApplyCrateHitbox(crate)
 
 	if not highlight or not highlight.Parent then
 		highlight = Instance.new("Highlight")
-		highlight.Name = "OPCrateHitboxHighlight"
+		highlight.Name = "Part"
 		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		highlight.Parent = cratePart
 		Combat.CrateHitboxHighlights[cratePart] = highlight
@@ -5735,7 +5751,7 @@ function Combat.SpawnAntiSlapBox()
 	Combat.LastAntiSlapBoxAt = os.clock()
 
     local folder = Instance.new("Folder")
-    folder.Name = "AntiSlapBox"
+    folder.Name = "Part"
     folder.Parent = workspace
     Combat.AntiSlapBoxFolder = folder
 
@@ -6806,6 +6822,7 @@ local Preferences = {
 	Toggles = {},
 	Sliders = {},
 	Dropdowns = {},
+	Inputs = {},
 	Theme = "Dark",
 	TeleportMenuOpen = false,
 	TeleportMenuTab = "Items",
@@ -6823,6 +6840,10 @@ local function ensurePreferenceTables()
 
 	if type(Preferences.Dropdowns) ~= "table" then
 		Preferences.Dropdowns = {}
+	end
+
+	if type(Preferences.Inputs) ~= "table" then
+		Preferences.Inputs = {}
 	end
 
 	if type(Preferences.Theme) ~= "string" or Preferences.Theme == "" then
@@ -6955,6 +6976,129 @@ end
 
 loadPreferences()
 
+Teleport.CustomSettingDefinitions = {
+	CustomStrikes = {
+		Default = Teleport.DefaultMaxStrikes,
+		Min = 1,
+		Max = 50,
+		Integer = true,
+	},
+	CustomTPDebounce = {
+		Default = Teleport.DefaultDebounce,
+		Min = 0,
+		Max = 30,
+	},
+	CustomFLock = {
+		Default = Teleport.DefaultPostFLock,
+		Min = 0,
+		Max = 60,
+	},
+}
+
+function Teleport.GetCustomSettingValue(key)
+	ensurePreferenceTables()
+
+	local definition = Teleport.CustomSettingDefinitions[key]
+
+	if not definition then
+		return nil
+	end
+
+	local number = tonumber(Preferences.Inputs[key])
+
+	if not number then
+		return definition.Default
+	end
+
+	number = math.clamp(number, definition.Min, definition.Max)
+
+	if definition.Integer then
+		number = math.floor(number + 0.5)
+	end
+
+	return number
+end
+
+function Teleport.HasCustomSetting(key)
+	ensurePreferenceTables()
+	return tonumber(Preferences.Inputs[key]) ~= nil
+end
+
+function Teleport.GetCustomFLockDuration(defaultDuration)
+	if Teleport.HasCustomSetting("CustomFLock") then
+		return Teleport.GetCustomSettingValue("CustomFLock") or Teleport.DefaultPostFLock
+	end
+
+	return tonumber(defaultDuration) or Teleport.PostFLock or Teleport.DefaultPostFLock
+end
+
+function Teleport.GetEarlyAutoCollectResumeDelay()
+	return (Teleport.GetCustomFLockDuration(10) or 10) + 1
+end
+
+function Teleport.ApplyCustomSettings()
+	Teleport.MaxStrikes = Teleport.GetCustomSettingValue("CustomStrikes") or Teleport.DefaultMaxStrikes
+	Teleport.Debounce = Teleport.GetCustomSettingValue("CustomTPDebounce") or Teleport.DefaultDebounce
+	Teleport.PostFLock = Teleport.GetCustomSettingValue("CustomFLock") or Teleport.DefaultPostFLock
+	Items.TeleportDebounce = Teleport.Debounce
+end
+
+function Teleport.SetCustomSetting(key, rawValue, skipSave)
+	ensurePreferenceTables()
+
+	local definition = Teleport.CustomSettingDefinitions[key]
+
+	if not definition then
+		return false
+	end
+
+	local text = tostring(rawValue or ""):gsub("^%s+", ""):gsub("%s+$", "")
+	local changed = false
+
+	if text == "" then
+		changed = Preferences.Inputs[key] ~= nil
+		Preferences.Inputs[key] = nil
+	else
+		local number = tonumber(text)
+
+		if not number then
+			return false
+		end
+
+		number = math.clamp(number, definition.Min, definition.Max)
+
+		if definition.Integer then
+			number = math.floor(number + 0.5)
+		end
+
+		local savedText = tostring(number)
+		changed = Preferences.Inputs[key] ~= savedText
+		Preferences.Inputs[key] = savedText
+	end
+
+	Teleport.ApplyCustomSettings()
+
+	if changed and not skipSave then
+		queueSavePreferences()
+	end
+
+	return true
+end
+
+function Teleport.ResetCustomSettings(skipSave)
+	ensurePreferenceTables()
+	Preferences.Inputs.CustomStrikes = nil
+	Preferences.Inputs.CustomTPDebounce = nil
+	Preferences.Inputs.CustomFLock = nil
+	Teleport.ApplyCustomSettings()
+
+	if not skipSave then
+		queueSavePreferences()
+	end
+end
+
+Teleport.ApplyCustomSettings()
+
 local WindUIWindow = WindUI:CreateWindow({
 	Title = "OP Slap Royale",
 	Icon = "crown",
@@ -6970,6 +7114,7 @@ local WindUIWindow = WindUI:CreateWindow({
 local TabMain = WindUIWindow:Tab({ Title = "Main", Icon = "star" })
 local TabItems = WindUIWindow:Tab({ Title = "Items", Icon = "box" })
 local TabTeleports = WindUIWindow:Tab({ Title = "Teleports", Icon = "map-pin" })
+local TabMovement = WindUIWindow:Tab({ Title = "Movement", Icon = "footprints" })
 local TabCombat = WindUIWindow:Tab({ Title = "Combat", Icon = "swords" })
 local TabBETA = WindUIWindow:Tab({ Title = "BETA", Icon = "flask-conical" })
 local TabSafety = WindUIWindow:Tab({ Title = "Safety", Icon = "shield" })
@@ -7279,6 +7424,48 @@ local function AddSlider(tab, title, desc, minValue, maxValue, defaultValue, ste
 	return slider
 end
 
+function UI.SetInputVisual(input, value)
+	if input and type(input.Set) == "function" then
+		pcall(function()
+			input:Set(tostring(value or ""))
+		end)
+	end
+end
+
+function UI.AddInput(tab, title, desc, placeholder, callback, key)
+	local prefKey = key or title
+	local savedValue = Preferences.Inputs[prefKey]
+	local inputReady = false
+	local input = tab:Input({
+		Title = title,
+		Desc = desc,
+		Value = savedValue ~= nil and tostring(savedValue) or "",
+		InputIcon = "hash",
+		Type = "Input",
+		Placeholder = tostring(placeholder or ""),
+		Callback = function(value)
+			if not inputReady then
+				return
+			end
+
+			safeTask(callback, value)
+		end,
+	})
+
+	task.defer(function()
+		inputReady = true
+	end)
+
+	UI.InputRefs[prefKey] = input
+	return input
+end
+
+function UI.SyncCustomSettingInputVisuals()
+	UI.SetInputVisual(UI.InputRefs.CustomStrikes, Preferences.Inputs.CustomStrikes)
+	UI.SetInputVisual(UI.InputRefs.CustomTPDebounce, Preferences.Inputs.CustomTPDebounce)
+	UI.SetInputVisual(UI.InputRefs.CustomFLock, Preferences.Inputs.CustomFLock)
+end
+
 local function AddDropdown(tab, title, desc, values, defaultValue, callback, key)
 	local prefKey = key or title
 	local savedDefault = getSavedDropdown(prefKey, defaultValue, values)
@@ -7336,6 +7523,7 @@ UI.AutoRejoinEnabled = false
 UI.AutoRejoinConnections = {}
 UI.AutoRejoinBusy = false
 UI.AutoRejoinPlaceId = 9426795465
+UI.AutoRejoinServerPageLimit = 4
 
 function UI.DisconnectAutoRejoin()
 	for _, connection in ipairs(UI.AutoRejoinConnections) do
@@ -7349,18 +7537,131 @@ function UI.DisconnectAutoRejoin()
 	table.clear(UI.AutoRejoinConnections)
 end
 
+function UI.FetchAutoRejoinServers(placeId, cursor)
+	local url = "https://games.roblox.com/v1/games/" .. tostring(placeId) .. "/servers/Public?sortOrder=Desc&limit=100"
+
+	if type(cursor) == "string" and cursor ~= "" then
+		local encodedCursor = cursor
+		pcall(function()
+			encodedCursor = HttpService:UrlEncode(cursor)
+		end)
+		url = url .. "&cursor=" .. tostring(encodedCursor)
+	end
+
+	local body = nil
+	local ok, result = pcall(function()
+		return game:HttpGet(url)
+	end)
+
+	if ok and type(result) == "string" and result ~= "" then
+		body = result
+	else
+		local requestFunction = nil
+
+		if type(syn) == "table" and type(syn.request) == "function" then
+			requestFunction = syn.request
+		elseif type(http) == "table" and type(http.request) == "function" then
+			requestFunction = http.request
+		elseif type(http_request) == "function" then
+			requestFunction = http_request
+		elseif type(request) == "function" then
+			requestFunction = request
+		end
+
+		if type(requestFunction) == "function" then
+			local requestOk, response = pcall(function()
+				return requestFunction({
+					Url = url,
+					Method = "GET",
+				})
+			end)
+
+			if requestOk and type(response) == "table" then
+				body = response.Body or response.body
+			end
+		end
+	end
+
+	if type(body) ~= "string" or body == "" then
+		return nil
+	end
+
+	local decodeOk, decoded = pcall(function()
+		return HttpService:JSONDecode(body)
+	end)
+
+	if decodeOk and type(decoded) == "table" then
+		return decoded
+	end
+
+	return nil
+end
+
+function UI.GetHighestPlayerAutoRejoinServer(placeId)
+	local bestServerId = nil
+	local bestPlaying = -1
+	local bestMaxPlayers = 0
+	local cursor = nil
+
+	for _ = 1, UI.AutoRejoinServerPageLimit do
+		local decoded = UI.FetchAutoRejoinServers(placeId, cursor)
+
+		if type(decoded) ~= "table" then
+			break
+		end
+
+		for _, server in ipairs(decoded.data or {}) do
+			local serverId = tostring(server.id or "")
+			local playing = tonumber(server.playing) or 0
+			local maxPlayers = tonumber(server.maxPlayers) or 0
+
+			if serverId ~= "" and serverId ~= game.JobId and playing < 30 and (maxPlayers <= 0 or playing < maxPlayers) and playing > bestPlaying then
+				bestServerId = serverId
+				bestPlaying = playing
+				bestMaxPlayers = maxPlayers
+			end
+		end
+
+		if bestServerId then
+			break
+		end
+
+		cursor = decoded.nextPageCursor
+
+		if type(cursor) ~= "string" or cursor == "" then
+			break
+		end
+	end
+
+	return bestServerId, bestPlaying, bestMaxPlayers
+end
+
 function UI.TeleportAutoRejoin(reason)
 	if UI.AutoRejoinBusy then
 		return
 	end
 
 	UI.AutoRejoinBusy = true
-	createNotification("Auto Rejoin", "Joining place " .. tostring(UI.AutoRejoinPlaceId) .. " after " .. tostring(reason) .. ".", "Info")
+	createNotification("Auto Rejoin", "Finding fullest server after " .. tostring(reason) .. ".", "Info")
 
 	task.spawn(function()
-		pcall(function()
-			Services.TeleportService:Teleport(UI.AutoRejoinPlaceId, player)
-		end)
+		local placeId = tonumber(UI.AutoRejoinPlaceId) or game.PlaceId
+		local serverId, playing, maxPlayers = UI.GetHighestPlayerAutoRejoinServer(placeId)
+		local joinedServer = false
+
+		if serverId then
+			createNotification("Auto Rejoin", "Joining fullest server (" .. tostring(playing) .. "/" .. tostring(maxPlayers) .. ").", "Info")
+			joinedServer = pcall(function()
+				Services.TeleportService:TeleportToPlaceInstance(placeId, serverId, player)
+			end)
+		end
+
+		if not joinedServer then
+			createNotification("Auto Rejoin", "Joining place " .. tostring(placeId) .. ".", "Info")
+			pcall(function()
+				Services.TeleportService:Teleport(placeId, player)
+			end)
+		end
 
 		task.wait(3)
 		UI.AutoRejoinBusy = false
@@ -7471,6 +7772,10 @@ local ESP = {
 	Enabled = false,
 	Connections = {},
 	Folder = nil,
+	Billboards = {},
+	Highlights = {},
+	StatObjectCache = {},
+	UpdateInterval = 1,
 }
 
 function ESP.EnsureFolder()
@@ -7480,12 +7785,24 @@ function ESP.EnsureFolder()
 
 	local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
 	ESP.Folder = Instance.new("Folder")
-	ESP.Folder.Name = "PlayerStatsESP"
+	ESP.Folder.Name = "Part"
 	ESP.Folder.Parent = playerGui or gui or game:GetService("CoreGui")
 	return ESP.Folder
 end
 
 function ESP.GetStatValue(targetPlayer, statNames)
+	local cache = ESP.StatObjectCache[targetPlayer]
+
+	if cache then
+		for _, statName in ipairs(statNames) do
+			local cachedStat = cache[statName]
+
+			if cachedStat and cachedStat.Parent and cachedStat:IsA("ValueBase") then
+				return cachedStat.Value
+			end
+		end
+	end
+
 	local leaderstats = targetPlayer:FindFirstChild("leaderstats")
 
 	if leaderstats then
@@ -7493,6 +7810,8 @@ function ESP.GetStatValue(targetPlayer, statNames)
 			local stat = leaderstats:FindFirstChild(statName)
 
 			if stat and stat:IsA("ValueBase") then
+				ESP.StatObjectCache[targetPlayer] = ESP.StatObjectCache[targetPlayer] or {}
+				ESP.StatObjectCache[targetPlayer][statName] = stat
 				return stat.Value
 			end
 		end
@@ -7520,6 +7839,8 @@ function ESP.GetStatValue(targetPlayer, statNames)
 		for _, object in ipairs(character:GetDescendants()) do
 			for _, statName in ipairs(statNames) do
 				if normalizeName(object.Name) == normalizeName(statName) and object:IsA("ValueBase") then
+					ESP.StatObjectCache[targetPlayer] = ESP.StatObjectCache[targetPlayer] or {}
+					ESP.StatObjectCache[targetPlayer][statName] = object
 					return object.Value
 				end
 			end
@@ -7529,6 +7850,8 @@ function ESP.GetStatValue(targetPlayer, statNames)
 	for _, object in ipairs(targetPlayer:GetDescendants()) do
 		for _, statName in ipairs(statNames) do
 			if normalizeName(object.Name) == normalizeName(statName) and object:IsA("ValueBase") then
+				ESP.StatObjectCache[targetPlayer] = ESP.StatObjectCache[targetPlayer] or {}
+				ESP.StatObjectCache[targetPlayer][statName] = object
 				return object.Value
 			end
 		end
@@ -7555,19 +7878,22 @@ function ESP.GetSpeed(targetPlayer)
 end
 
 function ESP.Remove(targetPlayer)
-	local folder = ESP.EnsureFolder()
-	local existingBillboard = folder:FindFirstChild(targetPlayer.Name .. "_StatsESP")
+	local existingBillboard = ESP.Billboards[targetPlayer]
 
 	if existingBillboard then
 		existingBillboard:Destroy()
 	end
 
-	local character = targetPlayer.Character
-	local existingHighlight = character and character:FindFirstChild("OPSlapPlayerStatsHighlight")
+	ESP.Billboards[targetPlayer] = nil
+
+	local existingHighlight = ESP.Highlights[targetPlayer]
 
 	if existingHighlight then
 		existingHighlight:Destroy()
 	end
+
+	ESP.Highlights[targetPlayer] = nil
+	ESP.StatObjectCache[targetPlayer] = nil
 end
 
 function ESP.Create(targetPlayer)
@@ -7587,24 +7913,27 @@ function ESP.Create(targetPlayer)
 	end
 
 	local highlight = Instance.new("Highlight")
-	highlight.Name = "OPSlapPlayerStatsHighlight"
+	highlight.Name = "Part"
 	highlight.FillColor = Color3.fromRGB(0, 170, 255)
 	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
 	highlight.FillTransparency = 0.75
 	highlight.OutlineTransparency = 0
 	highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.Parent = character
+	ESP.Highlights[targetPlayer] = highlight
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Name = targetPlayer.Name .. "_StatsESP"
+	billboard.Name = "Part"
 	billboard.Size = UDim2.fromOffset(360, 170)
 	billboard.StudsOffset = Vector3.new(0, 5.2, 0)
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 10000
 	billboard.Adornee = head
 	billboard.Parent = ESP.EnsureFolder()
+	ESP.Billboards[targetPlayer] = billboard
 
 	local label = Instance.new("TextLabel")
+	label.Name = "Part"
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -7638,7 +7967,7 @@ function ESP.Create(targetPlayer)
 				.. '\n<font color="rgb(255,80,80)">Strength: ' .. tostring(power) .. '</font>'
 				.. '\n<font color="rgb(255,235,70)">Speed: ' .. tostring(speed) .. '</font>'
 
-			task.wait(0.25)
+			task.wait(ESP.UpdateInterval or 1)
 		end
 	end)
 end
@@ -7731,7 +8060,7 @@ local ItemESP = {
 	Folder = nil,
 	Rows = {},
 	Thread = nil,
-	RefreshDelay = 1.5,
+	RefreshDelay = 2.5,
 	KnownNameLookup = {},
 }
 
@@ -7785,7 +8114,7 @@ function ItemESP.GetKnownName(object)
 end
 
 function ItemESP.GetSearchPool()
-	return getCollectibleSearchPool()
+	return getFullCollectibleSearchPool()
 end
 
 function ItemESP.ClearObject(object)
@@ -7824,7 +8153,7 @@ function ItemESP.EnsureFolder()
 
 	local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
 	ItemESP.Folder = Instance.new("Folder")
-	ItemESP.Folder.Name = "ItemESP"
+	ItemESP.Folder.Name = "Part"
 	ItemESP.Folder.Parent = playerGui or gui or game:GetService("CoreGui")
 	return ItemESP.Folder
 end
@@ -7840,14 +8169,14 @@ function ItemESP.CreateOrUpdate(object, itemName, part)
 		ItemESP.Rows[object] = row
 
 		row.Highlight = Instance.new("Highlight")
-		row.Highlight.Name = "OPItemESPHighlight"
+		row.Highlight.Name = "Part"
 		row.Highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 		row.Highlight.FillTransparency = 0.72
 		row.Highlight.OutlineTransparency = 0
 		row.Highlight.Parent = ItemESP.Folder
 
 		row.Billboard = Instance.new("BillboardGui")
-		row.Billboard.Name = "OPItemESPName"
+		row.Billboard.Name = "Part"
 		row.Billboard.Size = UDim2.fromOffset(240, 48)
 		row.Billboard.StudsOffset = Vector3.new(0, 3.2, 0)
 		row.Billboard.AlwaysOnTop = true
@@ -7855,6 +8184,7 @@ function ItemESP.CreateOrUpdate(object, itemName, part)
 		row.Billboard.Parent = ItemESP.Folder
 
 		row.Label = Instance.new("TextLabel")
+		row.Label.Name = "Part"
 		row.Label.Size = UDim2.fromScale(1, 1)
 		row.Label.BackgroundTransparency = 1
 		row.Label.Font = Enum.Font.GothamBlack
@@ -8337,17 +8667,18 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 
 				if groundCFrame then
 					local landedAt = os.clock()
-					local pressAt = landedAt + 10
-					local nextTeleportAt = pressAt + 1
+					local fLockDuration = 10
+					local unlockAt = landedAt + fLockDuration
+					local nextTeleportAt = unlockAt + 1
 
 					postLandingLockActive = true
-					Items.EarlyBusFBlockActive = true
 					Items.EarlyAutoCollectPauseUntil = math.max(Items.EarlyAutoCollectPauseUntil or 0, nextTeleportAt)
-					Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, pressAt)
+					Items.EarlyBusFBlockActive = true
+					Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, unlockAt)
 					Teleport.RefreshPickupLock()
-					createNotification("Early Bus Jump", "F locked for 10 seconds after landing.", "Info")
+					createNotification("Early Bus Jump", "F locked for 10 seconds after early bus jump.", "Info")
 
-					task.delay(math.max(0.05, pressAt - os.clock()), function()
+					task.delay(math.max(0.05, unlockAt - os.clock()), function()
 						if Items.EarlyBusPriorityTeleportToken ~= teleportToken then
 							return
 						end
@@ -8358,11 +8689,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 					end)
 
 					Teleport.StabilizeItemView(root, itemPart)
-					Teleport.AddStrike()
-					Teleport.MaxStrikes = 4
-					Teleport.Cooldown = 3
-					Teleport.PostFLock = 0.5
-					Items.TeleportDebounce = 0.7
+					Teleport.AddFixedStrike(Teleport.DefaultMaxStrikes, Teleport.DefaultCooldown)
 					createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 				else
 					createNotification("Early Bus Jump", "Could not stay on the item landing position.", "Error")
@@ -8568,43 +8895,7 @@ local function getDynamicTeleportItemName(object)
 end
 
 function getItemTeleportDiscoveryPool()
-	local results = {}
-	local seen = {}
-
-	local function add(object)
-		if object and not seen[object] then
-			seen[object] = true
-			table.insert(results, object)
-		end
-	end
-
-	for _, object in ipairs(Services.CollectionService:GetTagged(COLLECTIBLE_TAG)) do
-		add(object)
-	end
-
-	for _, object in ipairs(getFullCollectibleSearchPool()) do
-		add(object)
-	end
-
-	local searchRoot = Items.GetSearchRoot()
-
-	if searchRoot then
-		for _, object in ipairs(searchRoot:GetDescendants()) do
-			add(object)
-		end
-	end
-
-	for _, rootName in ipairs({ "ItemDrops", "Drops", "Loot" }) do
-		local root = workspace:FindFirstChild(rootName)
-
-		if root and root ~= searchRoot then
-			for _, object in ipairs(root:GetDescendants()) do
-				add(object)
-			end
-		end
-	end
-
-	return results
+	return Items.GetSearchChildren()
 end
 
 local function buildItemTeleportMenuNames()
@@ -8736,6 +9027,7 @@ end
 
 local function styleCorner(parent, radius)
 	local corner = Instance.new("UICorner")
+	corner.Name = "Part"
 	corner.CornerRadius = UDim.new(0, radius or 8)
 	corner.Parent = parent
 	return corner
@@ -8743,6 +9035,7 @@ end
 
 local function styleStroke(parent, color, transparency)
 	local stroke = Instance.new("UIStroke")
+	stroke.Name = "Part"
 	stroke.Color = color
 	stroke.Thickness = 1
 	stroke.Transparency = transparency or 0.25
@@ -8754,11 +9047,17 @@ local MinimizedLauncher = {
 	Active = true,
 	Gui = nil,
 	Container = nil,
-	Notice = nil,
+	Button = nil,
 	MainGui = nil,
 	MainRoot = nil,
 	HasSeenMainWindow = false,
 	LastClickAt = 0,
+	LastWindowScanAt = 0,
+	WindowScanInterval = 1.5,
+	Dragging = false,
+	DragMoved = false,
+	DragStart = nil,
+	DragStartPosition = nil,
 }
 
 local function getScreenGuiAncestor(object)
@@ -8900,7 +9199,7 @@ local function ensureMinimizedLauncher()
 	end
 
 	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "OPSlapMinimizedLauncher"
+	screenGui.Name = "Part"
 	screenGui.ResetOnSpawn = false
 	screenGui.IgnoreGuiInset = false
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -8908,36 +9207,85 @@ local function ensureMinimizedLauncher()
 	screenGui.Enabled = false
 	screenGui.Parent = playerGui
 
-	local container = Instance.new("Frame")
-	container.Name = "MinimizedNotice"
+	local container = Instance.new("TextButton")
+	container.Name = "Part"
 	container.AnchorPoint = Vector2.new(0.5, 0)
 	container.Position = UDim2.new(0.5, 0, 0, isTouchDevice and 34 or 26)
-	container.Size = UDim2.fromOffset(isTouchDevice and 306 or 270, isTouchDevice and 46 or 40)
+	container.Size = UDim2.fromOffset(isTouchDevice and 74 or 66, isTouchDevice and 48 or 42)
 	container.BackgroundColor3 = Color3.fromRGB(13, 23, 20)
 	container.BackgroundTransparency = 0.06
 	container.BorderSizePixel = 0
-	container.Active = false
+	container.Active = true
+	container.AutoButtonColor = true
+	container.Font = Enum.Font.GothamBlack
+	container.Text = "OP"
+	container.TextColor3 = Color3.fromRGB(236, 255, 240)
+	container.TextSize = isTouchDevice and 20 or 18
 	container.Parent = screenGui
 
 	styleCorner(container, 12)
 	styleStroke(container, Color3.fromRGB(92, 210, 128), 0.16)
 
-	local notice = Instance.new("TextLabel")
-	notice.Name = "Notice"
-	notice.AnchorPoint = Vector2.new(0.5, 0.5)
-	notice.Position = UDim2.fromScale(0.5, 0.5)
-	notice.Size = UDim2.new(1, -18, 1, -8)
-	notice.BackgroundTransparency = 1
-	notice.Font = Enum.Font.GothamSemibold
-	notice.Text = "Menu minimized - press T to open"
-	notice.TextColor3 = Color3.fromRGB(236, 255, 240)
-	notice.TextSize = isTouchDevice and 15 or 14
-	notice.TextWrapped = true
-	notice.Parent = container
+	container.InputBegan:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		MinimizedLauncher.Dragging = true
+		MinimizedLauncher.DragMoved = false
+		MinimizedLauncher.DragStart = input.Position
+		MinimizedLauncher.DragStartPosition = container.Position
+	end)
+
+	container.InputChanged:Connect(function(input)
+		if not MinimizedLauncher.Dragging then
+			return
+		end
+
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local dragStart = MinimizedLauncher.DragStart
+		local startPosition = MinimizedLauncher.DragStartPosition
+
+		if not dragStart or not startPosition then
+			return
+		end
+
+		local delta = input.Position - dragStart
+
+		if math.abs(delta.X) > 4 or math.abs(delta.Y) > 4 then
+			MinimizedLauncher.DragMoved = true
+		end
+
+		container.Position = UDim2.new(
+			startPosition.X.Scale,
+			startPosition.X.Offset + delta.X,
+			startPosition.Y.Scale,
+			startPosition.Y.Offset + delta.Y
+		)
+	end)
+
+	container.InputEnded:Connect(function(input)
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1 and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+
+		local wasDragging = MinimizedLauncher.Dragging
+		local wasMoved = MinimizedLauncher.DragMoved
+		MinimizedLauncher.Dragging = false
+		MinimizedLauncher.DragStart = nil
+		MinimizedLauncher.DragStartPosition = nil
+
+		if wasDragging and not wasMoved then
+			restoreWindUIWindow()
+		end
+	end)
 
 	MinimizedLauncher.Gui = screenGui
 	MinimizedLauncher.Container = container
-	MinimizedLauncher.Notice = notice
+	MinimizedLauncher.Button = container
 end
 
 local function refreshMinimizedLauncher()
@@ -8945,49 +9293,49 @@ local function refreshMinimizedLauncher()
 		return
 	end
 
-	ensureMinimizedLauncher()
+	local now = os.clock()
+	local info = nil
 
-	if not MinimizedLauncher.Gui then
-		return
+	if MinimizedLauncher.MainGui and MinimizedLauncher.MainRoot then
+		info = {
+			ScreenGui = MinimizedLauncher.MainGui,
+			Root = MinimizedLauncher.MainRoot,
+			Visible = isActuallyVisible(MinimizedLauncher.MainRoot),
+			Minimized = MinimizedLauncher.MainRoot.AbsoluteSize.X > 0
+				and MinimizedLauncher.MainRoot.AbsoluteSize.Y > 0
+				and (MinimizedLauncher.MainRoot.AbsoluteSize.X < 280 or MinimizedLauncher.MainRoot.AbsoluteSize.Y < 180),
+		}
+	elseif now - (MinimizedLauncher.LastWindowScanAt or 0) >= (MinimizedLauncher.WindowScanInterval or 1.5) then
+		MinimizedLauncher.LastWindowScanAt = now
+		info = findWindUIMainWindowInfo()
 	end
-
-	local info = findWindUIMainWindowInfo()
 
 	if info then
 		MinimizedLauncher.MainGui = info.ScreenGui
 		MinimizedLauncher.MainRoot = info.Root
 		MinimizedLauncher.HasSeenMainWindow = true
-		setMinimizedLauncherVisible((info.Visible == false or info.Minimized == true) and os.clock() - MinimizedLauncher.LastClickAt > 0.4)
+		local showLauncher = (info.Visible == false or info.Minimized == true) and os.clock() - MinimizedLauncher.LastClickAt > 0.4
+
+		if showLauncher then
+			ensureMinimizedLauncher()
+		end
+
+		setMinimizedLauncherVisible(showLauncher)
 	elseif MinimizedLauncher.HasSeenMainWindow then
-		setMinimizedLauncherVisible(os.clock() - MinimizedLauncher.LastClickAt > 0.4)
+		local showLauncher = os.clock() - MinimizedLauncher.LastClickAt > 0.4
+
+		if showLauncher then
+			ensureMinimizedLauncher()
+		end
+
+		setMinimizedLauncherVisible(showLauncher)
 	end
 end
-
-UserInputService.InputBegan:Connect(function(input)
-	if input.KeyCode ~= Enum.KeyCode.T then
-		return
-	end
-
-	if UserInputService:GetFocusedTextBox() then
-		return
-	end
-
-	local shouldRestore = MinimizedLauncher.Gui and MinimizedLauncher.Gui.Enabled == true
-
-	if not shouldRestore then
-		local info = findWindUIMainWindowInfo()
-		shouldRestore = info and (info.Visible == false or info.Minimized == true)
-	end
-
-	if shouldRestore then
-		restoreWindUIWindow()
-	end
-end)
 
 task.spawn(function()
 	while MinimizedLauncher.Active do
 		refreshMinimizedLauncher()
-		task.wait(0.25)
+		task.wait(0.75)
 	end
 end)
 
@@ -9031,7 +9379,7 @@ function renderTeleportMenuRows()
 
 	for index, row in ipairs(rows) do
 		local button = Instance.new("TextButton")
-		button.Name = "TeleportRow"
+		button.Name = "Part"
 		button.LayoutOrder = index
 		button.Size = UDim2.new(1, 0, 0, rowHeight)
 		button.BackgroundColor3 = Color3.fromRGB(24, 49, 38)
@@ -9047,6 +9395,7 @@ function renderTeleportMenuRows()
 		styleCorner(button, 7)
 
 		local padding = Instance.new("UIPadding")
+		padding.Name = "Part"
 		padding.PaddingLeft = UDim.new(0, 12)
 		padding.PaddingRight = UDim.new(0, 10)
 		padding.Parent = button
@@ -9105,14 +9454,14 @@ local function openTeleportSideMenu()
 	local height = math.clamp(viewport.Y - (isTouchDevice and 118 or 154), 300, isTouchDevice and 410 or 440)
 
 	local screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "OPTeleportSideMenu"
+	screenGui.Name = "Part"
 	screenGui.ResetOnSpawn = false
 	screenGui.IgnoreGuiInset = false
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Parent = playerGui
 
 	local window = Instance.new("Frame")
-	window.Name = "Window"
+	window.Name = "Part"
 	window.AnchorPoint = Vector2.new(1, 0.5)
 	window.Position = UDim2.new(1, isTouchDevice and -8 or -14, 0.5, 0)
 	window.Size = UDim2.fromOffset(width, height)
@@ -9124,13 +9473,13 @@ local function openTeleportSideMenu()
 	styleStroke(window, Color3.fromRGB(92, 210, 128), 0.18)
 
 	local header = Instance.new("Frame")
-	header.Name = "Header"
+	header.Name = "Part"
 	header.Size = UDim2.new(1, 0, 0, 42)
 	header.BackgroundTransparency = 1
 	header.Parent = window
 
 	local title = Instance.new("TextLabel")
-	title.Name = "Title"
+	title.Name = "Part"
 	title.Position = UDim2.fromOffset(12, 0)
 	title.Size = UDim2.new(1, -54, 1, 0)
 	title.BackgroundTransparency = 1
@@ -9142,7 +9491,7 @@ local function openTeleportSideMenu()
 	title.Parent = header
 
 	local closeButton = Instance.new("TextButton")
-	closeButton.Name = "Close"
+	closeButton.Name = "Part"
 	closeButton.AnchorPoint = Vector2.new(1, 0.5)
 	closeButton.Position = UDim2.new(1, -8, 0.5, 0)
 	closeButton.Size = UDim2.fromOffset(30, 30)
@@ -9157,13 +9506,14 @@ local function openTeleportSideMenu()
 	styleCorner(closeButton, 7)
 
 	local tabBar = Instance.new("Frame")
-	tabBar.Name = "Tabs"
+	tabBar.Name = "Part"
 	tabBar.Position = UDim2.fromOffset(10, 44)
 	tabBar.Size = UDim2.new(1, -20, 0, 34)
 	tabBar.BackgroundTransparency = 1
 	tabBar.Parent = window
 
 	local tabLayout = Instance.new("UIListLayout")
+	tabLayout.Name = "Part"
 	tabLayout.FillDirection = Enum.FillDirection.Horizontal
 	tabLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	tabLayout.Padding = UDim.new(0, 6)
@@ -9172,7 +9522,7 @@ local function openTeleportSideMenu()
 	TeleportMenu.TabButtons = {}
 	for index, tabName in ipairs({ "Items", "Players", "Locations" }) do
 		local tabButton = Instance.new("TextButton")
-		tabButton.Name = tabName .. "Tab"
+		tabButton.Name = "Part"
 		tabButton.LayoutOrder = index
 		tabButton.Size = UDim2.new(1 / 3, -4, 1, 0)
 		tabButton.BackgroundColor3 = Color3.fromRGB(22, 38, 32)
@@ -9196,7 +9546,7 @@ local function openTeleportSideMenu()
 	end
 
 	local rows = Instance.new("ScrollingFrame")
-	rows.Name = "Rows"
+	rows.Name = "Part"
 	rows.Position = UDim2.fromOffset(10, 86)
 	rows.Size = UDim2.new(1, -20, 1, -96)
 	rows.BackgroundTransparency = 1
@@ -9208,11 +9558,13 @@ local function openTeleportSideMenu()
 	rows.Parent = window
 
 	local rowLayout = Instance.new("UIListLayout")
+	rowLayout.Name = "Part"
 	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
 	rowLayout.Padding = UDim.new(0, 7)
 	rowLayout.Parent = rows
 
 	local rowPadding = Instance.new("UIPadding")
+	rowPadding.Name = "Part"
 	rowPadding.PaddingBottom = UDim.new(0, 8)
 	rowPadding.Parent = rows
 
@@ -9247,7 +9599,7 @@ local function openTeleportSideMenu()
 				renderTeleportMenuRows()
 			end
 
-			task.wait(1.25)
+			task.wait(3)
 		end
 	end)
 end
@@ -9442,6 +9794,167 @@ local function applyTheme(themeName)
 	end
 end
 
+function UI.GetMovementHumanoid()
+	local character = player.Character
+	return character and character:FindFirstChildOfClass("Humanoid")
+end
+
+function UI.GetMovementSpeedMax()
+	local humanoid = UI.GetMovementHumanoid()
+	local speed = humanoid and tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
+	UI.Movement.SpeedMax = math.max(UI.Movement.SpeedMin, math.floor((speed or UI.Movement.SpeedMin) + 0.5))
+	return UI.Movement.SpeedMax
+end
+
+function UI.GetMovementJumpMax()
+	local humanoid = UI.GetMovementHumanoid()
+	local jump = humanoid and tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
+	UI.Movement.JumpMax = math.max(UI.Movement.JumpMin, math.floor((jump or UI.Movement.JumpMin) + 0.5))
+	return UI.Movement.JumpMax
+end
+
+function UI.SetMovementSpeed(value)
+	local humanoid = UI.GetMovementHumanoid()
+	local speed = math.clamp(tonumber(value) or UI.Movement.SpeedMin, UI.Movement.SpeedMin, UI.Movement.SpeedMax)
+
+	if humanoid then
+		UI.Movement.Applying = true
+		humanoid.WalkSpeed = speed
+		UI.Movement.LastObservedSpeed = speed
+		UI.Movement.Applying = false
+	end
+end
+
+function UI.SetMovementJump(value)
+	local humanoid = UI.GetMovementHumanoid()
+	local jump = math.clamp(tonumber(value) or UI.Movement.JumpMin, UI.Movement.JumpMin, UI.Movement.JumpMax)
+
+	if humanoid then
+		UI.Movement.Applying = true
+		humanoid.JumpPower = jump
+		UI.Movement.LastObservedJump = jump
+		UI.Movement.Applying = false
+	end
+end
+
+function UI.SyncMovementSlider(title, minValue, maxValue, value)
+	local slider = _windSliders[title]
+
+	if not slider then
+		return
+	end
+
+	if type(slider.SetMin) == "function" then
+		pcall(function()
+			slider:SetMin(minValue)
+		end)
+	end
+
+	if type(slider.SetMax) == "function" then
+		pcall(function()
+			slider:SetMax(maxValue)
+		end)
+	end
+
+	if type(slider.Set) == "function" then
+		pcall(function()
+			slider:Set(value)
+		end)
+	elseif type(slider.SetValue) == "function" then
+		pcall(function()
+			slider:SetValue(value)
+		end)
+	end
+end
+
+function UI.DisconnectMovement()
+	for _, connection in ipairs(UI.Movement.Connections) do
+		if connection then
+			pcall(function()
+				connection:Disconnect()
+			end)
+		end
+	end
+
+	table.clear(UI.Movement.Connections)
+end
+
+function UI.ApplySavedMovement()
+	if Preferences.Sliders.MovementSpeed ~= nil then
+		UI.SetMovementSpeed(Preferences.Sliders.MovementSpeed)
+	end
+
+	if Preferences.Sliders.MovementJump ~= nil then
+		UI.SetMovementJump(Preferences.Sliders.MovementJump)
+	end
+end
+
+function UI.HookMovementHumanoid(character)
+	UI.DisconnectMovement()
+
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+	if not humanoid and character then
+		humanoid = character:WaitForChild("Humanoid", 5)
+	end
+
+	if not humanoid then
+		return
+	end
+
+	UI.Movement.LastObservedSpeed = tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
+	UI.Movement.LastObservedJump = tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
+	UI.GetMovementSpeedMax()
+	UI.GetMovementJumpMax()
+	UI.ApplySavedMovement()
+
+	table.insert(UI.Movement.Connections, humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
+		if UI.Movement.Applying then
+			return
+		end
+
+		local speed = tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
+		local lastSpeed = tonumber(UI.Movement.LastObservedSpeed) or speed
+
+		UI.Movement.LastObservedSpeed = speed
+
+		if math.abs(speed - lastSpeed - 20) < 0.001 then
+			return
+		end
+
+		if speed > UI.Movement.SpeedMax then
+			UI.Movement.SpeedMax = math.floor(speed + 0.5)
+		end
+
+		UI.SyncMovementSlider("Speed", UI.Movement.SpeedMin, UI.Movement.SpeedMax, speed)
+	end))
+
+	table.insert(UI.Movement.Connections, humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
+		if UI.Movement.Applying then
+			return
+		end
+
+		local jump = tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
+		UI.Movement.LastObservedJump = jump
+
+		if jump > UI.Movement.JumpMax then
+			UI.Movement.JumpMax = math.floor(jump + 0.5)
+		end
+
+		UI.SyncMovementSlider("Jump", UI.Movement.JumpMin, UI.Movement.JumpMax, jump)
+	end))
+end
+
+UI.Movement.CharacterConnection = player.CharacterAdded:Connect(function(character)
+	task.defer(function()
+		UI.HookMovementHumanoid(character)
+	end)
+end)
+
+task.defer(function()
+	UI.HookMovementHumanoid(player.Character)
+end)
+
 -- Main
 AddButton(TabMain, "Get Code + Go Barn", "Teleports to Barn and scans for puzzle code", "hash", Main.GetCodeGoBarn)
 AddButton(TabMain, "Open Teleport Menu", "Items, players, and map locations", "map", openTeleportSideMenu)
@@ -9469,6 +9982,12 @@ AddButton(TabItems, "Meteor Crate", "Teleports to nearest meteor crate", "box", 
 -- Teleports
 AddButton(TabTeleports, "Teleport On School Bus", "Teleports you on top of the school bus", "bus-front", Teleport.ToSchoolBusTop)
 
+-- Movement
+UI.GetMovementSpeedMax()
+UI.GetMovementJumpMax()
+AddSlider(TabMovement, "Speed", "Adjust walk speed", UI.Movement.SpeedMin, UI.Movement.SpeedMax, UI.Movement.SpeedMax, 1, UI.SetMovementSpeed, "MovementSpeed")
+AddSlider(TabMovement, "Jump", "Adjust jump power", UI.Movement.JumpMin, UI.Movement.JumpMax, UI.Movement.JumpMax, 1, UI.SetMovementJump, "MovementJump")
+
 -- Combat
 AddSlider(TabCombat, "Hitbox Size", "Adjust hitbox size (10-20)", Combat.HitboxMinSize, Combat.HitboxMaxSize, Combat.HitboxSize, 1, Combat.SetHitboxSize)
 AddToggle(TabCombat, "Expand Hitbox", "Applies expanded hitbox to players", false, Combat.SetHitboxExpanded, "ExpandHitbox")
@@ -9490,6 +10009,30 @@ AddToggle(TabSafety, "Hide under map", "Hides your character below the map", fal
 AddToggle(TabSafety, "Anti-Ragdoll / Anti-Slap", "Invisible cage on knockback", false, Combat.SetAntiSlap, "AntiRagdoll")
 
 -- Settings
+AddButton(TabSettings, "Reset to default settings?", "Resets custom strikes, teleport debounce, and F lock", "rotate-ccw", function()
+	Teleport.ResetCustomSettings()
+	UI.SyncCustomSettingInputVisuals()
+	createNotification("Settings", "Custom teleport settings reset to defaults.", "Success")
+end)
+
+UI.AddInput(TabSettings, "Custom strikes", "Teleports before the strike cooldown", Teleport.DefaultMaxStrikes, function(value)
+	if not Teleport.SetCustomSetting("CustomStrikes", value) then
+		createNotification("Settings", "Custom strikes needs a number.", "Warning")
+	end
+end, "CustomStrikes")
+
+UI.AddInput(TabSettings, "Custom TP Debounce", "Seconds before teleporting to another object", Teleport.DefaultDebounce, function(value)
+	if not Teleport.SetCustomSetting("CustomTPDebounce", value) then
+		createNotification("Settings", "Custom TP Debounce needs a number.", "Warning")
+	end
+end, "CustomTPDebounce")
+
+UI.AddInput(TabSettings, "Custom F Lock", "Seconds before F works again after teleporting", Teleport.DefaultPostFLock, function(value)
+	if not Teleport.SetCustomSetting("CustomFLock", value) then
+		createNotification("Settings", "Custom F Lock needs a number.", "Warning")
+	end
+end, "CustomFLock")
+
 AddToggle(TabSettings, "Disable Notifications", "Disables normal notifications", false, function(state)
 	NotificationsDisabled = state == true
 end, "DisableNotifications")
@@ -9502,6 +10045,8 @@ local allThemeNames = {
 }
 AddDropdown(TabSettings, "Theme", "Change the color theme", allThemeNames, Preferences.Theme or "Dark", applyTheme, "Theme")
 
+task.defer(UI.SyncCustomSettingInputVisuals)
+task.delay(0.35, UI.SyncCustomSettingInputVisuals)
 task.defer(syncAllToggleVisuals)
 task.delay(0.35, syncAllToggleVisuals)
 task.delay(1, syncAllToggleVisuals)
@@ -9523,6 +10068,13 @@ if sharedEnvironment then
 		pcall(function() UI.SetItemESP(false, true) end)
 		pcall(function() UI.SetAutoRejoin(false, true) end)
 		pcall(function() UI.SetInfiniteJump(false, true) end)
+		pcall(function()
+			UI.DisconnectMovement()
+			if UI.Movement.CharacterConnection then
+				UI.Movement.CharacterConnection:Disconnect()
+				UI.Movement.CharacterConnection = nil
+			end
+		end)
 		pcall(function() Anti.SetStaffEnabled(false) end)
 		pcall(function() Anti.DisableAcidLava() end)
 		pcall(function() Anti.SetHideUnderMap(false) end)
@@ -9549,12 +10101,12 @@ if sharedEnvironment then
 		Main = Main,
 		Items = Items,
 		Teleport = Teleport,
-			Combat = Combat,
-			Anti = Anti,
-			Preferences = Preferences,
-			TeleportMenu = TeleportMenu,
-			MinimizedLauncher = MinimizedLauncher,
-			Toggles = _windToggles,
+		Combat = Combat,
+		Anti = Anti,
+		Preferences = Preferences,
+		TeleportMenu = TeleportMenu,
+		MinimizedLauncher = MinimizedLauncher,
+		Toggles = _windToggles,
 		Sliders = _windSliders,
 		Dropdowns = _windDropdowns,
 	}
