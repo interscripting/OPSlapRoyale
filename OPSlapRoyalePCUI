@@ -8454,6 +8454,7 @@ function UI.SetAutoEarlyBusJump(state, silent)
 	end
 end
 
+;(function()
 local ItemTeleportNames = {
 	"True Power", "Potion of Strength", "Bull's Essence", "Boba", "Speed Potion",
 	"Frog Potion", "Sphere of Fury", "Tomahawk", "Gravitation Shard",
@@ -8606,11 +8607,12 @@ function getItemTeleportDiscoveryPool()
 	return results
 end
 
-local function getItemTeleportNameOrder()
+local function buildItemTeleportMenuNames()
 	local ordered = {}
 	local seen = {}
 	local extra = {}
 	local extraSeen = {}
+	local liveNames = {}
 
 	for _, itemName in ipairs(ItemTeleportNames) do
 		addTeleportItemName(ordered, seen, itemName)
@@ -8625,12 +8627,23 @@ local function getItemTeleportNameOrder()
 
 		if itemName then
 			local key = Utility.NormalizeName(itemName)
+			local matchObject = getStrictItemMatchObject(object, itemName) or object
 
-			if not seen[key] and not extraSeen[key] then
-				extraSeen[key] = true
-				table.insert(extra, itemName)
+			if getLiveItemPart(matchObject) or getLiveItemPart(object) then
+				liveNames[key] = true
+
+				if not seen[key] and not extraSeen[key] then
+					extraSeen[key] = true
+					table.insert(extra, itemName)
+				end
 			end
 		end
+	end
+
+	Items.RefreshCrates()
+
+	if #Items.Crates > 0 then
+		liveNames[Utility.NormalizeName("Meteor Crate")] = true
 	end
 
 	table.sort(extra, function(left, right)
@@ -8641,56 +8654,7 @@ local function getItemTeleportNameOrder()
 		addTeleportItemName(ordered, seen, itemName)
 	end
 
-	return ordered
-end
-
-local function getItemMenuCount(itemName)
-	if itemName == "Meteor Crate" then
-		Items.RefreshCrates()
-		local liveCrates = #Items.Crates
-		return liveCrates, liveCrates
-	end
-
-	local liveCount = 0
-	local totalCount = 0
-	local counted = {}
-
-	for _, object in ipairs(getItemTeleportDiscoveryPool()) do
-		local matchObject = getStrictItemMatchObject(object, itemName)
-
-		if matchObject and not counted[matchObject] then
-			counted[matchObject] = true
-			totalCount += 1
-
-			if getLiveItemPart(matchObject) then
-				liveCount += 1
-			end
-		end
-	end
-
-	if liveCount > totalCount then
-		totalCount = liveCount
-	end
-
-	return liveCount, totalCount
-end
-
-local function isPermanentTeleportItem(itemName)
-	for _, permanentName in ipairs(Items.PermanentCollectStopOrder) do
-		if strictItemNameMatches(itemName, permanentName) then
-			return true
-		end
-	end
-
-	return false
-end
-
-local function getItemTeleportTitle(itemName, liveCount, totalCount, permanentItemsDone)
-	if isPermanentTeleportItem(itemName) or permanentItemsDone then
-		return itemName .. " [" .. tostring(liveCount) .. "/" .. tostring(totalCount) .. "]"
-	end
-
-	return itemName
+	return ordered, liveNames
 end
 
 local function getPlayerTeleportLabel(targetPlayer)
@@ -8717,18 +8681,15 @@ local function getTeleportRows(tabName)
 	local rows = {}
 
 	if tabName == "Items" then
-		local permanentRemaining, permanentTotal = Items.GetPermanentCollectStatus()
-		local permanentItemsDone = permanentTotal > 0 and permanentRemaining <= 0
+		local itemOrder, liveNames = buildItemTeleportMenuNames()
 
-		for _, itemName in ipairs(getItemTeleportNameOrder()) do
-			local liveCount, totalCount = getItemMenuCount(itemName)
-
-			if liveCount <= 0 and totalCount <= 0 then
+		for _, itemName in ipairs(itemOrder) do
+			if not liveNames[Utility.NormalizeName(itemName)] then
 				continue
 			end
 
 			table.insert(rows, {
-				Title = getItemTeleportTitle(itemName, liveCount, totalCount, permanentItemsDone),
+				Title = itemName,
 				Callback = function()
 					if itemName == "Meteor Crate" then
 						Items.TeleportToCrate()
@@ -9598,3 +9559,4 @@ if sharedEnvironment then
 		Dropdowns = _windDropdowns,
 	}
 end
+end)()
