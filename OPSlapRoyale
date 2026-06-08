@@ -168,40 +168,11 @@ local UI = {
 	ToggleRefs = {},
 	Pages = {},
 	SelectedTab = "Main",
-	TopLevelToggleOrder = 0
+	TopLevelToggleOrder = 0,
+	ServerInfo = {}
 }
 
-local Notify = {
-	Order = 0,
-	Active = {},
-	Width = 286,
-	Height = 68,
-	Gap = 6,
-	BottomOffset = 58,
-	RightOffset = 10,
-	LifeTime = 4.2,
-	MaxVisible = 4,
-	Muted = false
-}
-
-Notify.Presets = {
-	Info = {
-		Icon = "💬",
-		Color = Color3.fromRGB(95, 205, 255)
-	},
-	Success = {
-		Icon = "✅",
-		Color = Color3.fromRGB(95, 255, 165)
-	},
-	Warning = {
-		Icon = "⚠️",
-		Color = Color3.fromRGB(255, 205, 85)
-	},
-	Error = {
-		Icon = "❌",
-		Color = Color3.fromRGB(255, 90, 105)
-	}
-}
+local Notify = {}
 
 pcall(function()
 	local playerGui = player:WaitForChild("PlayerGui", 5)
@@ -328,7 +299,8 @@ UI.Icons = {
 ["Visualize Hitboxes"] = "✨",
 ["Player TP Buttons"] = "📍",
 ["Increase Glove Size"] = "🧤",
-["Auto Slap"] = "👊",
+	["Auto Slap"] = "👊",
+	["Slap Aura"] = "AURA",
 	["Glove TP Slap"] = "🎯",
 	["Expand crate hitboxes"] = "📦",
 	["Anti-Ragdoll"] = "🧱",
@@ -339,7 +311,6 @@ UI.Icons = {
 	["Anti-Staff"] = "🕵️",
 	["Themes"] = "🎨",
 	["Cycle Theme"] = "🔁",
-	["Disable Notifications"] = "🔕",
 	["Window Transparency"] = "🪟",
 	["Quick Menu Hotkeys"] = "⌨️",
 	["Toggle recommended settings?"] = "⭐",
@@ -467,14 +438,6 @@ local function getMinimizedSize()
 end
 
 local function applyMobileMetrics()
-	local viewport = getViewportSize()
-	local compact = isTouchDevice or viewport.X < 720
-
-	Notify.Width = compact and math.clamp(math.floor(viewport.X * 0.72), 210, 280) or math.floor(286 * getUIScale())
-	Notify.RightOffset = compact and 8 or 10
-	Notify.BottomOffset = compact and 44 or 58
-	Notify.Height = compact and 64 or math.floor(68 * getUIScale())
-	Notify.Gap = compact and 5 or 6
 end
 
 applyMobileMetrics()
@@ -960,6 +923,134 @@ function UI.CreateSmallButton(parent, text, callback)
 	return button
 end
 
+function UI.SetServerInfoStatus(statusText)
+	if UI.ServerInfo.StatusLabel then
+		UI.ServerInfo.StatusLabel.Text = tostring(statusText or "")
+	end
+end
+
+function UI.SetServerInfoCode(code, statusText)
+	if code ~= nil then
+		local displayCode = tostring(code or "")
+		UI.ServerInfo.Code = displayCode
+
+		if UI.ServerInfo.CodeLabel then
+			UI.ServerInfo.CodeLabel.Text = displayCode ~= "" and ("Barn Code: " .. displayCode) or "Barn Code: Not found"
+		end
+	end
+
+	if statusText then
+		UI.SetServerInfoStatus(statusText)
+	end
+end
+
+function UI.CreateServerInfoFrame(parent, actionCallback)
+	local height = isTouchDevice and 122 or 132
+	local buttonHeight = isTouchDevice and 34 or 38
+
+	local box = Instance.new("Frame")
+	box.Name = "ServerInfo"
+	box.Size = UDim2.new(1, -8, 0, height)
+	box.LayoutOrder = -1000
+	box.BorderSizePixel = 0
+	box.BackgroundTransparency = 0.08
+	box.Parent = parent
+	themeObject(box, "BackgroundColor3", "Panel")
+	addCorner(box, 8)
+
+	local stroke = addStroke(box, currentTheme.Stroke, 1)
+	stroke.Transparency = 0.68
+	themeObject(stroke, "Color", "Stroke")
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -24, 0, 22)
+	title.Position = UDim2.fromOffset(12, 8)
+	title.BackgroundTransparency = 1
+	title.Text = "Server Info"
+	title.Font = Enum.Font.GothamBlack
+	title.TextSize = isTouchDevice and 13 or 15
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.Parent = box
+	themeObject(title, "TextColor3", "Text")
+
+	local codeLabel = Instance.new("TextLabel")
+	codeLabel.Name = "BarnCode"
+	codeLabel.Size = UDim2.new(1, -24, 0, 24)
+	codeLabel.Position = UDim2.fromOffset(12, 32)
+	codeLabel.BackgroundTransparency = 1
+	codeLabel.Text = "Barn Code: Scanning..."
+	codeLabel.Font = Enum.Font.GothamBold
+	codeLabel.TextSize = isTouchDevice and 13 or 16
+	codeLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	codeLabel.TextXAlignment = Enum.TextXAlignment.Left
+	codeLabel.TextYAlignment = Enum.TextYAlignment.Center
+	codeLabel.Parent = box
+	themeObject(codeLabel, "TextColor3", "Button")
+
+	local statusLabel = Instance.new("TextLabel")
+	statusLabel.Name = "Status"
+	statusLabel.Size = UDim2.new(1, -24, 0, 20)
+	statusLabel.Position = UDim2.fromOffset(12, 56)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Text = "Auto scanning for this server."
+	statusLabel.Font = Enum.Font.GothamMedium
+	statusLabel.TextSize = isTouchDevice and 10 or 11
+	statusLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Left
+	statusLabel.TextYAlignment = Enum.TextYAlignment.Center
+	statusLabel.Parent = box
+	themeObject(statusLabel, "TextColor3", "SubText")
+
+	local actionButton = Instance.new("TextButton")
+	actionButton.Name = "GetCodeGoBarn"
+	actionButton.Size = UDim2.new(1, -22, 0, buttonHeight)
+	actionButton.Position = UDim2.new(0, 11, 1, -(buttonHeight + 10))
+	actionButton.Text = ""
+	actionButton.Font = Enum.Font.GothamBold
+	actionButton.TextSize = 12
+	actionButton.AutoButtonColor = false
+	actionButton.Parent = box
+	themeObject(actionButton, "BackgroundColor3", "ButtonDark")
+	styleButton(actionButton)
+
+	local icon = Instance.new("TextLabel")
+	icon.Size = UDim2.fromOffset(20, 20)
+	icon.Position = UDim2.fromOffset(9, math.floor((buttonHeight - 20) / 2))
+	icon.BackgroundTransparency = 1
+	icon.Text = UI.GetIcon("Get Code + Go Barn")
+	icon.Font = Enum.Font.GothamBlack
+	icon.TextSize = 10
+	icon.Parent = actionButton
+	themeObject(icon, "TextColor3", "Button")
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, -42, 1, 0)
+	label.Position = UDim2.fromOffset(34, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "Get Code + Go Barn"
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = isTouchDevice and 10 or 12
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Parent = actionButton
+	themeObject(label, "TextColor3", "Text")
+
+	actionButton.MouseButton1Click:Connect(function()
+		if actionCallback then
+			actionCallback()
+		end
+	end)
+
+	UI.ServerInfo.Frame = box
+	UI.ServerInfo.CodeLabel = codeLabel
+	UI.ServerInfo.StatusLabel = statusLabel
+	UI.ServerInfo.ActionButton = actionButton
+
+	return box
+end
+
 function UI.CreateWarningLabel(parent, text)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, -12, 0, 28)
@@ -973,7 +1064,7 @@ function UI.CreateWarningLabel(parent, text)
 	return label
 end
 
-function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callback)
+function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callback, formatValue)
 	local value = math.clamp(defaultValue, minValue, maxValue)
 
 	local holder = Instance.new("Frame")
@@ -1028,7 +1119,11 @@ function UI.CreateSlider(parent, text, minValue, maxValue, defaultValue, callbac
 		value = math.clamp(newValue, minValue, maxValue)
 		local percent = (value - minValue) / (maxValue - minValue)
 		fill.Size = UDim2.fromScale(math.clamp(percent, 0, 1), 1)
-		label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+		if formatValue then
+			label.Text = text .. ": " .. tostring(formatValue(value))
+		else
+			label.Text = text .. ": " .. tostring(math.floor(value * 100 + 0.5)) .. "%"
+		end
 
 		if runCallback then
 			callback(value)
@@ -1137,6 +1232,7 @@ UI.ToggleDescriptions = {
 ["Player TP Buttons"] = "Shows big Teleport buttons above players that safely teleport you to them.",
 ["Increase Glove Size"] = "Drag to resize your currently equipped glove.",
 	["Auto Slap"] = "Automatically slaps when another player's glove enters your hitbox.",
+	["Slap Aura"] = "Fires the slap remote at nearby valid players on a throttled loop.",
 	["Glove TP Slap"] = "When your equipped glove slaps, teleports you to the nearest player.",
 	["Expand crate hitboxes"] = "Expands meteor crate hitboxes to match your player hitbox size.",
 	["Anti-Ragdoll"] = "Briefly boxes your character in when ragdoll or knockback is detected.",
@@ -1146,7 +1242,6 @@ UI.ToggleDescriptions = {
 	["Hide under map"] = "Moves you straight below the map, then back to safe land above you.",
 	["Anti-Staff"] = "Leaves the server when chat suggests recording, proof, or staff attention.",
 	["Quick Menu Hotkeys"] = "Enables R, Q, and G shortcuts for the quick menus.",
-	["Disable Notifications"] = "Silences regular popups while keeping urgent cooldown warnings visible.",
 	["Early Bus Jump"] = "Automatically fires bus jump once when your character is detected inside the bus.",
 	["Auto Rejoin"] = "Teleports to place 9426795465 when you die or a disconnect prompt appears.",
 	["Infinite jump"] = "Lets each manual jump request jump again while in the air.",
@@ -1775,300 +1870,13 @@ local createToggleButton = UI.CreateToggleButton
 local createDropdown = UI.CreateDropdown
 local createSideDropdown = UI.CreateSideDropdown
 
-function Notify.GetKind(titleText, kind)
-	if kind and Notify.Presets[kind] then
-		return kind
-	end
-
-	local title = string.lower(tostring(titleText))
-
-	if string.find(title, "error") or string.find(title, "failed") then
-		return "Error"
-	end
-
-	if string.find(title, "warning") or string.find(title, "anti") or string.find(title, "wait") or string.find(title, "cooldown") then
-		return "Warning"
-	end
-
-	if string.find(title, "enabled") or string.find(title, "found") or string.find(title, "success") then
-		return "Success"
-	end
-
-	return "Info"
-end
-
-local notificationStack = Instance.new("Frame")
-notificationStack.Name = "NotificationStack"
-notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
-notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
-notificationStack.BackgroundTransparency = 1
-notificationStack.Active = false
-notificationStack.ZIndex = 100
-notificationStack.Parent = gui
-
-local notificationLayout = Instance.new("UIListLayout")
-notificationLayout.FillDirection = Enum.FillDirection.Vertical
-notificationLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-notificationLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
-notificationLayout.SortOrder = Enum.SortOrder.LayoutOrder
-notificationLayout.Padding = UDim.new(0, Notify.Gap)
-notificationLayout.Parent = notificationStack
-
 function Notify.RefreshLayout()
-	applyMobileMetrics()
-
-	notificationStack.Size = UDim2.new(0, Notify.Width, 1, -Notify.BottomOffset)
-	notificationStack.Position = UDim2.new(1, -(Notify.Width + Notify.RightOffset), 0, 0)
-
-	for _, slot in ipairs(Notify.Active) do
-		if slot and slot.Parent then
-			slot.Size = UDim2.fromOffset(Notify.Width, slot.Size.Y.Offset)
-
-			local popup = slot:FindFirstChild("Popup")
-			if popup then
-				popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
-			end
-		end
-	end
-end
-
-function Notify.Trim()
-	while #Notify.Active > Notify.MaxVisible do
-		local oldest = table.remove(Notify.Active, 1)
-		if oldest and oldest.Parent then
-			oldest:Destroy()
-		end
-	end
 end
 
 function Notify.Clear()
-	for _, slot in ipairs(Notify.Active) do
-		if slot and slot.Parent then
-			slot:Destroy()
-		end
-	end
-
-	Notify.Active = {}
 end
 
-function Notify.Show(titleText, messageText, kind, clickCallback, lifeTime, forceShow)
-	if Notify.Muted and not forceShow then
-		return
-	end
-
-	Notify.RefreshLayout()
-	Notify.Order += 1
-	lifeTime = lifeTime or Notify.LifeTime
-
-	local preset = Notify.Presets[Notify.GetKind(titleText, kind)]
-
-	local slot = Instance.new("Frame")
-	slot.Size = UDim2.fromOffset(Notify.Width, 0)
-	slot.BackgroundTransparency = 1
-	slot.LayoutOrder = Notify.Order
-	slot.ClipsDescendants = true
-	slot.Active = false
-	slot.ZIndex = 100
-	slot.Parent = notificationStack
-
-	table.insert(Notify.Active, slot)
-	Notify.Trim()
-
-	local hasClickAction = clickCallback ~= nil
-
-	local popup = Instance.new("Frame")
-	popup.Name = "Popup"
-	popup.Size = UDim2.fromOffset(Notify.Width, Notify.Height)
-	popup.Position = UDim2.fromOffset(Notify.Width + 42, 0)
-	popup.BackgroundTransparency = 0.04
-	popup.BorderSizePixel = 0
-	popup.ClipsDescendants = true
-	popup.Active = false
-	popup.ZIndex = 101
-	popup.Parent = slot
-	themeObject(popup, "BackgroundColor3", "Panel")
-	addCorner(popup, 12)
-
-	local scale = Instance.new("UIScale")
-	scale.Scale = 0.92
-	scale.Parent = popup
-
-	local stroke = addStroke(popup, preset.Color, 1)
-	stroke.Transparency = 0.18
-
-	local glow = Instance.new("UIStroke")
-	glow.Thickness = 4
-	glow.Transparency = 0.76
-	glow.Color = preset.Color
-	glow.Parent = popup
-
-	local iconBubble = Instance.new("Frame")
-	iconBubble.Size = UDim2.fromOffset(28, 28)
-	iconBubble.Position = UDim2.fromOffset(12, 10)
-	iconBubble.BorderSizePixel = 0
-	iconBubble.BackgroundColor3 = preset.Color
-	iconBubble.Parent = popup
-	addCorner(iconBubble, 17)
-
-	local icon = Instance.new("TextLabel")
-	icon.Size = UDim2.fromScale(1, 1)
-	icon.BackgroundTransparency = 1
-	icon.Text = preset.Icon
-	icon.Font = Enum.Font.GothamBlack
-	icon.TextSize = 18
-	icon.TextColor3 = Color3.fromRGB(10, 12, 18)
-	icon.Parent = iconBubble
-
-	local noteTitle = Instance.new("TextLabel")
-	noteTitle.Size = UDim2.new(1, -58, 0, 24)
-	noteTitle.Position = UDim2.fromOffset(48, 10)
-	noteTitle.BackgroundTransparency = 1
-	noteTitle.Text = tostring(titleText)
-	noteTitle.Font = Enum.Font.GothamBlack
-	noteTitle.TextSize = isTouchDevice and 14 or 15
-	noteTitle.TextXAlignment = Enum.TextXAlignment.Left
-	noteTitle.TextTruncate = Enum.TextTruncate.AtEnd
-	noteTitle.Parent = popup
-	themeObject(noteTitle, "TextColor3", "Text")
-
-	local message = Instance.new("TextLabel")
-	message.Size = UDim2.new(1, -58, 0, 38)
-	message.Position = UDim2.fromOffset(48, 36)
-	message.BackgroundTransparency = 1
-	message.Text = tostring(messageText)
-	message.Font = Enum.Font.GothamMedium
-	message.TextSize = isTouchDevice and 12 or 13
-	message.TextWrapped = true
-	message.TextXAlignment = Enum.TextXAlignment.Left
-	message.TextYAlignment = Enum.TextYAlignment.Top
-	message.Parent = popup
-	themeObject(message, "TextColor3", "SubText")
-
-	local progressBack = Instance.new("Frame")
-	progressBack.Size = UDim2.new(1, -28, 0, 4)
-	progressBack.Position = UDim2.new(0, 14, 1, -9)
-	progressBack.BorderSizePixel = 0
-	progressBack.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-	progressBack.BackgroundTransparency = 0.88
-	progressBack.Parent = popup
-	addCorner(progressBack, 3)
-
-	local progress = Instance.new("Frame")
-	progress.Size = UDim2.fromScale(1, 1)
-	progress.BorderSizePixel = 0
-	progress.BackgroundColor3 = preset.Color
-	progress.Parent = progressBack
-	addCorner(progress, 3)
-
-	local dismissed = false
-	local dismiss = nil
-
-	if hasClickAction then
-		local clickButton = Instance.new("TextButton")
-		clickButton.Size = UDim2.fromOffset(44, 28)
-		clickButton.Position = UDim2.new(1, -54, 0, 10)
-		clickButton.BorderSizePixel = 0
-		clickButton.Text = "GO"
-		clickButton.Font = Enum.Font.GothamBlack
-		clickButton.TextSize = 12
-		clickButton.TextColor3 = Color3.fromRGB(10, 12, 18)
-		clickButton.BackgroundColor3 = preset.Color
-		clickButton.AutoButtonColor = false
-		clickButton.ZIndex = popup.ZIndex + 1
-		clickButton.Parent = popup
-		addCorner(clickButton, 6)
-
-		clickButton.MouseButton1Click:Connect(function()
-			clickCallback()
-			dismiss()
-		end)
-	end
-
-	dismiss = function()
-		if dismissed then
-			return
-		end
-
-		dismissed = true
-
-		TweenService:Create(
-			scale,
-			TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-			{ Scale = 0.94 }
-		):Play()
-
-		TweenService:Create(
-			slot,
-			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-			{ Size = UDim2.fromOffset(Notify.Width, 0) }
-		):Play()
-
-		local outTween = TweenService:Create(
-			popup,
-			TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.In),
-			{
-				Position = UDim2.fromOffset(Notify.Width + 46, 0),
-				BackgroundTransparency = 0.25
-			}
-		)
-
-		outTween:Play()
-		outTween.Completed:Connect(function()
-			for index, item in ipairs(Notify.Active) do
-				if item == slot then
-					table.remove(Notify.Active, index)
-					break
-				end
-			end
-
-			if slot.Parent then
-				slot:Destroy()
-			end
-		end)
-	end
-
-	TweenService:Create(
-		slot,
-		TweenInfo.new(0.28, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-		{ Size = UDim2.fromOffset(Notify.Width, Notify.Height) }
-	):Play()
-
-	TweenService:Create(
-		popup,
-		TweenInfo.new(0.42, Enum.EasingStyle.Quint, Enum.EasingDirection.Out),
-		{
-			Position = UDim2.fromOffset(0, 0),
-			BackgroundTransparency = 0.02
-		}
-	):Play()
-
-	TweenService:Create(
-		scale,
-		TweenInfo.new(0.42, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Scale = 1 }
-	):Play()
-
-	TweenService:Create(
-		progress,
-		TweenInfo.new(lifeTime, Enum.EasingStyle.Linear),
-		{ Size = UDim2.new(0, 0, 1, 0) }
-	):Play()
-
-	popup.MouseEnter:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Scale = 1.018 }):Play()
-		TweenService:Create(glow, TweenInfo.new(0.16, Enum.EasingStyle.Quint), { Transparency = 0.48 }):Play()
-	end)
-
-	popup.MouseLeave:Connect(function()
-		TweenService:Create(scale, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Scale = 1 }):Play()
-		TweenService:Create(glow, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 0.76 }):Play()
-	end)
-
-	task.delay(lifeTime, function()
-		if popup.Parent then
-			dismiss()
-		end
-	end)
+function Notify.Show()
 end
 
 local createNotification = Notify.Show
@@ -3724,7 +3532,7 @@ end
 Items.SearchCache = {}
 Items.SearchCacheBusy = false
 Items.LastSearchCacheAt = 0
-Items.SearchCacheCooldown = 1
+Items.SearchCacheCooldown = 2.5
 Items.SearchCacheDirty = true
 Items.SearchCacheRoot = nil
 Items.SearchCacheRootConnections = {}
@@ -4681,30 +4489,61 @@ function UI.SetAutoEarlyBusJump(state)
 end
 
 function Main.GetCodeGoBarn()
+	UI.SetServerInfoStatus("Going to barn code area...")
 	Teleport.ToLocation("Bunker", Main.CodeSearchOrigin, true)
-	Notify.Show("Code", "Searching...", "Info", nil, 2.2, true)
 
 	task.spawn(function()
 		task.wait(0.45)
 
-		local code = Main.GetPuzzleCode()
-		Notify.Show("Code Found", code ~= "" and code or "No code found.", code ~= "" and "Success" or "Info", nil, 4, true)
+		UI.SetServerInfoStatus("Scanning for barn code...")
+		local code = Main.RefreshServerInfoCode("Barn code found.", "No barn code found.")
 
 		if code ~= "" then
 			task.wait(0.2)
+			UI.SetServerInfoStatus("Entering barn keypad...")
 
 			if Main.EnterBarnKeypadCode(code) then
-				Notify.Show("Barn Keypad", "Entered and submitted " .. code .. ".", "Success", nil, 3.5, true)
+				UI.SetServerInfoCode(code, "Entered barn keypad.")
 			else
-				Notify.Show("Barn Keypad", "Found code, but could not press every keypad button.", "Warning", nil, 4, true)
+				UI.SetServerInfoCode(code, "Could not press every keypad button.")
 			end
 		end
 	end)
 end
 
-createSmallButton(mainList, "Get Code + Go Barn", function()
+function Main.RefreshServerInfoCode(foundStatus, missingStatus)
+	local code = Main.GetPuzzleCode()
+	local statusText = code ~= "" and (foundStatus or "Barn code loaded.") or (missingStatus or "No barn code found yet.")
+	UI.SetServerInfoCode(code, statusText)
+	return code
+end
+
+function Main.StartServerInfoAutoScan()
+	if Main.ServerInfoAutoScanRunning then
+		return
+	end
+
+	Main.ServerInfoAutoScanRunning = true
+
+	task.spawn(function()
+		task.wait(2)
+
+		while gui.Parent do
+			UI.SetServerInfoStatus("Scanning for barn code...")
+
+			local code = Main.RefreshServerInfoCode("Barn code loaded automatically.", "No barn code found yet.")
+			task.wait(code ~= "" and 45 or 20)
+		end
+
+		Main.ServerInfoAutoScanRunning = false
+	end)
+end
+
+UI.CreateServerInfoFrame(mainList, function()
 	Main.GetCodeGoBarn()
 end)
+
+Main.StartServerInfoAutoScan()
 
 UI.ToggleRefs.EarlyBusJump = createToggleButton(mainList, "Early Bus Jump", false, function(state)
 	UI.SetAutoEarlyBusJump(state)
@@ -5112,8 +4951,7 @@ local secondaryCollectOrder = {
 local pinnedItemOrder = primaryCollectOrder
 
 local PINNED_COLLECTION_SWITCH_PERCENT = 1
-local searchAllItemsUnlocked = false
-local pinnedItemsEverSeen = false
+local searchAllItemsUnlocked = true
 
 local function setItemSearchTargets(itemList)
 	Items.SearchNameLookup = {}
@@ -5132,56 +4970,10 @@ local function setItemSearchTargets(itemList)
 	Items.SearchCache = {}
 	Items.LastSearchCacheAt = 0
 	Items.SearchCacheDirty = true
-	Items.RebuildSearchCache()
-end
-
-local function getPinnedCollectionProgress()
-	local totalPinned = 0
-	local leftPinned = 0
-
-	for _, itemName in ipairs(pinnedItemOrder) do
-		local leftCount = 0
-		local totalCount = 0
-
-		for _, object in ipairs(getCollectibleSearchPool()) do
-			if itemNameMatches(object, itemName) then
-				totalCount += 1
-
-				if getLiveItemPart(object) then
-					leftCount += 1
-				end
-			end
-		end
-
-		if totalCount > 0 then
-			pinnedItemsEverSeen = true
-		end
-
-		totalPinned += totalCount
-		leftPinned += leftCount
-	end
-
-	if totalPinned <= 0 then
-		if Items.SearchCacheBusy and Items.LastSearchCacheAt == 0 then
-			return 0
-		end
-
-		return 1
-	end
-
-	return (totalPinned - leftPinned) / totalPinned
 end
 
 local function updateItemSearchMode()
-	if searchAllItemsUnlocked then
-		return
-	end
-
-	if getPinnedCollectionProgress() >= PINNED_COLLECTION_SWITCH_PERCENT then
-		searchAllItemsUnlocked = true
-		setItemSearchTargets(itemNames)
-		createNotification("Items", "Most priority items collected. Searching all items now.", "Success")
-	end
+	searchAllItemsUnlocked = true
 end
 
 setItemSearchTargets(itemNames)
@@ -5482,10 +5274,7 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 
 				Teleport.StabilizeItemView(root, itemPart)
 				Teleport.AddStrike()
-				Teleport.MaxStrikes = 4
 				Teleport.Cooldown = 3
-				Teleport.PostFLock = 0.2
-				Items.TeleportDebounce = 0.5
 				createNotification("Early Bus Jump", "Teleported to " .. itemName .. ".", "Success")
 			end
 		else
@@ -6083,10 +5872,7 @@ function Items.ResetPriorityCollectState(mode)
 	ignoredCollectTargets = {}
 	ignoredCollectPositions = {}
 	invalidateCollectibleSearchPool()
-	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.5
 end
 
 function Items.RunPriorityAutoCollect(mode)
@@ -6122,10 +5908,7 @@ function Items.RunPriorityAutoCollect(mode)
 		return
 	end
 
-	Teleport.MaxStrikes = 4
 	Teleport.Cooldown = 2
-	Teleport.PostFLock = 0.2
-	Items.TeleportDebounce = 0.5
 	createNotification(title, isEarly and "Timer hit 3. Starting priority collection." or "Starting priority collection.", "Success")
 
 	while Items.IsPriorityCollectEnabled(mode) do
@@ -6922,7 +6705,6 @@ end
 
 local ItemTeleportChecklist = {
 	Rows = {},
-	KnownTotals = {},
 	Open = false
 }
 
@@ -6932,30 +6714,6 @@ local function isItemBeingScanned(itemName)
 	end
 
 	return pinnedLookup[normalizeName(itemName)] == true
-end
-
-local function getItemCounts(itemName)
-	local leftCount = 0
-	local currentTotal = 0
-
-	for _, object in ipairs(getCollectibleSearchPool()) do
-		if itemNameMatches(object, itemName) then
-			currentTotal += 1
-
-			if getLiveItemPart(object) then
-				leftCount += 1
-			end
-		end
-	end
-
-	local knownTotal = ItemTeleportChecklist.KnownTotals[itemName]
-
-	if not knownTotal or currentTotal > knownTotal then
-		knownTotal = currentTotal
-		ItemTeleportChecklist.KnownTotals[itemName] = knownTotal
-	end
-
-	return leftCount, knownTotal or currentTotal
 end
 
 function Items.HasAvailableTeleportItems()
@@ -6972,13 +6730,9 @@ local function clearItemTeleportChecklist()
 	ItemTeleportChecklist.Rows = {}
 end
 
-local function createItemChecklistRow(itemName, layoutOrder, showCount, leftCount, totalCount)
+local function createItemChecklistRow(itemName, layoutOrder)
 	local existingRow = ItemTeleportChecklist.Rows[itemName]
 	local titleText = itemName
-
-	if showCount and totalCount and totalCount > 0 then
-		titleText = "[" .. tostring(leftCount) .. "/" .. tostring(totalCount) .. "] " .. itemName
-	end
 
 	if existingRow and existingRow.Parent then
 		existingRow.LayoutOrder = layoutOrder
@@ -7061,21 +6815,12 @@ local function refreshItemTeleportChecklist()
 	local seenRows = {}
 
 	for _, itemName in ipairs(itemChecklistOrder) do
-		local showCount = isItemBeingScanned(itemName)
-		local leftCount = nil
-		local totalCount = nil
 		local itemDetected = false
-
-		if showCount then
-			leftCount, totalCount = getItemCounts(itemName)
-			itemDetected = leftCount and leftCount > 0
-		else
-			local _, _, _, itemObject, itemPart = findLiveItemByName(itemName)
-			itemDetected = itemObject ~= nil and itemPart ~= nil
-		end
+		local _, _, _, itemObject, itemPart = findLiveItemByName(itemName)
+		itemDetected = itemObject ~= nil and itemPart ~= nil
 
 		if itemDetected then
-			createItemChecklistRow(itemName, layoutOrder, showCount, leftCount, totalCount)
+			createItemChecklistRow(itemName, layoutOrder)
 			seenRows[itemName] = true
 			layoutOrder += 1
 			shown += 1
@@ -7109,49 +6854,9 @@ task.spawn(function()
 
 	while itemsDropdown and itemsDropdown.Parent do
 		refreshItemTeleportChecklist()
-		task.wait(1.25)
+		task.wait(3)
 	end
 end)
-
-do
-	local knownItemLookup = {}
-	local notifiedDrops = {}
-
-	for _, itemName in ipairs(itemChecklistOrder) do
-		knownItemLookup[normalizeName(itemName)] = itemName
-	end
-
-	task.spawn(function()
-		task.wait(2)
-
-		local firstScan = true
-
-		while itemsDropdown and itemsDropdown.Parent do
-			for _, object in ipairs(getCollectibleSearchPool()) do
-				local itemName = knownItemLookup[normalizeName(getItemDisplayName(object))]
-
-				if itemName and not notifiedDrops[object] and getLiveItemPart(object) then
-					notifiedDrops[object] = true
-
-					if not firstScan then
-						createNotification(
-							itemName .. " was dropped!",
-							"Click to teleport.",
-							"Success",
-							function()
-								Items.TeleportTo(itemName)
-							end,
-							10
-						)
-					end
-				end
-			end
-
-			firstScan = false
-			task.wait(1.5)
-		end
-	end)
-end
 
 ItemESP = {
 	Enabled = false,
@@ -7435,6 +7140,12 @@ Combat = {
 	AutoGloveTapScanInterval = 0.12,
 	LastAutoGloveTap = 0,
 	LastAutoGloveScan = 0,
+	SlapAuraEnabled = false,
+	SlapAuraThread = nil,
+	SlapAuraInterval = 0.28,
+	SlapAuraRange = 38,
+	SlapAuraRemote = nil,
+	LastSlapAuraRemoteSearch = 0,
 	GloveTpSlapEnabled = false,
 	GloveTpSlapConnections = {},
 	GloveTpSlapCharacterConnections = {},
@@ -8172,6 +7883,96 @@ function Combat.SetAutoGloveTap(state)
 	else
 		Combat.StopAutoGloveTap()
 		createNotification("Auto Slap", "Auto Slap disabled.")
+	end
+end
+
+function Combat.GetSlapRemote()
+	if Combat.SlapAuraRemote and Combat.SlapAuraRemote.Parent and Combat.SlapAuraRemote:IsA("RemoteEvent") then
+		return Combat.SlapAuraRemote
+	end
+
+	local now = os.clock()
+	if now - Combat.LastSlapAuraRemoteSearch < 5 then
+		return nil
+	end
+
+	Combat.LastSlapAuraRemoteSearch = now
+
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local candidates = remotes and remotes:GetDescendants() or ReplicatedStorage:GetDescendants()
+
+	for _, object in ipairs(candidates) do
+		if object:IsA("RemoteEvent") then
+			local remoteName = Utility.NormalizeName(object.Name)
+
+			if string.find(remoteName, "slap", 1, true) or string.find(remoteName, "hit", 1, true) then
+				Combat.SlapAuraRemote = object
+				return object
+			end
+		end
+	end
+
+	return nil
+end
+
+function Combat.CanUseSlapAuraTarget(targetPlayer)
+	local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+
+	if not humanoid or not targetRoot then
+		return nil
+	end
+
+	local character = player.Character
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+
+	if not root then
+		return nil
+	end
+
+	local offset = targetRoot.Position - root.Position
+	if offset:Dot(offset) > Combat.SlapAuraRange * Combat.SlapAuraRange then
+		return nil
+	end
+
+	return targetRoot
+end
+
+function Combat.StartSlapAura()
+	if Combat.SlapAuraThread then
+		return
+	end
+
+	Combat.SlapAuraThread = task.spawn(function()
+		while Combat.SlapAuraEnabled do
+			local remote = Combat.GetSlapRemote()
+
+			if remote then
+				for _, targetPlayer in ipairs(Players:GetPlayers()) do
+					local targetRoot = Combat.CanUseSlapAuraTarget(targetPlayer)
+
+					if targetRoot then
+						pcall(function()
+							remote:FireServer(targetRoot)
+						end)
+					end
+				end
+			end
+
+			task.wait(Combat.SlapAuraInterval)
+		end
+
+		Combat.SlapAuraThread = nil
+	end)
+end
+
+function Combat.SetSlapAura(state)
+	Combat.SlapAuraEnabled = state == true
+
+	if Combat.SlapAuraEnabled then
+		Combat.StartSlapAura()
+		createNotification("Slap Aura", "Slap Aura enabled.", "Success")
+	else
+		createNotification("Slap Aura", "Slap Aura disabled.")
 	end
 end
 
@@ -9540,6 +9341,10 @@ do
 		Combat.SetAutoGloveTap(state)
 	end)
 
+	UI.ToggleRefs.SlapAura = createToggleButton(combatList, "Slap Aura", false, function(state)
+		Combat.SetSlapAura(state)
+	end)
+
 	createToggleButton(combatList, "Player TP Buttons", false, function(state)
 		Combat.SetPlayerTpButtons(state)
 	end)
@@ -10266,15 +10071,6 @@ do
 	end
 end
 
-createToggleButton(settingsList, "Disable Notifications", Notify.Muted, function(state)
-	Notify.Muted = state
-
-	if state then
-		Notify.Show("Notifications", "Regular notifications are now muted.", "Info", nil, 2.4, true)
-	else
-		createNotification("Notifications", "Notifications are back on.", "Success")
-	end
-end)
 
 UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, UI.WindowTransparency, function(value)
 	UI.WindowTransparency = value
@@ -10282,6 +10078,26 @@ UI.CreateSlider(settingsList, "Window Transparency", 0, 0.45, UI.WindowTranspare
 	mainFrame.BackgroundTransparency = value
 	tabScroll.BackgroundTransparency = value
 	contentFrame.BackgroundTransparency = value
+end)
+
+UI.CreateSlider(settingsList, "Max Strikes", 1, 10, Teleport.MaxStrikes, function(value)
+	Teleport.MaxStrikes = math.max(1, math.floor(value + 0.5))
+end, function(value)
+	return tostring(math.max(1, math.floor(value + 0.5)))
+end)
+
+UI.CreateSlider(settingsList, "F Lock", 0, 1.5, Teleport.PostFLock, function(value)
+	Teleport.PostFLock = math.floor((value * 100) + 0.5) / 100
+end, function(value)
+	return string.format("%.2fs", math.floor((value * 100) + 0.5) / 100)
+end)
+
+UI.CreateSlider(settingsList, "TP Debounce", 0, 2, Teleport.Debounce, function(value)
+	local debounce = math.floor((value * 100) + 0.5) / 100
+	Teleport.Debounce = debounce
+	Items.TeleportDebounce = debounce
+end, function(value)
+	return string.format("%.2fs", math.floor((value * 100) + 0.5) / 100)
 end)
 
 Players.PlayerAdded:Connect(Combat.SetupPlayerHitboxRefresh)
@@ -10850,6 +10666,7 @@ do
 				Combat.PlayerTpButtonsEnabled = false
 				Combat.ClearPlayerTpButtons()
 				Combat.SetAutoGloveTap(false)
+				Combat.SetSlapAura(false)
 				Combat.SetGloveTpSlap(false)
 				Combat.SetExpandCrateHitboxes(false)
 				Combat.SetAntiSlap(false)
