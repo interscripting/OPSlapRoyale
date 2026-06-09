@@ -31,7 +31,7 @@ Migration map:
   * Combat.SetAutoGloveTap -> Auto Slap toggle
 - BETA tab:
   * Combat.SetGloveTpSlap -> Glove TP Slap toggle
-  * Combat.SetExpandCrateHitboxes -> Expand crate hitboxes toggle
+  * Items.CollectCrates -> Collect Crates button
   * Items.SetEarlyAutoCollect -> Early Auto Collect toggle
 - Safety tab:
   * Anti.SetStaffEnabled -> Anti-Staff toggle
@@ -209,18 +209,6 @@ local UI = {
 	InputRefs = {}
 }
 
-UI.Movement = {
-	SpeedMin = 20,
-	JumpMin = 50,
-	SpeedMax = 20,
-	JumpMax = 50,
-	LastObservedSpeed = nil,
-	LastObservedJump = nil,
-	Applying = false,
-	Connections = {},
-	CharacterConnection = nil,
-}
-
 local gui = nil
 local isTouchDevice = UserInputService.TouchEnabled
 local function getViewportSize()
@@ -298,6 +286,11 @@ Items.LastAutoPickupFollowAt = 0
 Items.Crates = {}
 Items.KnownCrates = {}
 Items.CrateButtonLabel = nil
+Items.CrateWatcherConnections = {}
+Items.CollectCratesBusy = false
+Items.CrateCollectPart = nil
+Items.CrateCollectSlaps = 8
+Items.CrateCollectSlapInterval = 0.12
 
 Teleport.Locations = {
 	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
@@ -2151,17 +2144,13 @@ function Items.TrackCrate(crate, notify)
 		Items.RefreshCrates()
 	end
 
-	if Combat and Combat.ExpandCrateHitboxesEnabled then
-		Combat.ApplyCrateHitbox(crateRoot)
-	end
-
 	if notify then
 		createNotification("Meteor Crate", "A meteor crate spawned.", "Success")
 	end
 
-	crateRoot.AncestryChanged:Connect(function()
+	table.insert(Items.CrateWatcherConnections, crateRoot.AncestryChanged:Connect(function()
 		Items.RefreshCrates()
-	end)
+	end))
 end
 
 function Items.FindNearestCrate()
@@ -2217,35 +2206,198 @@ function Items.TeleportToCrate()
 	createNotification("Meteor Crate", "Teleported on top of the crate.", "Success")
 end
 
-function Items.StartCrateWatcher()
-	if Items.CrateWatcherStarted then
-		return
+function Items.ClearCrateCollectPart()
+	if Items.CrateCollectPart then
+		pcall(function()
+			Items.CrateCollectPart:Destroy()
+		end)
+
+		Items.CrateCollectPart = nil
+	end
+end
+
+function Items.GetCrateUnderMapCFrame(cratePart)
+	local partSize = cratePart.Size
+	local bottomY = cratePart.Position.Y - (partSize.Y / 2)
+	local targetPosition = Vector3.new(cratePart.Position.X, bottomY - 3, cratePart.Position.Z)
+
+	return CFrame.new(targetPosition, cratePart.Position)
+end
+
+function Items.EnsureCrateCollectPart(targetCFrame)
+	local part = Items.CrateCollectPart
+
+	if not part or not part.Parent then
+		part = Instance.new("Part")
+		part.Name = "Part"
+		part.Anchored = true
+		part.CanCollide = true
+		part.CanTouch = false
+		part.CanQuery = false
+		part.Transparency = 1
+		part.Parent = workspace
+		Items.CrateCollectPart = part
 	end
 
-	Items.CrateWatcherStarted = true
+	part.Name = "Part"
+	part.Size = Vector3.new(1, 10, 1)
+	part.CFrame = CFrame.new(targetCFrame.Position - Vector3.new(0, 8, 0))
+
+	return part
+end
+
+function Items.SlapCrate(cratePart)
+	local remote = Combat and Combat.GetSlapRemote and Combat.GetSlapRemote()
+
+	if not remote or not cratePart or not cratePart.Parent then
+		return false
+	end
+
+	pcall(function()
+		remote:FireServer(cratePart)
+	end)
+
+	local tool = Combat.GetEquippedTool and Combat.GetEquippedTool()
+	if tool then
+		pcall(function()
+			tool:Activate()
+		end)
+	end
+
+	return true
+end
+
+function Items.ScanCratesNow()
 	local root = Items.GetSearchRoot()
 
 	if not root then
 		return
 	end
 
-	root.ChildAdded:Connect(function(object)
+	for _, object in ipairs(root:GetDescendants()) do
+		Items.TrackCrate(object, false)
+	end
+
+	Items.RefreshCrates()
+end
+
+function Items.CollectCrates()
+	if Items.CollectCratesBusy then
+		createNotification("Collect Crates", "Already collecting crates.", "Warning")
+		return
+	end
+
+	if not Teleport.CanTeleport(Items.TeleportDebounce) then
+		return
+	end
+
+	Items.StartCrateWatcher()
+	Items.ScanCratesNow()
+
+	local crates = table.clone(Items.Crates)
+	if #crates == 0 then
+		createNotification("Collect Crates", "No meteor crates spawned yet.", "Warning")
+		return
+	end
+
+	Items.CollectCratesBusy = true
+
+	task.spawn(function()
+		local collected = 0
+		local slapCount = 0
+		local ok, err = pcall(function()
+			local character = player.Character or player.CharacterAdded:Wait()
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+
+			if not root then
+				createNotification("Collect Crates", "Could not find your character.", "Error")
+				return
+			end
+
+			for _, crate in ipairs(crates) do
+				local cratePart = Items.GetCratePart(crate)
+
+				if cratePart then
+					local targetCFrame = Items.GetCrateUnderMapCFrame(cratePart)
+
+					Items.EnsureCrateCollectPart(targetCFrame)
+					Teleport.MoveRoot(root, targetCFrame, cratePart.Position)
+					task.wait(0.12)
+
+					for _ = 1, Items.CrateCollectSlaps do
+						if not cratePart.Parent then
+							break
+						end
+
+						if Items.SlapCrate(cratePart) then
+							slapCount += 1
+						end
+
+						task.wait(Items.CrateCollectSlapInterval)
+					end
+
+					collected += 1
+				end
+			end
+		end)
+
+		if not ok then
+			createNotification("Collect Crates", tostring(err), "Error")
+		elseif slapCount <= 0 then
+			createNotification("Collect Crates", "Could not find the Slap remote.", "Error")
+		elseif collected > 0 then
+			Teleport.AddStrike()
+			Teleport.StartFBlock()
+			createNotification("Collect Crates", "Slapped " .. tostring(collected) .. " meteor crate(s).", "Success")
+		end
+
+		Items.CollectCratesBusy = false
+	end)
+end
+
+function Items.ClearCrateWatcher()
+	for _, connection in ipairs(Items.CrateWatcherConnections) do
+		pcall(function()
+			connection:Disconnect()
+		end)
+	end
+
+	table.clear(Items.CrateWatcherConnections)
+	table.clear(Items.Crates)
+	table.clear(Items.KnownCrates)
+	Items.CrateWatcherStarted = false
+end
+
+function Items.StartCrateWatcher()
+	if Items.CrateWatcherStarted then
+		return
+	end
+
+	local root = Items.GetSearchRoot()
+
+	if not root then
+		return
+	end
+
+	Items.CrateWatcherStarted = true
+
+	table.insert(Items.CrateWatcherConnections, root.DescendantAdded:Connect(function(object)
 		task.defer(function()
 			Items.TrackCrate(object, true)
 		end)
-	end)
+	end))
 
 	task.spawn(function()
 		Items.CrateWatcherBooting = true
 
-		for _, object in ipairs(root:GetChildren()) do
-			Items.TrackCrate(object, false)
-		end
+		Items.ScanCratesNow()
 
 		Items.CrateWatcherBooting = false
 		Items.RefreshCrates()
 	end)
 end
+
+task.defer(Items.StartCrateWatcher)
 
 ContextActionService:BindActionAtPriority(
 	"BlockFAfterTeleport",
@@ -4160,6 +4312,8 @@ function Items.CleanupAutomation()
 	setMovementPaused(false)
 	clearAutoSortConnections()
 	Items.ClearAutoPickupPart()
+	Items.ClearCrateCollectPart()
+	Items.ClearCrateWatcher()
 
 	pcall(function()
 		game:GetService("ProximityPromptService").Enabled = true
@@ -4440,11 +4594,6 @@ Combat = {
 	GloveTpSlapHoldTime = 0.5,
 	GloveTpSlapDebounce = 1,
 	GloveTpSlapActionName = "GloveTpSlapClickBlock",
-	ExpandCrateHitboxesEnabled = false,
-	SavedCrateHitboxes = {},
-	CrateHitboxHighlights = {},
-	CrateHitboxConnection = nil,
-	LastCrateHitboxRefresh = 0,
 	AntiSlapEnabled = false,
 	AntiSlapConnections = {},
 	AntiSlapBoxFolder = nil,
@@ -5127,7 +5276,7 @@ function Combat.CanUseSlapAuraTarget(targetPlayer)
 		return nil, nil
 	end
 
-	if targetCharacter:GetAttribute("Ragdolled") ~= false or localCharacter:GetAttribute("Ragdolled") ~= false then
+	if localCharacter:GetAttribute("Ragdolled") ~= false then
 		return nil, nil
 	end
 
@@ -5566,154 +5715,6 @@ function Combat.SetGloveTpSlap(state, silent)
 		Combat.StopGloveTpSlap()
 		if not silent then
 			createNotification("Glove TP Slap", "Glove TP Slap disabled.")
-		end
-	end
-end
-
-function Combat.SaveOriginalCrateHitbox(cratePart)
-	if not cratePart or Combat.SavedCrateHitboxes[cratePart] then
-		return
-	end
-
-	Combat.SavedCrateHitboxes[cratePart] = {
-		Size = cratePart.Size,
-		Transparency = cratePart.Transparency,
-		Color = cratePart.Color,
-		Material = cratePart.Material,
-		CanCollide = cratePart.CanCollide,
-		CanTouch = cratePart.CanTouch,
-		CanQuery = cratePart.CanQuery,
-	}
-end
-
-function Combat.ApplyCrateHitbox(crate)
-	local cratePart = Items.GetCratePart(crate)
-
-	if not cratePart then
-		return false
-	end
-
-	Combat.SaveOriginalCrateHitbox(cratePart)
-
-	cratePart.Size = Vector3.new(Combat.HitboxSize, Combat.HitboxSize, Combat.HitboxSize)
-	cratePart.Transparency = Combat.HitboxVisible and Combat.HitboxTransparency or 1
-	cratePart.Color = Combat.HitboxColor
-	cratePart.Material = Enum.Material.Neon
-	cratePart.CanCollide = false
-	cratePart.CanTouch = true
-	cratePart.CanQuery = true
-
-	local highlight = Combat.CrateHitboxHighlights[cratePart]
-
-	if not highlight or not highlight.Parent then
-		highlight = Instance.new("Highlight")
-		highlight.Name = "Part"
-		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
-		highlight.Parent = cratePart
-		Combat.CrateHitboxHighlights[cratePart] = highlight
-	end
-
-	highlight.Adornee = cratePart
-	highlight.FillColor = Combat.HitboxColor
-	highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-	highlight.FillTransparency = Combat.HitboxVisible and 0.82 or 1
-	highlight.OutlineTransparency = Combat.HitboxVisible and 0.12 or 1
-
-	return true
-end
-
-function Combat.RestoreCrateHitbox(cratePart)
-	local saved = Combat.SavedCrateHitboxes[cratePart]
-	local highlight = Combat.CrateHitboxHighlights[cratePart]
-
-	if highlight and highlight.Parent then
-		highlight:Destroy()
-	end
-
-	Combat.CrateHitboxHighlights[cratePart] = nil
-
-	if cratePart and cratePart.Parent and saved then
-		cratePart.Size = saved.Size
-		cratePart.Transparency = saved.Transparency
-		cratePart.Color = saved.Color
-		cratePart.Material = saved.Material
-		cratePart.CanCollide = saved.CanCollide
-		cratePart.CanTouch = saved.CanTouch
-		cratePart.CanQuery = saved.CanQuery
-	end
-
-	Combat.SavedCrateHitboxes[cratePart] = nil
-end
-
-function Combat.RestoreAllCrateHitboxes()
-	for cratePart in pairs(Combat.SavedCrateHitboxes) do
-		Combat.RestoreCrateHitbox(cratePart)
-	end
-
-	for cratePart, highlight in pairs(Combat.CrateHitboxHighlights) do
-		if highlight and highlight.Parent then
-			highlight:Destroy()
-		end
-
-		Combat.CrateHitboxHighlights[cratePart] = nil
-	end
-end
-
-function Combat.RefreshCrateHitboxes()
-	if not Combat.ExpandCrateHitboxesEnabled then
-		Combat.RestoreAllCrateHitboxes()
-		return
-	end
-
-	Items.RefreshCrates()
-
-	for _, crate in ipairs(Items.Crates) do
-		Combat.ApplyCrateHitbox(crate)
-	end
-end
-
-function Combat.StartCrateHitboxLoop()
-	if Combat.CrateHitboxConnection then
-		return
-	end
-
-	Combat.CrateHitboxConnection = RunService.Heartbeat:Connect(function()
-		if not Combat.ExpandCrateHitboxesEnabled then
-			return
-		end
-
-		local now = os.clock()
-		if now - Combat.LastCrateHitboxRefresh < Combat.HitboxRefreshInterval then
-			return
-		end
-
-		Combat.LastCrateHitboxRefresh = now
-		Combat.RefreshCrateHitboxes()
-	end)
-end
-
-function Combat.StopCrateHitboxLoop()
-	if Combat.CrateHitboxConnection then
-		Combat.CrateHitboxConnection:Disconnect()
-		Combat.CrateHitboxConnection = nil
-	end
-
-	Combat.RestoreAllCrateHitboxes()
-end
-
-function Combat.SetExpandCrateHitboxes(state, silent)
-	Combat.ExpandCrateHitboxesEnabled = state == true
-
-	if Combat.ExpandCrateHitboxesEnabled then
-		Combat.StartCrateHitboxLoop()
-		Combat.RefreshCrateHitboxes()
-		if not silent then
-			createNotification("Crate Hitboxes", "Crate hitboxes expanded.", "Success")
-		end
-	else
-		Combat.StopCrateHitboxLoop()
-		if not silent then
-			createNotification("Crate Hitboxes", "Crate hitboxes restored.")
 		end
 	end
 end
@@ -6224,10 +6225,6 @@ function Combat.SetHitboxSize(newSize)
 
 	if Combat.HitboxExpanded then
 		Combat.RefreshHitboxes()
-	end
-
-	if Combat.ExpandCrateHitboxesEnabled then
-		Combat.RefreshCrateHitboxes()
 	end
 
 	if Settings and Settings.OnControlChanged then
@@ -7114,7 +7111,6 @@ local WindUIWindow = WindUI:CreateWindow({
 local TabMain = WindUIWindow:Tab({ Title = "Main", Icon = "star" })
 local TabItems = WindUIWindow:Tab({ Title = "Items", Icon = "box" })
 local TabTeleports = WindUIWindow:Tab({ Title = "Teleports", Icon = "map-pin" })
-local TabMovement = WindUIWindow:Tab({ Title = "Movement", Icon = "footprints" })
 local TabCombat = WindUIWindow:Tab({ Title = "Combat", Icon = "swords" })
 local TabBETA = WindUIWindow:Tab({ Title = "BETA", Icon = "flask-conical" })
 local TabSafety = WindUIWindow:Tab({ Title = "Safety", Icon = "shield" })
@@ -7503,10 +7499,6 @@ end
 function Combat.SetHitboxVisible(state)
 	Combat.HitboxVisible = state == true
 	Combat.RefreshHitboxes()
-
-	if Combat.ExpandCrateHitboxesEnabled then
-		Combat.RefreshCrateHitboxes()
-	end
 end
 
 function Anti.SetAcidLava(state)
@@ -9642,8 +9634,6 @@ function UI.GetRecommendedFeatureState(key)
 		return Combat.AutoGloveTapEnabled == true
 	elseif key == "GloveTpSlap" then
 		return Combat.GloveTpSlapEnabled == true
-	elseif key == "ExpandCrateHitboxes" then
-		return Combat.ExpandCrateHitboxesEnabled == true
 	elseif key == "AntiStaff" then
 		return Anti.StaffEnabled == true
 	elseif key == "HideUnderMap" then
@@ -9745,22 +9735,11 @@ function UI.SetRecommendedSettings(state, silent)
 		setToggle("AutoPermanentItems", true, true, { CheckFeatureState = false, MaxAttempts = 1 })
 		setToggle("EarlyBusJump", true, false, { CheckFeatureState = false })
 		UI.SetAutoEarlyBusJump(true, true)
-		setToggle("EarlyAutoCollect", true, true, { CheckFeatureState = false })
-
-		task.delay(0.5, function()
-			if Items.EarlyAutoCollectEnabled then
-				setToggle("AutoPermanentItems", false, false, { CheckFeatureState = false, MaxAttempts = 1 })
-			else
-				setToggle("AutoPermanentItems", true)
-			end
-		end)
-
 		TeleportMenu.ActiveTab = "Items"
 		Preferences.TeleportMenuTab = "Items"
 		TeleportMenu.LastRowsSignature = nil
 		openTeleportSideMenu()
 	else
-		setToggle("EarlyAutoCollect", false)
 		setToggle("EarlyBusJump", false, false, { CheckFeatureState = false })
 		UI.SetAutoEarlyBusJump(false, true)
 		setToggle("AutoPermanentItems", false)
@@ -9794,167 +9773,6 @@ local function applyTheme(themeName)
 	end
 end
 
-function UI.GetMovementHumanoid()
-	local character = player.Character
-	return character and character:FindFirstChildOfClass("Humanoid")
-end
-
-function UI.GetMovementSpeedMax()
-	local humanoid = UI.GetMovementHumanoid()
-	local speed = humanoid and tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
-	UI.Movement.SpeedMax = math.max(UI.Movement.SpeedMin, math.floor((speed or UI.Movement.SpeedMin) + 0.5))
-	return UI.Movement.SpeedMax
-end
-
-function UI.GetMovementJumpMax()
-	local humanoid = UI.GetMovementHumanoid()
-	local jump = humanoid and tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
-	UI.Movement.JumpMax = math.max(UI.Movement.JumpMin, math.floor((jump or UI.Movement.JumpMin) + 0.5))
-	return UI.Movement.JumpMax
-end
-
-function UI.SetMovementSpeed(value)
-	local humanoid = UI.GetMovementHumanoid()
-	local speed = math.clamp(tonumber(value) or UI.Movement.SpeedMin, UI.Movement.SpeedMin, UI.Movement.SpeedMax)
-
-	if humanoid then
-		UI.Movement.Applying = true
-		humanoid.WalkSpeed = speed
-		UI.Movement.LastObservedSpeed = speed
-		UI.Movement.Applying = false
-	end
-end
-
-function UI.SetMovementJump(value)
-	local humanoid = UI.GetMovementHumanoid()
-	local jump = math.clamp(tonumber(value) or UI.Movement.JumpMin, UI.Movement.JumpMin, UI.Movement.JumpMax)
-
-	if humanoid then
-		UI.Movement.Applying = true
-		humanoid.JumpPower = jump
-		UI.Movement.LastObservedJump = jump
-		UI.Movement.Applying = false
-	end
-end
-
-function UI.SyncMovementSlider(title, minValue, maxValue, value)
-	local slider = _windSliders[title]
-
-	if not slider then
-		return
-	end
-
-	if type(slider.SetMin) == "function" then
-		pcall(function()
-			slider:SetMin(minValue)
-		end)
-	end
-
-	if type(slider.SetMax) == "function" then
-		pcall(function()
-			slider:SetMax(maxValue)
-		end)
-	end
-
-	if type(slider.Set) == "function" then
-		pcall(function()
-			slider:Set(value)
-		end)
-	elseif type(slider.SetValue) == "function" then
-		pcall(function()
-			slider:SetValue(value)
-		end)
-	end
-end
-
-function UI.DisconnectMovement()
-	for _, connection in ipairs(UI.Movement.Connections) do
-		if connection then
-			pcall(function()
-				connection:Disconnect()
-			end)
-		end
-	end
-
-	table.clear(UI.Movement.Connections)
-end
-
-function UI.ApplySavedMovement()
-	if Preferences.Sliders.MovementSpeed ~= nil then
-		UI.SetMovementSpeed(Preferences.Sliders.MovementSpeed)
-	end
-
-	if Preferences.Sliders.MovementJump ~= nil then
-		UI.SetMovementJump(Preferences.Sliders.MovementJump)
-	end
-end
-
-function UI.HookMovementHumanoid(character)
-	UI.DisconnectMovement()
-
-	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-	if not humanoid and character then
-		humanoid = character:WaitForChild("Humanoid", 5)
-	end
-
-	if not humanoid then
-		return
-	end
-
-	UI.Movement.LastObservedSpeed = tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
-	UI.Movement.LastObservedJump = tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
-	UI.GetMovementSpeedMax()
-	UI.GetMovementJumpMax()
-	UI.ApplySavedMovement()
-
-	table.insert(UI.Movement.Connections, humanoid:GetPropertyChangedSignal("WalkSpeed"):Connect(function()
-		if UI.Movement.Applying then
-			return
-		end
-
-		local speed = tonumber(humanoid.WalkSpeed) or UI.Movement.SpeedMin
-		local lastSpeed = tonumber(UI.Movement.LastObservedSpeed) or speed
-
-		UI.Movement.LastObservedSpeed = speed
-
-		if math.abs(speed - lastSpeed - 20) < 0.001 then
-			return
-		end
-
-		if speed > UI.Movement.SpeedMax then
-			UI.Movement.SpeedMax = math.floor(speed + 0.5)
-		end
-
-		UI.SyncMovementSlider("Speed", UI.Movement.SpeedMin, UI.Movement.SpeedMax, speed)
-	end))
-
-	table.insert(UI.Movement.Connections, humanoid:GetPropertyChangedSignal("JumpPower"):Connect(function()
-		if UI.Movement.Applying then
-			return
-		end
-
-		local jump = tonumber(humanoid.JumpPower) or UI.Movement.JumpMin
-		UI.Movement.LastObservedJump = jump
-
-		if jump > UI.Movement.JumpMax then
-			UI.Movement.JumpMax = math.floor(jump + 0.5)
-		end
-
-		UI.SyncMovementSlider("Jump", UI.Movement.JumpMin, UI.Movement.JumpMax, jump)
-	end))
-end
-
-UI.Movement.CharacterConnection = player.CharacterAdded:Connect(function(character)
-	task.defer(function()
-		UI.HookMovementHumanoid(character)
-	end)
-end)
-
-task.defer(function()
-	UI.HookMovementHumanoid(player.Character)
-end)
-
 -- Main
 AddButton(TabMain, "Get Code + Go Barn", "Teleports to Barn and scans for puzzle code", "hash", Main.GetCodeGoBarn)
 AddButton(TabMain, "Open Teleport Menu", "Items, players, and map locations", "map", openTeleportSideMenu)
@@ -9963,7 +9781,7 @@ AddToggle(TabMain, "Infinite Jump", "Lets you jump again while airborne", false,
 AddToggle(TabMain, "Player Stats ESP", "Shows player health, kills, strength, and speed", false, UI.SetPlayerStatsESP, "PlayerESP")
 AddToggle(TabMain, "Item ESP", "Highlights dropped items with color tags", false, UI.SetItemESP, "ItemESP")
 AddToggle(TabMain, "Auto Rejoin", "Rejoins after death or disconnect", false, UI.SetAutoRejoin, "AutoRejoin")
-AddToggle(TabMain, "Recommended Settings", "Slap Aura, ESP, auto item tools, early collect, anti-ragdoll, sorting, and item menu", false, UI.SetRecommendedSettings, "RecommendedSettings")
+AddToggle(TabMain, "Recommended Settings", "Slap Aura, ESP, auto item tools, anti-ragdoll, sorting, and item menu", false, UI.SetRecommendedSettings, "RecommendedSettings")
 
 -- Items
 local _, autoCollectRef = AddToggle(TabItems, "Auto collect", "Collects priority items without waiting for the round countdown", false, Items.SetAutoCollect, "AutoCollect")
@@ -9982,12 +9800,6 @@ AddButton(TabItems, "Meteor Crate", "Teleports to nearest meteor crate", "box", 
 -- Teleports
 AddButton(TabTeleports, "Teleport On School Bus", "Teleports you on top of the school bus", "bus-front", Teleport.ToSchoolBusTop)
 
--- Movement
-UI.GetMovementSpeedMax()
-UI.GetMovementJumpMax()
-AddSlider(TabMovement, "Speed", "Adjust walk speed", UI.Movement.SpeedMin, UI.Movement.SpeedMax, UI.Movement.SpeedMax, 1, UI.SetMovementSpeed, "MovementSpeed")
-AddSlider(TabMovement, "Jump", "Adjust jump power", UI.Movement.JumpMin, UI.Movement.JumpMax, UI.Movement.JumpMax, 1, UI.SetMovementJump, "MovementJump")
-
 -- Combat
 AddSlider(TabCombat, "Hitbox Size", "Adjust hitbox size (10-20)", Combat.HitboxMinSize, Combat.HitboxMaxSize, Combat.HitboxSize, 1, Combat.SetHitboxSize)
 AddToggle(TabCombat, "Expand Hitbox", "Applies expanded hitbox to players", false, Combat.SetHitboxExpanded, "ExpandHitbox")
@@ -9999,7 +9811,7 @@ AddButton(TabCombat, "Teleport To Nearest", "Teleports you behind the closest pl
 
 -- BETA
 AddToggle(TabBETA, "Glove TP Slap", "Teleports glove to nearest player on click", false, Combat.SetGloveTpSlap, "GloveTpSlap")
-AddToggle(TabBETA, "Expand crate hitboxes", "Expands and highlights meteor crate hitboxes", false, Combat.SetExpandCrateHitboxes, "ExpandCrateHitboxes")
+AddButton(TabBETA, "Collect Crates", "Teleports under meteor crates and slaps them", "box", Items.CollectCrates)
 local _, earlyCollectRef = AddToggle(TabBETA, "Early Auto Collect", "Starts collecting items before round begins", false, Items.SetEarlyAutoCollect, "EarlyAutoCollect")
 Items.EarlyAutoCollectToggle = earlyCollectRef
 
@@ -10061,20 +9873,12 @@ if sharedEnvironment then
 		pcall(function() Combat.SetAutoGloveTap(false) end)
 		pcall(function() Combat.SetSlapAura(false, true) end)
 		pcall(function() Combat.SetGloveTpSlap(false) end)
-		pcall(function() Combat.SetExpandCrateHitboxes(false) end)
 		pcall(function() Combat.SetHitboxExpanded(false) end)
 		pcall(function() Combat.SetAntiSlap(false) end)
 		pcall(function() UI.SetPlayerStatsESP(false, true) end)
 		pcall(function() UI.SetItemESP(false, true) end)
 		pcall(function() UI.SetAutoRejoin(false, true) end)
 		pcall(function() UI.SetInfiniteJump(false, true) end)
-		pcall(function()
-			UI.DisconnectMovement()
-			if UI.Movement.CharacterConnection then
-				UI.Movement.CharacterConnection:Disconnect()
-				UI.Movement.CharacterConnection = nil
-			end
-		end)
 		pcall(function() Anti.SetStaffEnabled(false) end)
 		pcall(function() Anti.DisableAcidLava() end)
 		pcall(function() Anti.SetHideUnderMap(false) end)
