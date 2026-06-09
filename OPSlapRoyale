@@ -7886,39 +7886,79 @@ function Combat.SetAutoGloveTap(state)
 	end
 end
 
-function Combat.GetSlapRemote()
-	if Combat.SlapAuraRemote and Combat.SlapAuraRemote.Parent and Combat.SlapAuraRemote:IsA("RemoteEvent") then
-		return Combat.SlapAuraRemote
+function Combat.IsSlapRemoteCandidate(object, strictName)
+	if not object or not object.Parent or (not object:IsA("RemoteEvent") and not object:IsA("RemoteFunction")) then
+		return false
 	end
 
-	local now = os.clock()
-	if now - Combat.LastSlapAuraRemoteSearch < 5 then
+	if not strictName then
+		return true
+	end
+
+	local remoteName = Utility.NormalizeName(object.Name)
+	return string.find(remoteName, "slap", 1, true) ~= nil
+		or string.find(remoteName, "hit", 1, true) ~= nil
+		or string.find(remoteName, "glove", 1, true) ~= nil
+		or string.find(remoteName, "punch", 1, true) ~= nil
+		or string.find(remoteName, "attack", 1, true) ~= nil
+		or string.find(remoteName, "damage", 1, true) ~= nil
+end
+
+function Combat.FindSlapRemoteIn(container, strictName)
+	if not container then
 		return nil
 	end
 
-	Combat.LastSlapAuraRemoteSearch = now
-
-	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
-	local candidates = remotes and remotes:GetDescendants() or ReplicatedStorage:GetDescendants()
-
-	for _, object in ipairs(candidates) do
-		if object:IsA("RemoteEvent") then
-			local remoteName = Utility.NormalizeName(object.Name)
-
-			if string.find(remoteName, "slap", 1, true) or string.find(remoteName, "hit", 1, true) then
-				Combat.SlapAuraRemote = object
-				return object
-			end
+	for _, object in ipairs(container:GetDescendants()) do
+		if Combat.IsSlapRemoteCandidate(object, strictName) then
+			return object
 		end
 	end
 
 	return nil
 end
 
-function Combat.CanUseSlapAuraTarget(targetPlayer)
-	local _, humanoid, targetRoot = Combat.GetValidPlayerTarget(targetPlayer)
+function Combat.GetSlapRemote()
+	if Combat.SlapAuraRemote and Combat.IsSlapRemoteCandidate(Combat.SlapAuraRemote, false) then
+		return Combat.SlapAuraRemote
+	end
 
-	if not humanoid or not targetRoot then
+	local now = os.clock()
+	if now - Combat.LastSlapAuraRemoteSearch < 1.5 then
+		return nil
+	end
+
+	Combat.LastSlapAuraRemoteSearch = now
+
+	local tool = Combat.GetEquippedTool()
+	if Combat.IsEquippedGloveTool(tool) then
+		local toolRemote = Combat.FindSlapRemoteIn(tool, false)
+		if toolRemote then
+			Combat.SlapAuraRemote = toolRemote
+			return toolRemote
+		end
+	end
+
+	local remotes = ReplicatedStorage:FindFirstChild("Remotes")
+	local remote = Combat.FindSlapRemoteIn(remotes, true) or Combat.FindSlapRemoteIn(ReplicatedStorage, true)
+
+	if remote then
+		Combat.SlapAuraRemote = remote
+	end
+
+	return remote
+end
+
+function Combat.CanUseSlapAuraTarget(targetPlayer)
+	if not targetPlayer or targetPlayer == player then
+		return nil
+	end
+
+	local targetCharacter = targetPlayer.Character
+	local targetHumanoid = targetCharacter and targetCharacter:FindFirstChildOfClass("Humanoid")
+	local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+	if not targetHumanoid or not targetRoot or targetHumanoid.Health <= 0 then
 		return nil
 	end
 
@@ -7952,7 +7992,11 @@ function Combat.StartSlapAura()
 
 					if targetRoot then
 						pcall(function()
-							remote:FireServer(targetRoot)
+							if remote:IsA("RemoteFunction") then
+								remote:InvokeServer(targetRoot)
+							else
+								remote:FireServer(targetRoot)
+							end
 						end)
 					end
 				end
