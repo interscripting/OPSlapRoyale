@@ -287,6 +287,10 @@ Items.Crates = {}
 Items.KnownCrates = {}
 Items.CrateButtonLabel = nil
 Items.CrateWatcherConnections = {}
+Items.CrateSpawnDebugConnections = {}
+Items.CrateWatcherRoot = nil
+Items.CrateWatcherStarting = false
+Items.CrateSpawnDebugStarted = false
 Items.CollectCratesBusy = false
 Items.CrateCollectPart = nil
 Items.CrateCollectSlaps = 8
@@ -2008,10 +2012,15 @@ function Items.IsMeteorCrate(object)
 	local fullName = ""
 	local hasMeteorMarker = false
 	local hasCrateMarker = false
+	local inItemsRoot = false
 
 	while current and current ~= workspace do
 		local normalizedName = Utility.NormalizeName(current.Name)
 		fullName = fullName .. " " .. normalizedName
+
+		if current.Name == Items.SearchRootName then
+			inItemsRoot = true
+		end
 
 		if string.find(normalizedName, "meteor") then
 			hasMeteorMarker = true
@@ -2056,7 +2065,6 @@ function Items.IsMeteorCrate(object)
 	if string.find(fullName, "crater")
 		or string.find(fullName, "food")
 		or string.find(fullName, "regular")
-		or string.find(fullName, "ground")
 		or string.find(fullName, "hole")
 		or string.find(fullName, "debris")
 		or string.find(fullName, "effect")
@@ -2065,7 +2073,11 @@ function Items.IsMeteorCrate(object)
 		return false
 	end
 
-	if not hasMeteorMarker or not hasCrateMarker then
+	if not hasCrateMarker then
+		return false
+	end
+
+	if not hasMeteorMarker and not inItemsRoot then
 		return false
 	end
 
@@ -2145,11 +2157,50 @@ function Items.TrackCrate(crate, notify)
 	end
 
 	if notify then
+		print("[OP Slap Royale] Meteor crate detected:", crateRoot.Name, "Parent:", crateRoot.Parent and crateRoot.Parent.Name or "nil")
 		createNotification("Meteor Crate", "A meteor crate spawned.", "Success")
 	end
 
 	table.insert(Items.CrateWatcherConnections, crateRoot.AncestryChanged:Connect(function()
 		Items.RefreshCrates()
+	end))
+end
+
+function Items.PrintDescendantAdded(object)
+	if not object then
+		return
+	end
+
+	local parent = object.Parent
+	local folderName = parent and parent.Name or "nil"
+
+	print("[OP Slap Royale] DescendantAdded:", object.Name, "Folder:", folderName)
+end
+
+function Items.ClearCrateSpawnDebug()
+	for _, connection in ipairs(Items.CrateSpawnDebugConnections) do
+		pcall(function()
+			connection:Disconnect()
+		end)
+	end
+
+	table.clear(Items.CrateSpawnDebugConnections)
+	Items.CrateSpawnDebugStarted = false
+end
+
+function Items.StartCrateSpawnDebug()
+	if Items.CrateSpawnDebugStarted then
+		return
+	end
+
+	Items.CrateSpawnDebugStarted = true
+
+	table.insert(Items.CrateSpawnDebugConnections, workspace.DescendantAdded:Connect(function(object)
+		Items.PrintDescendantAdded(object)
+
+		if Items.GetCrateRoot(object) then
+			Items.TrackCrate(object, true)
+		end
 	end))
 end
 
@@ -2366,23 +2417,50 @@ function Items.ClearCrateWatcher()
 	table.clear(Items.Crates)
 	table.clear(Items.KnownCrates)
 	Items.CrateWatcherStarted = false
+	Items.CrateWatcherRoot = nil
+	Items.CrateWatcherStarting = false
 end
 
 function Items.StartCrateWatcher()
-	if Items.CrateWatcherStarted then
+	if Items.CrateWatcherStarted or Items.CrateWatcherStarting then
 		return
 	end
 
+	Items.CrateWatcherStarting = true
 	local root = Items.GetSearchRoot()
 
 	if not root then
+		task.spawn(function()
+			for _ = 1, 60 do
+				task.wait(1)
+
+				root = Items.GetSearchRoot()
+				if root then
+					Items.CrateWatcherStarting = false
+					Items.StartCrateWatcher()
+					return
+				end
+			end
+
+			Items.CrateWatcherStarting = false
+			print("[OP Slap Royale] Crate watcher could not find Items folder.")
+		end)
+
 		return
 	end
 
+	if Items.CrateWatcherRoot == root then
+		Items.CrateWatcherStarting = false
+		return
+	end
+
+	Items.CrateWatcherRoot = root
 	Items.CrateWatcherStarted = true
+	Items.CrateWatcherStarting = false
 
 	table.insert(Items.CrateWatcherConnections, root.DescendantAdded:Connect(function(object)
 		task.defer(function()
+			Items.PrintDescendantAdded(object)
 			Items.TrackCrate(object, true)
 		end)
 	end))
@@ -2397,6 +2475,7 @@ function Items.StartCrateWatcher()
 	end)
 end
 
+task.defer(Items.StartCrateSpawnDebug)
 task.defer(Items.StartCrateWatcher)
 
 ContextActionService:BindActionAtPriority(
@@ -4313,6 +4392,7 @@ function Items.CleanupAutomation()
 	clearAutoSortConnections()
 	Items.ClearAutoPickupPart()
 	Items.ClearCrateCollectPart()
+	Items.ClearCrateSpawnDebug()
 	Items.ClearCrateWatcher()
 
 	pcall(function()
