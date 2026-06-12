@@ -30,8 +30,7 @@ Migration map:
   * Combat.SetSlapAura -> Slap Aura toggle
   * Combat.SetAutoGloveTap -> Auto Slap toggle
 - BETA tab:
-  * Combat.SetGloveTpSlap -> Glove TP Slap toggle
-  * Items.CollectCrates -> Collect Crates button
+  * Items.SetFastCollectCrates -> Auto collect crates toggle
   * Items.SetEarlyAutoCollect -> Early Auto Collect toggle
 - Safety tab:
   * Anti.SetStaffEnabled -> Anti-Staff toggle
@@ -287,14 +286,26 @@ Items.Crates = {}
 Items.KnownCrates = {}
 Items.CrateButtonLabel = nil
 Items.CrateWatcherConnections = {}
-Items.CrateSpawnDebugConnections = {}
 Items.CrateWatcherRoot = nil
 Items.CrateWatcherStarting = false
-Items.CrateSpawnDebugStarted = false
-Items.CollectCratesBusy = false
 Items.CrateCollectPart = nil
 Items.CrateCollectSlaps = 8
 Items.CrateCollectSlapInterval = 0.12
+Items.FastCollectCratesEnabled = false
+Items.FastCollectCratesThread = nil
+Items.FastCollectCratesInterval = 0.04
+Items.FastCollectCratesLastScan = 0
+Items.FastCollectCratesScanInterval = 1.5
+Items.FastCollectCratesBox = nil
+Items.FastCollectCratesBoxSize = Vector3.new(20, 20, 20)
+Items.FastCollectCratesOverlapParams = nil
+Items.FastCollectCratesLastNearbyScan = 0
+Items.FastCollectCratesNearbyScanInterval = 0.35
+Items.FastCollectCratesNearbyCache = {}
+Items.CrateFireCache = {}
+Items.CrateFireCacheInterval = 0.35
+Items.LastCrateNotificationAt = 0
+Items.CrateNotificationCooldown = 3
 
 Teleport.Locations = {
 	{ Name = "Acid", Position = Vector3.new(-113, 14, -625) },
@@ -2003,42 +2014,114 @@ function Items.GetCratePart(crate)
 	return crate:FindFirstChildWhichIsA("BasePart", true)
 end
 
-function Items.IsMeteorCrate(object)
-	if not object or not object.Parent then
+function Items.IsKnownNonCrateItemName(text)
+	local normalizedName = Utility.NormalizeName(text)
+	local knownNames = {
+		"Apple", "Bandage", "Boba", "Bomb", "Bombs", "Bull's Essence",
+		"Cube of Ice", "First Aid Kit", "Forcefield Crystal", "Frog Potion",
+		"Gravitation Shard", "Healing Potion", "Lightning Potion",
+		"Potion of Strength", "Speed Potion", "Sphere of Fury",
+		"Tomahawk", "True Power"
+	}
+
+	for _, itemName in ipairs(knownNames) do
+		if normalizedName == Utility.NormalizeName(itemName) then
+			return true
+		end
+	end
+
+	return false
+end
+
+function Items.NameLooksLikeCrate(text)
+	local normalizedName = Utility.NormalizeName(text)
+
+	return string.find(normalizedName, "crate")
+		or string.find(normalizedName, "chest")
+		or string.find(normalizedName, "meteor")
+		or string.find(normalizedName, "loot")
+		or string.find(normalizedName, "supply")
+		or string.find(normalizedName, "drop")
+		or string.find(normalizedName, "box")
+end
+
+function Items.GetShipmentCratesRoot()
+	local shipments = workspace:FindFirstChild("Shipments")
+	local crates = shipments and shipments:FindFirstChild("Crates")
+
+	return crates
+end
+
+function Items.IsShipmentCrateObject(object)
+	local cratesRoot = Items.GetShipmentCratesRoot()
+
+	if not cratesRoot or not object or not object:IsDescendantOf(cratesRoot) then
 		return false
 	end
 
 	local current = object
-	local fullName = ""
-	local hasMeteorMarker = false
+	while current and current ~= cratesRoot do
+		if current.Name == "Crate" and Items.GetCratePart(current) then
+			return true
+		end
+
+		current = current.Parent
+	end
+
+	return false
+end
+
+function Items.GetTopItemObject(object)
+	local root = Items.GetSearchRoot()
+
+	if not root or not object or not object:IsDescendantOf(root) then
+		return nil, root
+	end
+
+	local current = object
+	local topItem = object
+
+	while current and current ~= root do
+		topItem = current
+		current = current.Parent
+	end
+
+	return topItem, root
+end
+
+function Items.IsCrateCandidate(object)
+	if not object or not object.Parent then
+		return false
+	end
+
+	if Items.IsShipmentCrateObject(object) then
+		return true
+	end
+
+	local cratePart = Items.GetCratePart(object)
 	local hasCrateMarker = false
-	local inItemsRoot = false
 
+	if not cratePart then
+		return false
+	end
+
+	if Items.IsKnownNonCrateItemName(object.Name) then
+		return false
+	end
+
+	local current = object
 	while current and current ~= workspace do
-		local normalizedName = Utility.NormalizeName(current.Name)
-		fullName = fullName .. " " .. normalizedName
-
-		if current.Name == Items.SearchRootName then
-			inItemsRoot = true
+		if Items.IsKnownNonCrateItemName(current.Name) then
+			return false
 		end
 
-		if string.find(normalizedName, "meteor") then
-			hasMeteorMarker = true
-		end
-
-		if string.find(normalizedName, "crate") then
+		if Items.NameLooksLikeCrate(current.Name) then
 			hasCrateMarker = true
 		end
 
 		pcall(function()
 			for _, tagName in ipairs(Services.CollectionService:GetTags(current)) do
-				local normalizedTagName = Utility.NormalizeName(tagName)
-
-				if string.find(normalizedTagName, "meteor") then
-					hasMeteorMarker = true
-				end
-
-				if string.find(normalizedTagName, "crate") then
+				if Items.NameLooksLikeCrate(tagName) then
 					hasCrateMarker = true
 				end
 			end
@@ -2046,14 +2129,7 @@ function Items.IsMeteorCrate(object)
 
 		pcall(function()
 			for attributeName, attributeValue in pairs(current:GetAttributes()) do
-				local normalizedAttributeName = Utility.NormalizeName(attributeName)
-				local normalizedAttributeValue = Utility.NormalizeName(tostring(attributeValue))
-
-				if string.find(normalizedAttributeName, "meteor") or string.find(normalizedAttributeValue, "meteor") then
-					hasMeteorMarker = true
-				end
-
-				if string.find(normalizedAttributeName, "crate") or string.find(normalizedAttributeValue, "crate") then
+				if Items.NameLooksLikeCrate(attributeName) or Items.NameLooksLikeCrate(tostring(attributeValue)) then
 					hasCrateMarker = true
 				end
 			end
@@ -2062,45 +2138,41 @@ function Items.IsMeteorCrate(object)
 		current = current.Parent
 	end
 
-	if string.find(fullName, "crater")
-		or string.find(fullName, "food")
-		or string.find(fullName, "regular")
-		or string.find(fullName, "hole")
-		or string.find(fullName, "debris")
-		or string.find(fullName, "effect")
-		or string.find(fullName, "shockwave")
-		or string.find(fullName, "explosion") then
-		return false
-	end
-
-	if not hasCrateMarker then
-		return false
-	end
-
-	if not hasMeteorMarker and not inItemsRoot then
-		return false
-	end
-
-	return object:IsA("BasePart") or object:IsA("Model") or object:FindFirstChildWhichIsA("BasePart", true) ~= nil
+	local topItem = Items.GetTopItemObject(object)
+	return hasCrateMarker or (topItem == object and not Items.IsKnownNonCrateItemName(object.Name))
 end
 
 function Items.GetCrateRoot(object)
-	local current = object
-	local crateRoot = nil
+	local cratesRoot = Items.GetShipmentCratesRoot()
 
-	while current and current ~= workspace do
-		if string.find(Utility.NormalizeName(current.Name), "crater") then
-			return nil
+	if cratesRoot and object and object:IsDescendantOf(cratesRoot) then
+		local current = object
+
+		while current and current ~= cratesRoot do
+			if current.Name == "Crate" and Items.GetCratePart(current) then
+				return current
+			end
+
+			current = current.Parent
 		end
+	end
 
-		if Items.IsMeteorCrate(current) then
-			crateRoot = current
+	local topItem = Items.GetTopItemObject(object)
+
+	if topItem and Items.IsCrateCandidate(topItem) then
+		return topItem
+	end
+
+	local current = object
+	while current and current ~= workspace do
+		if Items.IsCrateCandidate(current) then
+			return current
 		end
 
 		current = current.Parent
 	end
 
-	return crateRoot
+	return nil
 end
 
 function Items.RefreshCrates()
@@ -2157,8 +2229,12 @@ function Items.TrackCrate(crate, notify)
 	end
 
 	if notify then
-		print("[OP Slap Royale] Meteor crate detected:", crateRoot.Name, "Parent:", crateRoot.Parent and crateRoot.Parent.Name or "nil")
-		createNotification("Meteor Crate", "A meteor crate spawned.", "Success")
+		local now = os.clock()
+
+		if now - (Items.LastCrateNotificationAt or 0) >= Items.CrateNotificationCooldown then
+			Items.LastCrateNotificationAt = now
+			createNotification("Meteor Crate", "Crate detected.", "Info")
+		end
 	end
 
 	table.insert(Items.CrateWatcherConnections, crateRoot.AncestryChanged:Connect(function()
@@ -2166,42 +2242,215 @@ function Items.TrackCrate(crate, notify)
 	end))
 end
 
-function Items.PrintDescendantAdded(object)
-	if not object then
-		return
-	end
-
-	local parent = object.Parent
-	local folderName = parent and parent.Name or "nil"
-
-	print("[OP Slap Royale] DescendantAdded:", object.Name, "Folder:", folderName)
-end
-
-function Items.ClearCrateSpawnDebug()
-	for _, connection in ipairs(Items.CrateSpawnDebugConnections) do
+function Items.ClearFastCollectCratesBox()
+	if Items.FastCollectCratesBox then
 		pcall(function()
-			connection:Disconnect()
+			Items.FastCollectCratesBox:Destroy()
 		end)
+
+		Items.FastCollectCratesBox = nil
 	end
 
-	table.clear(Items.CrateSpawnDebugConnections)
-	Items.CrateSpawnDebugStarted = false
+	table.clear(Items.FastCollectCratesNearbyCache)
+	table.clear(Items.CrateFireCache)
+	Items.FastCollectCratesLastNearbyScan = 0
 end
 
-function Items.StartCrateSpawnDebug()
-	if Items.CrateSpawnDebugStarted then
+function Items.UpdateFastCollectCratesBox(root)
+	if not Items.FastCollectCratesEnabled or not root or not root.Parent then
+		Items.ClearFastCollectCratesBox()
+		return nil
+	end
+
+	local box = Items.FastCollectCratesBox
+
+	if not box or not box.Parent then
+		box = Instance.new("Part")
+		box.Name = "Part"
+		box.Size = Items.FastCollectCratesBoxSize
+		box.Anchored = true
+		box.CanCollide = false
+		box.CanTouch = false
+		box.CanQuery = false
+		box.Transparency = 0.88
+		box.Color = Color3.fromRGB(255, 64, 64)
+		box.Material = Enum.Material.Neon
+		box.Parent = workspace
+		Items.FastCollectCratesBox = box
+	end
+
+	box.Size = Items.FastCollectCratesBoxSize
+	box.CFrame = root.CFrame
+
+	return box
+end
+
+function Items.IsCratePartInFastCollectBox(cratePart, root)
+	if not cratePart or not cratePart.Parent or not root or not root.Parent then
+		return false
+	end
+
+	local relativePosition = root.CFrame:PointToObjectSpace(cratePart.Position)
+	local halfSize = Items.FastCollectCratesBoxSize / 2
+
+	return math.abs(relativePosition.X) <= halfSize.X
+		and math.abs(relativePosition.Y) <= halfSize.Y
+		and math.abs(relativePosition.Z) <= halfSize.Z
+end
+
+function Items.GetFastCollectOverlapParams()
+	if Items.FastCollectCratesOverlapParams then
+		return Items.FastCollectCratesOverlapParams
+	end
+
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.RespectCanCollide = false
+	Items.FastCollectCratesOverlapParams = params
+
+	return params
+end
+
+function Items.GetNearbyCrateParts(root)
+	local parts = {}
+	local seen = {}
+
+	if not root or not root.Parent then
+		return parts
+	end
+
+	local now = os.clock()
+	if now - (Items.FastCollectCratesLastNearbyScan or 0) < Items.FastCollectCratesNearbyScanInterval then
+		return Items.FastCollectCratesNearbyCache or parts
+	end
+
+	Items.FastCollectCratesLastNearbyScan = now
+
+	local params = Items.GetFastCollectOverlapParams()
+	local filterInstances = {}
+
+	if player.Character then
+		table.insert(filterInstances, player.Character)
+	end
+
+	if Items.FastCollectCratesBox then
+		table.insert(filterInstances, Items.FastCollectCratesBox)
+	end
+
+	if Items.CrateCollectPart then
+		table.insert(filterInstances, Items.CrateCollectPart)
+	end
+
+	params.FilterDescendantsInstances = filterInstances
+
+	local success, nearbyParts = pcall(function()
+		return workspace:GetPartBoundsInBox(root.CFrame, Items.FastCollectCratesBoxSize, params)
+	end)
+
+	if not success or not nearbyParts then
+		Items.FastCollectCratesNearbyCache = parts
+		return parts
+	end
+
+	for _, nearbyPart in ipairs(nearbyParts) do
+		if nearbyPart and nearbyPart.Parent and nearbyPart:IsDescendantOf(workspace) then
+			local crateRoot = Items.GetCrateRoot(nearbyPart)
+				or (Items.IsCrateCandidate(nearbyPart) and nearbyPart or nil)
+
+			if crateRoot and not seen[crateRoot] then
+				local cratePart = nearbyPart
+
+				if cratePart and Items.IsCratePartInFastCollectBox(cratePart, root) then
+					seen[crateRoot] = true
+					table.insert(parts, cratePart)
+					Items.TrackCrate(crateRoot, false)
+				end
+			end
+		end
+	end
+
+	Items.FastCollectCratesNearbyCache = parts
+	return parts
+end
+
+function Items.GetTrackedCrateParts(root)
+	local parts = {}
+	local seen = {}
+
+	if os.clock() - (Items.FastCollectCratesLastScan or 0) >= Items.FastCollectCratesScanInterval then
+		Items.FastCollectCratesLastScan = os.clock()
+		Items.ScanCratesNow()
+	else
+		Items.RefreshCrates()
+	end
+
+	for _, crate in ipairs(Items.Crates) do
+		local part = Items.GetCratePart(crate)
+
+		if part and (not root or Items.IsCratePartInFastCollectBox(part, root)) then
+			seen[crate] = true
+			table.insert(parts, part)
+		end
+	end
+
+	if root then
+		for _, part in ipairs(Items.GetNearbyCrateParts(root)) do
+			local crateRoot = Items.GetCrateRoot(part) or part
+
+			if not seen[crateRoot] then
+				seen[crateRoot] = true
+				table.insert(parts, part)
+			end
+		end
+	end
+
+	return parts
+end
+
+function Items.StartFastCollectCrates()
+	if Items.FastCollectCratesThread then
 		return
 	end
 
-	Items.CrateSpawnDebugStarted = true
+	Items.FastCollectCratesThread = task.spawn(function()
+		while Items.FastCollectCratesEnabled do
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
 
-	table.insert(Items.CrateSpawnDebugConnections, workspace.DescendantAdded:Connect(function(object)
-		Items.PrintDescendantAdded(object)
+			Items.UpdateFastCollectCratesBox(root)
 
-		if Items.GetCrateRoot(object) then
-			Items.TrackCrate(object, true)
+			for _, cratePart in ipairs(Items.GetTrackedCrateParts(root)) do
+				if not Items.FastCollectCratesEnabled then
+					break
+				end
+
+				Items.SlapCrate(cratePart)
+			end
+
+			task.wait(Items.FastCollectCratesInterval)
 		end
-	end))
+
+		Items.FastCollectCratesThread = nil
+	end)
+end
+
+function Items.SetFastCollectCrates(state, silent)
+	Items.FastCollectCratesEnabled = state == true
+
+	if Items.FastCollectCratesEnabled then
+		Items.StartCrateWatcher()
+		Items.StartFastCollectCrates()
+
+		if not silent then
+			createNotification("Auto collect crates", "Auto collect crates enabled.", "Success")
+		end
+	else
+		Items.ClearFastCollectCratesBox()
+
+		if not silent then
+			createNotification("Auto collect crates", "Auto collect crates disabled.")
+		end
+	end
 end
 
 function Items.FindNearestCrate()
@@ -2239,13 +2488,11 @@ function Items.TeleportToCrate()
 	local root = character:FindFirstChild("HumanoidRootPart")
 
 	if not root then
-		createNotification("Meteor Crate", "Could not find your character.", "Error")
 		return
 	end
 
 	local crate, part = Items.FindNearestCrate()
 	if not crate or not part then
-		createNotification("Meteor Crate", "No crates spawned yet.", "Warning")
 		return
 	end
 
@@ -2254,7 +2501,6 @@ function Items.TeleportToCrate()
 	Teleport.MoveRoot(root, CFrame.new(targetPosition))
 	Teleport.AddStrike()
 	Teleport.StartFBlock()
-	createNotification("Meteor Crate", "Teleported on top of the crate.", "Success")
 end
 
 function Items.ClearCrateCollectPart()
@@ -2276,31 +2522,111 @@ function Items.GetCrateUnderMapCFrame(cratePart)
 end
 
 function Items.EnsureCrateCollectPart(targetCFrame)
-	local part = Items.CrateCollectPart
+	Items.ClearCrateCollectPart()
 
-	if not part or not part.Parent then
-		part = Instance.new("Part")
-		part.Name = "Part"
-		part.Anchored = true
-		part.CanCollide = true
-		part.CanTouch = false
-		part.CanQuery = false
-		part.Transparency = 1
-		part.Parent = workspace
-		Items.CrateCollectPart = part
-	end
+	local part = Instance.new("Part")
 
 	part.Name = "Part"
-	part.Size = Vector3.new(1, 10, 1)
+	part.Size = Vector3.new(12000, 10, 12000)
+	part.Anchored = true
+	part.CanCollide = true
+	part.CanTouch = false
+	part.CanQuery = false
+	part.Transparency = 0
 	part.CFrame = CFrame.new(targetCFrame.Position - Vector3.new(0, 8, 0))
+	part.Parent = workspace
+	Items.CrateCollectPart = part
 
 	return part
+end
+
+function Items.IsActiveCrateFireObject(object)
+	if not object then
+		return false
+	end
+
+	local objectName = Utility.NormalizeName(object.Name)
+
+	if object:IsA("Fire") and object.Enabled ~= false then
+		return true
+	end
+
+	if object:IsA("ParticleEmitter") and object.Enabled ~= false then
+		return string.find(objectName, "fire")
+			or string.find(objectName, "flame")
+			or string.find(objectName, "burn")
+			or string.find(objectName, "smoke")
+			or string.find(objectName, "ember")
+	end
+
+	if object:IsA("PointLight") or object:IsA("SpotLight") or object:IsA("SurfaceLight") then
+		return object.Enabled ~= false and (
+			string.find(objectName, "fire")
+			or string.find(objectName, "flame")
+			or string.find(objectName, "burn")
+		)
+	end
+
+	return false
+end
+
+function Items.CrateHasActiveFire(crate)
+	if not crate or not crate.Parent then
+		return false
+	end
+
+	local now = os.clock()
+	local cached = Items.CrateFireCache[crate]
+
+	if cached and now - cached.At < Items.CrateFireCacheInterval then
+		return cached.Value
+	end
+
+	local hasFire = false
+
+	if Items.IsActiveCrateFireObject(crate) then
+		hasFire = true
+	end
+
+	if not hasFire then
+		for _, object in ipairs(crate:GetDescendants()) do
+			if Items.IsActiveCrateFireObject(object) then
+				hasFire = true
+				break
+			end
+		end
+	end
+
+	Items.CrateFireCache[crate] = {
+		At = now,
+		Value = hasFire
+	}
+
+	return hasFire
+end
+
+function Items.CanSlapCrate(cratePart)
+	if not cratePart or not cratePart.Parent then
+		return false
+	end
+
+	local crateRoot = Items.GetCrateRoot(cratePart) or cratePart
+
+	if Items.CrateHasActiveFire(crateRoot) or Items.CrateHasActiveFire(cratePart) then
+		return false
+	end
+
+	return true
 end
 
 function Items.SlapCrate(cratePart)
 	local remote = Combat and Combat.GetSlapRemote and Combat.GetSlapRemote()
 
 	if not remote or not cratePart or not cratePart.Parent then
+		return false
+	end
+
+	if not Items.CanSlapCrate(cratePart) then
 		return false
 	end
 
@@ -2320,90 +2646,25 @@ end
 
 function Items.ScanCratesNow()
 	local root = Items.GetSearchRoot()
+	local shipmentCratesRoot = Items.GetShipmentCratesRoot()
 
-	if not root then
+	if not root and not shipmentCratesRoot then
 		return
 	end
 
-	for _, object in ipairs(root:GetDescendants()) do
-		Items.TrackCrate(object, false)
+	if shipmentCratesRoot then
+		for _, object in ipairs(shipmentCratesRoot:GetChildren()) do
+			Items.TrackCrate(object, false)
+		end
+	end
+
+	if root then
+		for _, object in ipairs(root:GetChildren()) do
+			Items.TrackCrate(object, false)
+		end
 	end
 
 	Items.RefreshCrates()
-end
-
-function Items.CollectCrates()
-	if Items.CollectCratesBusy then
-		createNotification("Collect Crates", "Already collecting crates.", "Warning")
-		return
-	end
-
-	if not Teleport.CanTeleport(Items.TeleportDebounce) then
-		return
-	end
-
-	Items.StartCrateWatcher()
-	Items.ScanCratesNow()
-
-	local crates = table.clone(Items.Crates)
-	if #crates == 0 then
-		createNotification("Collect Crates", "No meteor crates spawned yet.", "Warning")
-		return
-	end
-
-	Items.CollectCratesBusy = true
-
-	task.spawn(function()
-		local collected = 0
-		local slapCount = 0
-		local ok, err = pcall(function()
-			local character = player.Character or player.CharacterAdded:Wait()
-			local root = character and character:FindFirstChild("HumanoidRootPart")
-
-			if not root then
-				createNotification("Collect Crates", "Could not find your character.", "Error")
-				return
-			end
-
-			for _, crate in ipairs(crates) do
-				local cratePart = Items.GetCratePart(crate)
-
-				if cratePart then
-					local targetCFrame = Items.GetCrateUnderMapCFrame(cratePart)
-
-					Items.EnsureCrateCollectPart(targetCFrame)
-					Teleport.MoveRoot(root, targetCFrame, cratePart.Position)
-					task.wait(0.12)
-
-					for _ = 1, Items.CrateCollectSlaps do
-						if not cratePart.Parent then
-							break
-						end
-
-						if Items.SlapCrate(cratePart) then
-							slapCount += 1
-						end
-
-						task.wait(Items.CrateCollectSlapInterval)
-					end
-
-					collected += 1
-				end
-			end
-		end)
-
-		if not ok then
-			createNotification("Collect Crates", tostring(err), "Error")
-		elseif slapCount <= 0 then
-			createNotification("Collect Crates", "Could not find the Slap remote.", "Error")
-		elseif collected > 0 then
-			Teleport.AddStrike()
-			Teleport.StartFBlock()
-			createNotification("Collect Crates", "Slapped " .. tostring(collected) .. " meteor crate(s).", "Success")
-		end
-
-		Items.CollectCratesBusy = false
-	end)
 end
 
 function Items.ClearCrateWatcher()
@@ -2427,14 +2688,14 @@ function Items.StartCrateWatcher()
 	end
 
 	Items.CrateWatcherStarting = true
-	local root = Items.GetSearchRoot()
+	local root = Items.GetShipmentCratesRoot() or Items.GetSearchRoot()
 
 	if not root then
 		task.spawn(function()
 			for _ = 1, 60 do
 				task.wait(1)
 
-				root = Items.GetSearchRoot()
+				root = Items.GetShipmentCratesRoot() or Items.GetSearchRoot()
 				if root then
 					Items.CrateWatcherStarting = false
 					Items.StartCrateWatcher()
@@ -2443,7 +2704,7 @@ function Items.StartCrateWatcher()
 			end
 
 			Items.CrateWatcherStarting = false
-			print("[OP Slap Royale] Crate watcher could not find Items folder.")
+			print("[OP Slap Royale] Crate watcher could not find Shipments.Crates or Items folder.")
 		end)
 
 		return
@@ -2460,10 +2721,21 @@ function Items.StartCrateWatcher()
 
 	table.insert(Items.CrateWatcherConnections, root.DescendantAdded:Connect(function(object)
 		task.defer(function()
-			Items.PrintDescendantAdded(object)
 			Items.TrackCrate(object, true)
 		end)
 	end))
+
+	if root ~= Items.GetSearchRoot() then
+		local itemRoot = Items.GetSearchRoot()
+
+		if itemRoot then
+			table.insert(Items.CrateWatcherConnections, itemRoot.DescendantAdded:Connect(function(object)
+				task.defer(function()
+					Items.TrackCrate(object, true)
+				end)
+			end))
+		end
+	end
 
 	task.spawn(function()
 		Items.CrateWatcherBooting = true
@@ -2475,7 +2747,6 @@ function Items.StartCrateWatcher()
 	end)
 end
 
-task.defer(Items.StartCrateSpawnDebug)
 task.defer(Items.StartCrateWatcher)
 
 ContextActionService:BindActionAtPriority(
@@ -3085,9 +3356,21 @@ function pressF(skipPickupLock)
 	local VirtualInputManager = game:GetService("VirtualInputManager")
 	local pressed = false
 
+	if not skipPickupLock and (Items.EarlyBusFBlockActive == true or Items.BusLandingFBlockActive == true) then
+		return false
+	end
+
 	pcall(function()
 		while not skipPickupLock and os.clock() < (Teleport.BlockFUntil or 0) do
+			if Items.EarlyBusFBlockActive == true or Items.BusLandingFBlockActive == true then
+				return
+			end
+
 			task.wait(0.03)
+		end
+
+		if not skipPickupLock and Items.IsPickupInputLocked and Items.IsPickupInputLocked() then
+			return
 		end
 
 		VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.F, false, game)
@@ -3100,6 +3383,10 @@ function pressF(skipPickupLock)
 end
 
 function Items.TryPickupPrompt(itemObject, itemPart)
+	if Items.IsPickupInputLocked and Items.IsPickupInputLocked() then
+		return false
+	end
+
 	local promptList = {}
 	local triggered = false
 
@@ -4388,11 +4675,11 @@ function Items.CleanupAutomation()
 	Items.AutoPickupEnabled = false
 	Items.EarlyAutoCollectRestoreAutoPickup = false
 	Items.EarlyAutoCollectRestoreAutoPermanent = false
+	Items.SetFastCollectCrates(false, true)
 	setMovementPaused(false)
 	clearAutoSortConnections()
 	Items.ClearAutoPickupPart()
 	Items.ClearCrateCollectPart()
-	Items.ClearCrateSpawnDebug()
 	Items.ClearCrateWatcher()
 
 	pcall(function()
@@ -8383,6 +8670,17 @@ function UI.FireEarlyBusJump()
 	if success then
 		UI.JumpBusExitSent = true
 		UI.LastAutoEarlyBusJumpAt = os.clock()
+		local earlyUnlockAt = os.clock() + 10
+		Items.EarlyBusFBlockActive = true
+		Teleport.BlockFUntil = math.max(Teleport.BlockFUntil or 0, earlyUnlockAt)
+		Teleport.RefreshPickupLock()
+
+		task.delay(math.max(0.05, earlyUnlockAt - os.clock()), function()
+			if Teleport.BlockFUntil <= earlyUnlockAt + 0.02 then
+				Items.EarlyBusFBlockActive = false
+				Teleport.RefreshPickupLock()
+			end
+		end)
 
 		if UI.TeleportToEarlyBusPriorityItem then
 			UI.TeleportToEarlyBusPriorityItem(true)
@@ -8772,7 +9070,14 @@ function UI.TeleportToEarlyBusPriorityItem(forceRestart)
 		end
 
 		if not postLandingLockActive then
-			Items.EarlyBusFBlockActive = false
+			local unlockAt = Teleport.BlockFUntil or 0
+
+			task.delay(math.max(0.05, unlockAt - os.clock()), function()
+				if Teleport.BlockFUntil <= unlockAt + 0.02 then
+					Items.EarlyBusFBlockActive = false
+					Teleport.RefreshPickupLock()
+				end
+			end)
 		end
 
 		task.wait(1)
@@ -9712,8 +10017,8 @@ function UI.GetRecommendedFeatureState(key)
 		return UI.AutoRejoinEnabled == true
 	elseif key == "AutoSlap" then
 		return Combat.AutoGloveTapEnabled == true
-	elseif key == "GloveTpSlap" then
-		return Combat.GloveTpSlapEnabled == true
+	elseif key == "FastCollectCrates" then
+		return Items.FastCollectCratesEnabled == true
 	elseif key == "AntiStaff" then
 		return Anti.StaffEnabled == true
 	elseif key == "HideUnderMap" then
@@ -9890,8 +10195,7 @@ AddButton(TabCombat, "Teleport To Lowest Health", "Teleports you behind the play
 AddButton(TabCombat, "Teleport To Nearest", "Teleports you behind the closest player", "crosshair", Combat.TeleportToNearestPlayer)
 
 -- BETA
-AddToggle(TabBETA, "Glove TP Slap", "Teleports glove to nearest player on click", false, Combat.SetGloveTpSlap, "GloveTpSlap")
-AddButton(TabBETA, "Collect Crates", "Teleports under meteor crates and slaps them", "box", Items.CollectCrates)
+AddToggle(TabBETA, "Auto collect crates", "Rapidly slaps tracked meteor crates", false, Items.SetFastCollectCrates, "FastCollectCrates")
 local _, earlyCollectRef = AddToggle(TabBETA, "Early Auto Collect", "Starts collecting items before round begins", false, Items.SetEarlyAutoCollect, "EarlyAutoCollect")
 Items.EarlyAutoCollectToggle = earlyCollectRef
 
@@ -9952,7 +10256,6 @@ if sharedEnvironment then
 		pcall(function() Items.CleanupAutomation() end)
 		pcall(function() Combat.SetAutoGloveTap(false) end)
 		pcall(function() Combat.SetSlapAura(false, true) end)
-		pcall(function() Combat.SetGloveTpSlap(false) end)
 		pcall(function() Combat.SetHitboxExpanded(false) end)
 		pcall(function() Combat.SetAntiSlap(false) end)
 		pcall(function() UI.SetPlayerStatsESP(false, true) end)
